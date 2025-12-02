@@ -196,8 +196,8 @@ npx prisma migrate deploy
 ## 💰 Custos Estimados
 
 ### Render
-- **Starter Plan**: $7/mês (backend) + $7/mês (PostgreSQL) = **$14/mês**
-- **Free Tier**: Disponível para testes (com limitações)
+- **Free Plan**: Grátis (backend e PostgreSQL) - Ideal para começar
+- **Starter Plan**: $7/mês (backend) + $7/mês (PostgreSQL) = **$14/mês** (quando precisar de mais recursos)
 
 ### Vercel
 - **Hobby Plan**: **Grátis** (para projetos pessoais)

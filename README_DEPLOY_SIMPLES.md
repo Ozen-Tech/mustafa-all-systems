@@ -3,11 +3,11 @@
 ## ⚡ Resumo
 
 - **Frontend**: Vercel (grátis)
-- **Backend**: Render ($7/mês)
-- **Database**: Render PostgreSQL ($7/mês)
+- **Backend**: Render (Free tier disponível)
+- **Database**: Render PostgreSQL (Free tier disponível)
 - **Storage**: Firebase Storage (grátis até 5GB)
 
-**Total**: ~$14/mês (ou grátis com free tiers)
+**Total**: Grátis para começar! (ou ~$14/mês quando precisar de mais recursos)
 
 ## 🎯 3 Passos para Deploy
 
