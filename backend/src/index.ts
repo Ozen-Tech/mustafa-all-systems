@@ -14,13 +14,40 @@ const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
 // Middleware
-app.use(helmet());
-app.use(cors({
-  origin: process.env.CORS_ORIGIN?.split(',') || ['http://localhost:5173', 'http://localhost:19006'],
-  credentials: true,
-  // Permitir requisições de qualquer origem em desenvolvimento (mobile apps não têm restrições CORS)
-  ...(process.env.NODE_ENV === 'development' && { origin: true })
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
+
+// CORS configuration
+const corsOptions = {
+  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+    // Allow requests with no origin (like mobile apps or Postman)
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    const allowedOrigins = process.env.CORS_ORIGIN?.split(',').map(o => o.trim()) || [];
+    const isDevelopment = process.env.NODE_ENV === 'development';
+    
+    // In development, allow all origins
+    if (isDevelopment) {
+      return callback(null, true);
+    }
+
+    // In production, check against allowed origins
+    if (allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  exposedHeaders: ['Content-Type', 'Authorization'],
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -39,7 +66,13 @@ app.get('/health', (req, res) => {
 app.use(errorHandler);
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`Accessible at http://localhost:${PORT} and on your local network`);
+  const env = process.env.NODE_ENV || 'development';
+  console.log(`🚀 Server running on port ${PORT} (${env})`);
+  
+  if (env === 'production') {
+    console.log(`✅ Backend API is live and ready to receive requests`);
+  } else {
+    console.log(`📍 Accessible at http://localhost:${PORT} and on your local network`);
+  }
 });
 
