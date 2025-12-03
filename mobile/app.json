@@ -48,6 +48,8 @@
       ]
     ],
     "extra": {
+      "apiUrl": "https://promo-gestao-backend.onrender.com/api",
+      "EXPO_PUBLIC_API_URL": "https://promo-gestao-backend.onrender.com/api",
       "eas": {
         "projectId": "ec7a3510-8d52-4352-bb9d-3362ffacb03f"
       }

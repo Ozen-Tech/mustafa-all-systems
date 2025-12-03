@@ -67,8 +67,9 @@ curl https://promo-gestao-backend.onrender.com/health
 
 ## 📚 Documentação Completa
 
-- **Guia Rápido**: `PRIMEIRO_ACESSO.md`
-- **Guia Completo**: `COMO_USAR.md`
+- **Como Usar o App**: `COMO_USAR_APP.md` ⭐
+- **Guia Rápido**: `GUIA_RAPIDO.md`
+- **Primeiro Acesso**: `PRIMEIRO_ACESSO.md`
 - **Deploy**: `QUICK_DEPLOY.md`
 
 ## 🆘 Problemas?
