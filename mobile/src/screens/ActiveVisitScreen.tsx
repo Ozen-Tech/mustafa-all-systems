@@ -153,25 +153,45 @@ export default function ActiveVisitScreen({ route }: any) {
       const uploadPromises = photos
         .filter((photo) => photo.uri?.startsWith('file://'))
         .map(async (photo) => {
-          // Obter presigned URL
-          const { presignedUrl, url } = await photoService.getPresignedUrl({
-            visitId: visit.id,
-            type: photo.type,
-            contentType: 'image/jpeg',
-            extension: 'jpg',
-          });
+          try {
+            console.log('📸 [ActiveVisit] Iniciando upload de foto adicional...');
+            
+            // Obter presigned URL
+            const { presignedUrl, url } = await photoService.getPresignedUrl({
+              visitId: visit.id,
+              type: photo.type || 'OTHER',
+              contentType: 'image/jpeg',
+              extension: 'jpg',
+            });
 
-          // Fazer upload para S3 (simulado - em produção você faria o upload real)
-          // const response = await fetch(photo.uri);
-          // const blob = await response.blob();
-          // await photoService.uploadToS3(presignedUrl, blob);
+            console.log('📸 [ActiveVisit] Presigned URL obtida:', presignedUrl ? 'Sim' : 'Não');
+            console.log('📸 [ActiveVisit] URL final:', url);
 
-          return {
-            url,
-            type: photo.type,
-            latitude: location.coords.latitude,
-            longitude: location.coords.longitude,
-          };
+            // Fazer upload para Firebase Storage
+            if (presignedUrl && photo.uri) {
+              console.log('📸 [ActiveVisit] Fazendo upload da foto...');
+              const uploadSuccess = await photoService.uploadToS3(presignedUrl, photo.uri, 'image/jpeg');
+              
+              if (!uploadSuccess) {
+                console.error('❌ [ActiveVisit] Upload da foto falhou');
+                throw new Error('Falha no upload da foto');
+              }
+              
+              console.log('✅ [ActiveVisit] Upload da foto concluído com sucesso');
+            } else {
+              console.warn('⚠️ [ActiveVisit] Presigned URL ou photoUri não disponível');
+            }
+
+            return {
+              url,
+              type: photo.type || 'OTHER',
+              latitude: location.coords.latitude,
+              longitude: location.coords.longitude,
+            };
+          } catch (error: any) {
+            console.error('❌ [ActiveVisit] Erro no upload da foto:', error);
+            throw error;
+          }
         });
 
       const uploadedPhotos = await Promise.all(uploadPromises);

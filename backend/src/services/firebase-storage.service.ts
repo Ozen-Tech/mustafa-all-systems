@@ -25,11 +25,20 @@ if (hasFirebaseCredentials) {
     }
     storage = getStorage();
     console.log('✅ Firebase Storage inicializado');
-  } catch (error) {
-    console.warn('⚠️  Erro ao inicializar Firebase Storage:', error);
+    console.log('📦 Bucket:', process.env.FIREBASE_STORAGE_BUCKET);
+  } catch (error: any) {
+    console.error('❌ Erro ao inicializar Firebase Storage:', error);
+    console.error('❌ Detalhes:', error.message);
+    console.error('❌ Stack:', error.stack);
   }
 } else {
-  console.warn('⚠️  Firebase credentials não configuradas. Usando URLs mockadas para desenvolvimento.');
+  console.error('❌ Firebase credentials não configuradas!');
+  console.error('❌ Variáveis necessárias:');
+  console.error('   - FIREBASE_PROJECT_ID:', process.env.FIREBASE_PROJECT_ID ? '✅' : '❌');
+  console.error('   - FIREBASE_CLIENT_EMAIL:', process.env.FIREBASE_CLIENT_EMAIL ? '✅' : '❌');
+  console.error('   - FIREBASE_PRIVATE_KEY:', process.env.FIREBASE_PRIVATE_KEY ? '✅' : '❌');
+  console.error('   - FIREBASE_STORAGE_BUCKET:', process.env.FIREBASE_STORAGE_BUCKET ? '✅' : '❌');
+  console.warn('⚠️  Usando URLs mockadas - uploads NÃO funcionarão!');
 }
 
 export interface PresignedUrlOptions {
@@ -48,13 +57,18 @@ export async function getPresignedUploadUrl(
   if (!storage || !hasFirebaseCredentials) {
     // Retornar URL mockada para desenvolvimento
     const mockUrl = `https://mock-storage.local/photos/${key}?upload=true`;
-    console.log(`📸 [Firebase Mock] Generated mock upload URL for key: ${key}`);
+    console.error(`❌ [Firebase Mock] Firebase não configurado! Retornando URL mockada para key: ${key}`);
+    console.error(`❌ [Firebase Mock] Configure as variáveis de ambiente no Render!`);
     return mockUrl;
   }
 
   try {
     const bucket = storage.bucket();
     const file = bucket.file(key);
+
+    console.log(`📸 Gerando presigned URL para upload: ${key}`);
+    console.log(`📸 Bucket: ${bucket.name}`);
+    console.log(`📸 Content-Type: ${options.contentType}`);
 
     // Criar URL assinada para upload (válida por 1 hora por padrão)
     const [url] = await file.getSignedUrl({
@@ -63,9 +77,12 @@ export async function getPresignedUploadUrl(
       contentType: options.contentType,
     });
 
+    console.log(`✅ Presigned URL gerada com sucesso para: ${key}`);
     return url;
-  } catch (error) {
-    console.error('Erro ao gerar presigned URL do Firebase:', error);
+  } catch (error: any) {
+    console.error('❌ Erro ao gerar presigned URL do Firebase:', error);
+    console.error('❌ Mensagem:', error.message);
+    console.error('❌ Stack:', error.stack);
     throw error;
   }
 }
