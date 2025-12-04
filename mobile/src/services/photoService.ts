@@ -58,6 +58,8 @@ export const photoService = {
 
       // Fazer upload usando expo-file-system
       console.log('📤 [photoService] Iniciando upload PUT para Firebase...');
+      console.log('📤 [photoService] Presigned URL completa (primeiros 200 chars):', presignedUrl.substring(0, 200));
+      
       const uploadResult = await FileSystem.uploadAsync(presignedUrl, normalizedUri, {
         httpMethod: 'PUT',
         uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
@@ -69,9 +71,19 @@ export const photoService = {
       console.log('📤 [photoService] Upload concluído - Status:', uploadResult.status);
       console.log('📤 [photoService] Resposta completa:', {
         status: uploadResult.status,
-        body: uploadResult.body?.substring(0, 200),
+        body: uploadResult.body?.substring(0, 500) || '(vazio)',
         headers: uploadResult.headers,
       });
+      
+      // Log detalhado do erro se houver
+      if (uploadResult.status !== 200 && uploadResult.status !== 201) {
+        console.error('❌ [photoService] ===== DETALHES DO ERRO DE UPLOAD =====');
+        console.error('❌ [photoService] Status HTTP:', uploadResult.status);
+        console.error('❌ [photoService] Body completo:', uploadResult.body);
+        console.error('❌ [photoService] Headers de resposta:', uploadResult.headers);
+        console.error('❌ [photoService] Presigned URL usada:', presignedUrl);
+        console.error('❌ [photoService] ======================================');
+      }
       
       // Firebase Storage aceita 200 (OK) ou 201 (Created)
       if (uploadResult.status === 200 || uploadResult.status === 201) {
