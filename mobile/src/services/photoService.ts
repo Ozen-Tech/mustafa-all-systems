@@ -35,12 +35,13 @@ export const photoService = {
   },
 
   /**
-   * Faz upload de uma foto para S3 usando presigned URL
+   * Faz upload de uma foto para Firebase Storage usando presigned URL
    * Compatível com React Native usando expo-file-system
    */
   async uploadToS3(presignedUrl: string, fileUri: string, contentType: string = 'image/jpeg'): Promise<boolean> {
     try {
-      console.log('📤 [photoService] Iniciando upload para S3...');
+      console.log('📤 [photoService] Iniciando upload para Firebase Storage...');
+      console.log('📤 [photoService] Presigned URL:', presignedUrl.substring(0, 100) + '...');
       console.log('📤 [photoService] URI do arquivo:', fileUri);
       console.log('📤 [photoService] Content-Type:', contentType);
 
@@ -50,11 +51,13 @@ export const photoService = {
         throw new Error('Arquivo não encontrado: ' + fileUri);
       }
 
+      console.log('📤 [photoService] Arquivo encontrado, tamanho:', fileInfo.size, 'bytes');
+
       // Normalizar URI (garantir que tem file://)
       const normalizedUri = fileUri.startsWith('file://') ? fileUri : `file://${fileUri}`;
 
       // Fazer upload usando expo-file-system
-      // O uploadSessionId é opcional, mas ajuda a rastrear o upload
+      console.log('📤 [photoService] Iniciando upload PUT para Firebase...');
       const uploadResult = await FileSystem.uploadAsync(presignedUrl, normalizedUri, {
         httpMethod: 'PUT',
         uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
@@ -63,20 +66,45 @@ export const photoService = {
         },
       });
 
-      console.log('📤 [photoService] Upload concluído:', uploadResult.status);
+      console.log('📤 [photoService] Upload concluído - Status:', uploadResult.status);
+      console.log('📤 [photoService] Resposta completa:', {
+        status: uploadResult.status,
+        body: uploadResult.body?.substring(0, 200),
+        headers: uploadResult.headers,
+      });
       
-      if (uploadResult.status === 200) {
-        console.log('✅ [photoService] Upload bem-sucedido');
+      // Firebase Storage aceita 200 (OK) ou 201 (Created)
+      if (uploadResult.status === 200 || uploadResult.status === 201) {
+        console.log('✅ [photoService] Upload bem-sucedido! Status:', uploadResult.status);
         return true;
       } else {
         console.error('❌ [photoService] Upload falhou com status:', uploadResult.status);
-        console.error('❌ [photoService] Resposta:', uploadResult.body);
+        console.error('❌ [photoService] Resposta completa:', uploadResult.body);
+        
+        // Log detalhado do erro
+        if (uploadResult.status === 403) {
+          console.error('❌ [photoService] Erro 403: Acesso negado - Verifique as regras do Firebase Storage!');
+        } else if (uploadResult.status === 404) {
+          console.error('❌ [photoService] Erro 404: URL não encontrada - Verifique a presigned URL!');
+        } else if (uploadResult.status >= 500) {
+          console.error('❌ [photoService] Erro do servidor:', uploadResult.status);
+        }
+        
         return false;
       }
     } catch (error: any) {
       console.error('❌ [photoService] Erro no upload:', error);
+      console.error('❌ [photoService] Tipo do erro:', error?.constructor?.name);
       console.error('❌ [photoService] Mensagem:', error?.message);
       console.error('❌ [photoService] Stack:', error?.stack);
+      
+      // Erros comuns e suas soluções
+      if (error?.message?.includes('Network request failed')) {
+        console.error('❌ [photoService] Erro de rede - Verifique conexão com internet');
+      } else if (error?.message?.includes('403')) {
+        console.error('❌ [photoService] Erro 403 - Verifique as regras do Firebase Storage!');
+      }
+      
       throw error;
     }
   },

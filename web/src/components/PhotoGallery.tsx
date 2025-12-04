@@ -96,6 +96,7 @@ export default function PhotoGallery({
   storeName,
 }: PhotoGalleryProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [failedUrls, setFailedUrls] = useState<Set<string>>(new Set());
 
   // Combinar todas as fotos com validação (usar useMemo para recalcular quando props mudarem)
   const allPhotos: Array<{ url: string; label: string; type?: string }> = useMemo(() => {
@@ -278,7 +279,36 @@ export default function PhotoGallery({
                 className="max-w-full max-h-[60vh] object-contain rounded-lg shadow-card-elevated"
                 onError={(e) => {
                   const target = e.target as HTMLImageElement;
-                  target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300"%3E%3Crect fill="%23241F35" width="400" height="300"/%3E%3Ctext fill="%239CA3AF" font-family="sans-serif" font-size="18" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3EImagem não disponível%3C/text%3E%3C/svg%3E';
+                  const imageUrl = currentPhoto.url;
+                  
+                  console.warn('[PhotoGallery] Erro ao carregar imagem:', imageUrl);
+                  
+                  // Marcar URL como falhada
+                  setFailedUrls((prev) => new Set(prev).add(imageUrl));
+                  
+                  // Verificar se é erro 404 (arquivo não encontrado)
+                  if (imageUrl.includes('firebasestorage.googleapis.com')) {
+                    console.warn('[PhotoGallery] Erro 404 - Arquivo não encontrado no Firebase Storage');
+                    console.warn('[PhotoGallery] Possíveis causas:');
+                    console.warn('  - Arquivo não foi enviado corretamente');
+                    console.warn('  - Regras do Firebase Storage bloqueando acesso');
+                    console.warn('  - URL incorreta');
+                  }
+                  
+                  // Não tentar recarregar se já for a imagem de erro
+                  if (!target.src.includes('data:image/svg+xml')) {
+                    target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300"%3E%3Crect fill="%23241F35" width="400" height="300"/%3E%3Ctext fill="%239CA3AF" font-family="sans-serif" font-size="18" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3EImagem não disponível%3C/text%3E%3Ctext fill="%239CA3AF" font-family="sans-serif" font-size="14" x="50%25" y="60%25" text-anchor="middle" dy=".3em"%3EArquivo não encontrado no servidor%3C/text%3E%3C/svg%3E';
+                  }
+                }}
+                onLoad={() => {
+                  const imageUrl = currentPhoto.url;
+                  console.log('[PhotoGallery] Imagem carregada com sucesso:', imageUrl);
+                  // Remover da lista de URLs falhadas se estava lá
+                  setFailedUrls((prev) => {
+                    const next = new Set(prev);
+                    next.delete(imageUrl);
+                    return next;
+                  });
                 }}
               />
               <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-dark-card/90 px-4 py-2 rounded-lg border border-dark-border">

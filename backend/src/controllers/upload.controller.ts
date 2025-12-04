@@ -4,7 +4,8 @@ import { AuthRequest } from '../middleware/auth';
 import { 
   getPresignedUploadUrl as getFirebaseUploadUrl, 
   generatePhotoKey as generateFirebaseKey,
-  getPublicUrl 
+  getPublicUrl,
+  getSignedUrlForPhoto
 } from '../services/firebase-storage.service';
 import { PhotoType } from '../types';
 

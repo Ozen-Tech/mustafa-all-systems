@@ -116,10 +116,49 @@ export async function getPresignedDownloadUrl(key: string, expiresIn: number = 3
 
 /**
  * Gera URL pública (se o arquivo for público)
+ * Formato: https://firebasestorage.googleapis.com/v0/b/{bucket}/o/{encodedKey}?alt=media
  */
 export function getPublicUrl(key: string): string {
   const bucket = process.env.FIREBASE_STORAGE_BUCKET || 'promo-gestao-photos';
-  return `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(key)}?alt=media`;
+  // Firebase Storage requer encoding específico: / vira %2F
+  const encodedKey = encodeURIComponent(key);
+  const url = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodedKey}?alt=media`;
+  console.log(`📸 URL pública gerada para key "${key}": ${url.substring(0, 100)}...`);
+  return url;
+}
+
+/**
+ * Gera URL assinada para download (fallback quando pública não funciona)
+ */
+export async function getSignedUrlForPhoto(key: string): Promise<string> {
+  if (!storage || !hasFirebaseCredentials) {
+    return getPublicUrl(key); // Fallback para URL pública se Firebase não configurado
+  }
+
+  try {
+    const bucket = storage.bucket();
+    const file = bucket.file(key);
+    
+    // Verificar se arquivo existe
+    const [exists] = await file.exists();
+    if (!exists) {
+      console.warn(`⚠️ Arquivo não existe no bucket: ${key}`);
+      return getPublicUrl(key); // Retornar URL pública mesmo assim
+    }
+
+    // Criar URL assinada válida por 1 ano
+    const [url] = await file.getSignedUrl({
+      action: 'read',
+      expires: Date.now() + (365 * 24 * 60 * 60 * 1000), // 1 ano
+    });
+    
+    console.log(`📸 URL assinada gerada para key "${key}"`);
+    return url;
+  } catch (error: any) {
+    console.error(`❌ Erro ao gerar URL assinada para ${key}:`, error);
+    // Fallback para URL pública em caso de erro
+    return getPublicUrl(key);
+  }
 }
 
 /**
