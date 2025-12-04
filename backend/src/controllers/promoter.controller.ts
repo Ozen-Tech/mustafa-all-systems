@@ -189,20 +189,65 @@ export async function uploadPhotos(req: AuthRequest, res: Response) {
       return res.status(404).json({ message: 'Visita não encontrada' });
     }
 
-    // Criar registros das fotos
+    // Processar cada foto: atualizar se existir (mesmo tipo), criar se não existir
     const createdPhotos = await Promise.all(
-      photos.map((photo) =>
-        prisma.photo.create({
-          data: {
+      photos.map(async (photo) => {
+        // Verificar se já existe uma foto do mesmo tipo para esta visita
+        const existingPhoto = await prisma.photo.findFirst({
+          where: {
             visitId,
-            url: photo.url,
             type: photo.type,
-            latitude: photo.latitude || null,
-            longitude: photo.longitude || null,
           },
-        })
-      )
+        });
+
+        if (existingPhoto) {
+          // Atualizar foto existente (especialmente para substituir URLs placeholder)
+          const updated = await prisma.photo.update({
+            where: { id: existingPhoto.id },
+            data: {
+              url: photo.url,
+              latitude: photo.latitude || existingPhoto.latitude,
+              longitude: photo.longitude || existingPhoto.longitude,
+            },
+          });
+          console.log(`✅ Foto ${photo.type} atualizada: ${existingPhoto.url} -> ${photo.url}`);
+          return updated;
+        } else {
+          // Criar nova foto
+          const created = await prisma.photo.create({
+            data: {
+              visitId,
+              url: photo.url,
+              type: photo.type,
+              latitude: photo.latitude || null,
+              longitude: photo.longitude || null,
+            },
+          });
+          console.log(`✅ Nova foto ${photo.type} criada: ${photo.url}`);
+          return created;
+        }
+      })
     );
+
+    // Atualizar também checkInPhotoUrl e checkOutPhotoUrl na tabela Visit se necessário
+    const checkInPhoto = photos.find(p => p.type === PhotoType.FACADE_CHECKIN);
+    const checkOutPhoto = photos.find(p => p.type === PhotoType.FACADE_CHECKOUT);
+    
+    if (checkInPhoto && !checkInPhoto.url.includes('placeholder.com')) {
+      await prisma.visit.update({
+        where: { id: visitId },
+        data: { checkInPhotoUrl: checkInPhoto.url },
+      });
+      console.log(`✅ checkInPhotoUrl atualizado na visita: ${checkInPhoto.url}`);
+    }
+    
+    if (checkOutPhoto && !checkOutPhoto.url.includes('placeholder.com')) {
+      await prisma.visit.update({
+        where: { id: visitId },
+        data: { checkOutPhotoUrl: checkOutPhoto.url },
+      });
+      console.log(`✅ checkOutPhotoUrl atualizado na visita: ${checkOutPhoto.url}`);
+    }
 
     res.json({
       photos: createdPhotos,
