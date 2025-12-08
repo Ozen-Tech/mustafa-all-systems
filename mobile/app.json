@@ -1,5 +1,4 @@
 {
-  "name": "main",
   "expo": {
     "name": "Promo Gestão",
     "slug": "promo-gestao-mobile",
@@ -22,6 +21,7 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.promogestao.mobile",
+      "versionCode": 1,
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.ACCESS_FINE_LOCATION",
