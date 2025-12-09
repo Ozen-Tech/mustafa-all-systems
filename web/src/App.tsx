@@ -8,6 +8,7 @@ import RouteConfig from './pages/RouteConfig';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 import StoresManagement from './pages/StoresManagement';
+import Admin from './pages/Admin';
 import Layout from './components/Layout';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -19,6 +20,24 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   if (!user) {
     return <Navigate to="/login" replace />;
+  }
+
+  return <>{children}</>;
+}
+
+function AdminRoute({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return <div>Carregando...</div>;
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (user.role !== 'ADMIN') {
+    return <Navigate to="/" replace />;
   }
 
   return <>{children}</>;
@@ -43,6 +62,14 @@ function AppRoutes() {
         <Route path="stores" element={<StoresManagement />} />
         <Route path="reports" element={<Reports />} />
         <Route path="settings" element={<Settings />} />
+        <Route
+          path="admin"
+          element={
+            <AdminRoute>
+              <Admin />
+            </AdminRoute>
+          }
+        />
       </Route>
     </Routes>
   );

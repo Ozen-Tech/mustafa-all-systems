@@ -144,12 +144,35 @@ export default function Layout() {
     </svg>
   );
 
+  const AdminIcon = ({ active }: { active: boolean }) => (
+    <svg
+      className={`w-5 h-5 ${active ? 'text-primary-400' : 'text-text-tertiary'}`}
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M12 15C15.866 15 19 11.866 19 8C19 4.13401 15.866 1 12 1C8.13401 1 5 4.13401 5 8C5 11.866 8.13401 15 12 15Z"
+      />
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M8.21 13.89L7 23L12 20L17 23L15.79 13.88"
+      />
+    </svg>
+  );
+
   const navigation = [
     { name: 'Dashboard', path: '/', icon: DashboardIcon },
     { name: 'Gerenciar Lojas', path: '/stores', icon: StoresIcon },
     { name: 'Configurar Rotas', path: '/routes/config', icon: RouteIcon },
     { name: 'Relatórios', path: '/reports', icon: ReportsIcon },
     { name: 'Configurações', path: '/settings', icon: SettingsIcon },
+    ...(user?.role === 'ADMIN' ? [{ name: 'Administração', path: '/admin', icon: AdminIcon }] : []),
   ];
 
   const handleLogout = () => {
