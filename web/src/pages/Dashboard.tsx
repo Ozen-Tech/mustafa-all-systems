@@ -318,24 +318,20 @@ export default function Dashboard() {
     primary: '#7c3aed',
   };
 
-  // Preparar dados para Analytics
-  // Calcular tudo diretamente de visitsByPromoterRaw para evitar dependências circulares
-  const analyticsDataKey = `${visitsByPromoterRaw?.length || 0}-${promotersList?.length || 0}-${stats.totalVisits || 0}-${stats.totalHours || '0'}-${stats.totalPhotos || 0}`;
-  const analyticsData = useMemo(() => {
-    if (!data || !visitsByPromoterRaw || visitsByPromoterRaw.length === 0) {
-      return {
-        visitsOverTime: [],
-        performanceByPromoter: [],
-        activityHeatmap: [],
-        trends: {
-          visits: { current: 0, previous: 0, change: 0 },
-          hours: { current: 0, previous: 0, change: 0 },
-          photos: { current: 0, previous: 0, change: 0 },
-          compliance: { current: 0, previous: 0, change: 0 },
-        },
-      };
-    }
+  // Preparar dados para Analytics - Simplificado sem useMemo para evitar problemas
+  let analyticsData = {
+    visitsOverTime: [] as any[],
+    performanceByPromoter: [] as any[],
+    activityHeatmap: [] as any[],
+    trends: {
+      visits: { current: 0, previous: 0, change: 0 },
+      hours: { current: 0, previous: 0, change: 0 },
+      photos: { current: 0, previous: 0, change: 0 },
+      compliance: { current: 0, previous: 0, change: 0 },
+    },
+  };
 
+  if (data && visitsByPromoterRaw && visitsByPromoterRaw.length > 0) {
     const visits = visitsByPromoterRaw || [];
     const visitsOverTime = visits
       .filter((v: any) => v && v.date)
@@ -386,7 +382,7 @@ export default function Dashboard() {
     const totalHours = parseFloat(stats.totalHours || '0');
     const totalPhotos = stats.totalPhotos || 0;
 
-    return {
+    analyticsData = {
       visitsOverTime,
       performanceByPromoter,
       activityHeatmap,
@@ -397,16 +393,11 @@ export default function Dashboard() {
         compliance: { current: 85, previous: 80, change: 5 },
       },
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [analyticsDataKey]);
+  }
 
-  // Preparar dados de conformidade (simulado - em produção viria do backend)
-  // Usar hash simples baseado no ID para gerar valores consistentes
-  const complianceDataKey = promotersList?.length || 0;
-  const complianceData = useMemo(() => {
-    if (!promotersList || promotersList.length === 0) {
-      return [];
-    }
+  // Preparar dados de conformidade - Simplificado sem useMemo
+  let complianceData: any[] = [];
+  if (promotersList && promotersList.length > 0) {
     const hash = (str: string) => {
       let hash = 0;
       for (let i = 0; i < str.length; i++) {
@@ -417,20 +408,19 @@ export default function Dashboard() {
       return Math.abs(hash);
     };
     
-    return promotersList
-      .filter((p: any) => p && p.id)
-      .map((p: any) => {
-        const seed = hash(p.id);
-        return {
-          id: p.id,
-          name: p.name || 'Desconhecido',
-          photoCompliance: (seed % 100),
-          scheduleCompliance: ((seed * 2) % 100),
-          routeCompliance: ((seed * 3) % 100),
-        };
-      });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [complianceDataKey]);
+    complianceData = promotersList.map((p: any) => {
+      if (!p || !p.id) return null;
+      const seed = hash(p.id);
+      return {
+        id: p.id,
+        name: p.name || 'Desconhecido',
+        photoCompliance: (seed % 100),
+        scheduleCompliance: ((seed * 2) % 100),
+        routeCompliance: ((seed * 3) % 100),
+      };
+    }).filter(Boolean);
+  }
+
 
   // Sempre renderizar componentes que usam hooks, mas ocultá-los quando não estão ativos
   // Isso garante que os hooks sejam sempre chamados na mesma ordem
