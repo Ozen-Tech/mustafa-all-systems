@@ -2,6 +2,7 @@
 export enum UserRole {
   PROMOTER = 'PROMOTER',
   SUPERVISOR = 'SUPERVISOR',
+  ADMIN = 'ADMIN',
 }
 
 export interface User {

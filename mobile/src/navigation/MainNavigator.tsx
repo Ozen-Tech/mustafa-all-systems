@@ -3,12 +3,15 @@ import { View, Text, ActivityIndicator } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { colors, theme } from '../styles/theme';
+import { useAuth } from '../context/AuthContext';
+import { UserRole } from '../types';
 import HomeScreen from '../screens/HomeScreen';
 import HistoryScreen from '../screens/HistoryScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import HomeIcon from '../components/icons/HomeIcon';
 import ClockIcon from '../components/icons/ClockIcon';
 import UserIcon from '../components/icons/UserIcon';
+import AdminIcon from '../components/icons/AdminIcon';
 
 // Componente de loading/erro
 function LoadingScreen() {
@@ -246,7 +249,38 @@ function PriceResearchScreenWrapper(props: any) {
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
+function AdminScreenWrapper(props: any) {
+  const [Screen, setScreen] = React.useState<React.ComponentType<any> | null>(null);
+  const [isLoading, setIsLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      try {
+        const module = require('../screens/AdminScreen');
+        if (module && module.default) {
+          setScreen(() => module.default);
+        }
+      } catch (err: any) {
+        console.error('Erro ao carregar AdminScreen:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (isLoading || !Screen) {
+    return <LoadingScreen />;
+  }
+
+  return <Screen {...props} />;
+}
+
 function MainTabs() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === UserRole.ADMIN;
+
   return (
     <Tab.Navigator
       screenOptions={{
@@ -292,6 +326,16 @@ function MainTabs() {
           tabBarIcon: ({ color, size }) => <ClockIcon size={size} color={color} />,
         }}
       />
+      {isAdmin && (
+        <Tab.Screen
+          name="Admin"
+          component={AdminScreenWrapper}
+          options={{
+            title: 'Admin',
+            tabBarIcon: ({ color, size }) => <AdminIcon size={size} color={color} />,
+          }}
+        />
+      )}
       <Tab.Screen
         name="Profile"
         component={ProfileScreen}

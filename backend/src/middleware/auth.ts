@@ -31,3 +31,10 @@ export function requireSupervisor(req: AuthRequest, res: Response, next: NextFun
   }
   next();
 }
+
+export function requireAdmin(req: AuthRequest, res: Response, next: NextFunction) {
+  if (req.userRole !== UserRole.ADMIN) {
+    return res.status(403).json({ message: 'Admin access required' });
+  }
+  next();
+}

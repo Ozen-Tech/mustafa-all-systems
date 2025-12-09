@@ -13,6 +13,7 @@ datasource db {
 enum UserRole {
   PROMOTER
   SUPERVISOR
+  ADMIN
 }
 
 enum PhotoType {
