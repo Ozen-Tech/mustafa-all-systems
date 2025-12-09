@@ -103,8 +103,23 @@ export default function Dashboard() {
   const [selectedPromoters, setSelectedPromoters] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<'overview' | 'analytics' | 'compliance' | 'export'>('overview');
 
+  // Criar uma chave estável para o queryKey
+  // Usar valores primitivos para evitar problemas com referências
+  const filtersKey = useMemo(() => {
+    return `${filters.startDate}-${filters.endDate}-${filters.selectedPromoters.length}-${filters.selectedStores.length}-${filters.status}-${filters.compliance.photos}-${filters.compliance.schedule}-${filters.compliance.priceResearch}`;
+  }, [
+    filters.startDate,
+    filters.endDate,
+    filters.selectedPromoters.length,
+    filters.selectedStores.length,
+    filters.status,
+    filters.compliance.photos,
+    filters.compliance.schedule,
+    filters.compliance.priceResearch,
+  ]);
+
   const { data, isLoading, error } = useQuery({
-    queryKey: ['dashboard', filters],
+    queryKey: ['dashboard', filtersKey],
     queryFn: () => supervisorService.getDashboard(),
   });
 
@@ -186,6 +201,8 @@ export default function Dashboard() {
   }, [visitsByPromoterRaw, promotersList]);
 
   // Calcular métricas de problemas - MOVER PARA DEPOIS DOS EARLY RETURNS
+  // Usar chave estável para evitar recálculos desnecessários
+  const problemMetricsKey = `${promotersList?.length || 0}-${visitsByPromoterRaw?.length || 0}`;
   const problemMetrics = useMemo(() => {
     if (!data || !promotersData || !promotersList || promotersList.length === 0) {
       return {
@@ -259,7 +276,8 @@ export default function Dashboard() {
         ...promotersOffSchedule.slice(0, 3),
       ].slice(0, 10),
     };
-  }, [data, promotersData, promotersList, visitsByPromoterRaw]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [problemMetricsKey]);
 
   // Cards de KPIs de Problemas
   const problemKPIs = [
@@ -429,6 +447,8 @@ export default function Dashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [complianceDataKey]);
 
+  // Sempre renderizar componentes que usam hooks, mas ocultá-los quando não estão ativos
+  // Isso garante que os hooks sejam sempre chamados na mesma ordem
   return (
     <div className="space-y-6">
       {/* Tabs de Navegação */}
@@ -454,29 +474,28 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* Conteúdo da Visão Geral */}
-      {activeTab === 'overview' && (
-        <>
-          {/* Métricas em Tempo Real */}
-          <RealtimeMetrics refreshInterval={10} />
+      {/* Sempre renderizar componentes com hooks, mas ocultá-los quando não estão ativos */}
+      <div style={{ display: activeTab === 'overview' ? 'block' : 'none' }}>
+        {/* Métricas em Tempo Real */}
+        <RealtimeMetrics refreshInterval={10} />
 
-          {/* Filtros Avançados */}
-          <AdvancedFilters
-            promoters={promotersData?.promoters || []}
-            stores={storesData?.stores || []}
-            onFilterChange={setFilters}
-          />
+        {/* Filtros Avançados */}
+        <AdvancedFilters
+          promoters={promotersData?.promoters || []}
+          stores={storesData?.stores || []}
+          onFilterChange={setFilters}
+        />
 
-          {/* Ações em Massa */}
-          <BulkActions
-            selectedPromoters={selectedPromoters}
-            onActionComplete={() => {
-              setSelectedPromoters([]);
-            }}
-          />
+        {/* Ações em Massa */}
+        <BulkActions
+          selectedPromoters={selectedPromoters}
+          onActionComplete={() => {
+            setSelectedPromoters([]);
+          }}
+        />
 
-          {/* Alertas Críticos no Topo */}
-          {problemMetrics.problemPromoters.length > 0 && (
+        {/* Alertas Críticos no Topo */}
+        {problemMetrics.problemPromoters.length > 0 && (
         <Card className="border-error-500 shadow-error">
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -828,22 +847,23 @@ export default function Dashboard() {
             </div>
           </CardContent>
         </Card>
-      )}
-        </>
-      )}
+        )}
+      </div>
 
       {/* Painel de Análises */}
-      {activeTab === 'analytics' && (
+      <div style={{ display: activeTab === 'analytics' ? 'block' : 'none' }}>
         <AnalyticsPanel data={analyticsData} />
-      )}
+      </div>
 
       {/* Painel de Conformidade */}
-      {activeTab === 'compliance' && (
+      <div style={{ display: activeTab === 'compliance' ? 'block' : 'none' }}>
         <CompliancePanel promoters={complianceData} />
-      )}
+      </div>
 
       {/* Ferramentas de Exportação */}
-      {activeTab === 'export' && <ExportTools filters={filters} />}
+      <div style={{ display: activeTab === 'export' ? 'block' : 'none' }}>
+        <ExportTools filters={filters} />
+      </div>
     </div>
   );
 }
