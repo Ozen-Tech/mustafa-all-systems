@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "icon": "./assets/images/logo.png",
+    "icon": "./assets/images/icon-square.png",
     "splash": {
       "image": "./assets/images/logo.png",
       "backgroundColor": "#ffffff",
@@ -15,18 +15,17 @@
       "**/*"
     ],
     "ios": {
-      "icon": "./assets/images/logo.png",
+      "icon": "./assets/images/icon-square.png",
       "supportsTablet": true,
       "bundleIdentifier": "com.promogestao.mobile"
     },
     "android": {
-      "icon": "./assets/images/logo.png",
+      "icon": "./assets/images/icon-square.png",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/logo.png",
+        "foregroundImage": "./assets/images/icon-square.png",
         "backgroundColor": "#ffffff"
       },
       "package": "com.promogestao.mobile",
-      "versionCode": 1,
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.ACCESS_FINE_LOCATION",
