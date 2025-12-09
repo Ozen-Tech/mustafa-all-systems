@@ -15,6 +15,7 @@ import { visitService } from '../services/visitService';
 import { photoService } from '../services/photoService';
 import { colors, theme } from '../styles/theme';
 import { requestForegroundPermissions, getCurrentPosition } from '../utils/locationHelper';
+import { savePendingPhotos, getPendingPhotos, clearPendingPhotos, PendingPhoto } from '../utils/sessionStorage';
 
 interface Visit {
   id: string;
@@ -47,10 +48,37 @@ export default function ActiveVisitScreen({ route }: any) {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [photos, setPhotos] = useState<VisitPhoto[]>([]);
+  const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null);
 
   useEffect(() => {
     loadCurrentVisit();
+    restorePendingPhotos();
   }, []);
+
+  // Restaurar fotos pendentes ao abrir a tela
+  async function restorePendingPhotos() {
+    if (!visit?.id) return;
+    
+    try {
+      const pendingPhotos = await getPendingPhotos(visit.id);
+      if (pendingPhotos.length > 0) {
+        // Converter fotos pendentes para o formato esperado
+        const restoredPhotos: VisitPhoto[] = pendingPhotos.map(photo => ({
+          uri: photo.uri,
+          type: photo.type,
+        }));
+        setPhotos((prev) => {
+          // Evitar duplicatas
+          const existingUris = new Set(prev.map(p => p.uri || p.url));
+          const newPhotos = restoredPhotos.filter(p => p.uri && !existingUris.has(p.uri));
+          return [...prev, ...newPhotos];
+        });
+        console.log(`[ActiveVisitScreen] Restauradas ${restoredPhotos.length} fotos pendentes`);
+      }
+    } catch (error) {
+      console.error('[ActiveVisitScreen] Erro ao restaurar fotos pendentes:', error);
+    }
+  }
 
   async function loadCurrentVisit() {
     try {
@@ -89,13 +117,40 @@ export default function ActiveVisitScreen({ route }: any) {
           uri: asset.uri,
           type: 'OTHER',
         }));
-        setPhotos((prev) => [...prev, ...newPhotos]);
+        setPhotos((prev) => {
+          const updated = [...prev, ...newPhotos];
+          // Salvar fotos pendentes
+          if (visit?.id) {
+            savePendingPhotosToStorage(visit.id, updated);
+          }
+          return updated;
+        });
       }
     } catch (error) {
       console.error('Erro ao selecionar imagem:', error);
       Alert.alert('Erro', 'Não foi possível selecionar a imagem');
     }
   }
+
+  // Função auxiliar para salvar fotos pendentes
+  const savePendingPhotosToStorage = async (visitId: string, photosToSave: VisitPhoto[]) => {
+    try {
+      const pendingPhotos: PendingPhoto[] = photosToSave
+        .filter(p => p.uri && !p.url) // Apenas fotos não enviadas (sem URL)
+        .map(p => ({
+          uri: p.uri!,
+          type: p.type,
+          visitId,
+          timestamp: Date.now(),
+        }));
+      
+      if (pendingPhotos.length > 0) {
+        await savePendingPhotos(visitId, pendingPhotos);
+      }
+    } catch (error) {
+      console.error('[ActiveVisitScreen] Erro ao salvar fotos pendentes:', error);
+    }
+  };
 
   async function takePhoto() {
     try {
@@ -115,7 +170,14 @@ export default function ActiveVisitScreen({ route }: any) {
           uri: result.assets[0].uri,
           type: 'OTHER',
         };
-        setPhotos((prev) => [...prev, newPhoto]);
+        setPhotos((prev) => {
+          const updated = [...prev, newPhoto];
+          // Salvar fotos pendentes
+          if (visit?.id) {
+            savePendingPhotosToStorage(visit.id, updated);
+          }
+          return updated;
+        });
       }
     } catch (error) {
       console.error('Erro ao capturar foto:', error);
@@ -270,6 +332,27 @@ export default function ActiveVisitScreen({ route }: any) {
           photos: uploadedPhotos,
         });
         console.log('✅ [ActiveVisit] Fotos registradas no backend');
+        
+        // Limpar fotos pendentes após upload bem-sucedido
+        await clearPendingPhotos(visit.id);
+        
+        // Atualizar estado das fotos (remover URIs e manter apenas URLs)
+        setPhotos((prev) => {
+          return prev.map((photo) => {
+            // Se a foto foi enviada, remover URI e manter URL
+            const uploadedPhoto = uploadedPhotos.find(
+              (up) => up.url && prev.find((p) => p.uri === photo.uri)
+            );
+            if (uploadedPhoto) {
+              return {
+                ...photo,
+                url: uploadedPhoto.url,
+                uri: undefined, // Remover URI após upload
+              };
+            }
+            return photo;
+          });
+        });
       } catch (error: any) {
         console.error('❌ [ActiveVisit] Erro ao registrar fotos no backend:', error);
         Alert.alert('Aviso', `${uploadedPhotos.length} foto(s) foram enviadas, mas houve erro ao registrar no sistema`);
@@ -322,19 +405,71 @@ export default function ActiveVisitScreen({ route }: any) {
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Fotos ({photos.length})</Text>
+        <View style={styles.photoHeader}>
+          <Text style={styles.sectionTitle}>Fotos do Trabalho</Text>
+          <View style={styles.photoCounter}>
+            <Text style={styles.photoCounterText}>
+              {photos.filter(p => p.uri && !p.url).length} pendentes / {photos.length} total
+            </Text>
+          </View>
+        </View>
         <View style={styles.photoGrid}>
           {photos.map((photo, index) => {
             const sourceUri = photo.uri || photo.url;
             if (!sourceUri) {
               return null;
             }
+            const isPending = !!photo.uri && !photo.url;
             return (
-              <Image
+              <TouchableOpacity
                 key={photo.id ?? sourceUri ?? index}
-                source={{ uri: sourceUri }}
-                style={styles.photoThumbnail}
-              />
+                style={styles.photoThumbnailContainer}
+                onPress={() => setSelectedPhotoIndex(index)}
+                activeOpacity={0.8}
+              >
+                <Image
+                  source={{ uri: sourceUri }}
+                  style={styles.photoThumbnail}
+                />
+                {isPending && (
+                  <View style={styles.pendingBadge}>
+                    <Text style={styles.pendingBadgeText}>Pendente</Text>
+                  </View>
+                )}
+                {!isPending && (
+                  <View style={styles.uploadedBadge}>
+                    <Text style={styles.uploadedBadgeText}>✓</Text>
+                  </View>
+                )}
+                {isPending && (
+                  <TouchableOpacity
+                    style={styles.deleteButton}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      Alert.alert(
+                        'Remover foto',
+                        'Deseja remover esta foto?',
+                        [
+                          { text: 'Cancelar', style: 'cancel' },
+                          {
+                            text: 'Remover',
+                            style: 'destructive',
+                            onPress: () => {
+                              setPhotos((prev) => prev.filter((_, i) => i !== index));
+                              if (visit?.id) {
+                                const updated = photos.filter((_, i) => i !== index);
+                                savePendingPhotosToStorage(visit.id, updated);
+                              }
+                            },
+                          },
+                        ]
+                      );
+                    }}
+                  >
+                    <Text style={styles.deleteButtonText}>×</Text>
+                  </TouchableOpacity>
+                )}
+              </TouchableOpacity>
             );
           })}
         </View>
@@ -372,6 +507,31 @@ export default function ActiveVisitScreen({ route }: any) {
           <Text style={styles.buttonText}>Fazer Checkout</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Modal de Preview Fullscreen */}
+      {selectedPhotoIndex !== null && photos[selectedPhotoIndex] && (
+        <View style={styles.fullscreenModal}>
+          <TouchableOpacity
+            style={styles.fullscreenBackdrop}
+            activeOpacity={1}
+            onPress={() => setSelectedPhotoIndex(null)}
+          >
+            <View style={styles.fullscreenContent}>
+              <TouchableOpacity
+                style={styles.fullscreenClose}
+                onPress={() => setSelectedPhotoIndex(null)}
+              >
+                <Text style={styles.fullscreenCloseText}>✕</Text>
+              </TouchableOpacity>
+              <Image
+                source={{ uri: photos[selectedPhotoIndex].uri || photos[selectedPhotoIndex].url }}
+                style={styles.fullscreenImage}
+                resizeMode="contain"
+              />
+            </View>
+          </TouchableOpacity>
+        </View>
+      )}
     </ScrollView>
   );
 }
@@ -423,19 +583,91 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     color: colors.text.primary,
   },
+  photoHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  photoCounter: {
+    backgroundColor: colors.dark.cardElevated,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: theme.borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.dark.border,
+  },
+  photoCounterText: {
+    fontSize: theme.typography.fontSize.sm,
+    color: colors.text.secondary,
+    fontWeight: theme.typography.fontWeight.medium,
+  },
   photoGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     marginBottom: 15,
+    gap: 8,
+  },
+  photoThumbnailContainer: {
+    width: '31%',
+    aspectRatio: 1,
+    position: 'relative',
+    marginBottom: 8,
   },
   photoThumbnail: {
-    width: 100,
-    height: 100,
-    marginRight: 10,
-    marginBottom: 10,
-    borderRadius: 8,
+    width: '100%',
+    height: '100%',
+    borderRadius: theme.borderRadius.md,
     borderWidth: 1,
     borderColor: colors.dark.border,
+    backgroundColor: colors.dark.cardElevated,
+  },
+  pendingBadge: {
+    position: 'absolute',
+    top: 4,
+    left: 4,
+    backgroundColor: colors.warning + 'CC',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: theme.borderRadius.sm,
+  },
+  pendingBadgeText: {
+    fontSize: 10,
+    color: colors.text.primary,
+    fontWeight: theme.typography.fontWeight.bold,
+  },
+  uploadedBadge: {
+    position: 'absolute',
+    top: 4,
+    left: 4,
+    backgroundColor: colors.success + 'CC',
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  uploadedBadgeText: {
+    fontSize: 12,
+    color: colors.text.primary,
+    fontWeight: theme.typography.fontWeight.bold,
+  },
+  deleteButton: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: colors.error + 'CC',
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deleteButtonText: {
+    fontSize: 18,
+    color: colors.text.primary,
+    fontWeight: theme.typography.fontWeight.bold,
+    lineHeight: 18,
   },
   buttonRow: {
     flexDirection: 'row',
@@ -470,6 +702,48 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 50,
     color: colors.text.secondary,
+  },
+  fullscreenModal: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 1000,
+  },
+  fullscreenBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullscreenContent: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  fullscreenClose: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    zIndex: 1001,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullscreenCloseText: {
+    color: colors.text.primary,
+    fontSize: 24,
+    fontWeight: 'bold',
+  },
+  fullscreenImage: {
+    width: '100%',
+    height: '100%',
   },
 });
 

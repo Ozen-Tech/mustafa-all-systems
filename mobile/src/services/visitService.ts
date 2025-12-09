@@ -88,5 +88,10 @@ export const visitService = {
     );
     return response.data;
   },
+
+  async getDailySummary() {
+    const response = await apiClient.get(`${apiConfig.BASE_URL}/promoters/daily-summary`);
+    return response.data;
+  },
 };
 

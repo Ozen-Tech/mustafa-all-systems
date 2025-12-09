@@ -8,14 +8,36 @@ import Card from '../components/ui/Card';
 
 type HomeNavigation = NavigationProp<Record<string, object | undefined>>;
 
+interface DailySummary {
+  totalVisits: number;
+  totalHours: number;
+  completedVisits: number;
+  inProgressVisits: number;
+  totalPhotos: number;
+  photoGoal: number;
+  photoCompliance: number;
+  status: 'conforme' | 'atencao' | 'fora_meta';
+}
+
 export default function HomeScreen() {
   const navigation = useNavigation<HomeNavigation>();
   const [hasActiveVisit, setHasActiveVisit] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [dailySummary, setDailySummary] = useState<DailySummary | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(true);
 
   useEffect(() => {
     checkActiveVisit();
-  }, []);
+    loadDailySummary();
+    
+    // Atualizar ao voltar para a tela
+    const unsubscribe = navigation.addListener('focus', () => {
+      checkActiveVisit();
+      loadDailySummary();
+    });
+    
+    return unsubscribe;
+  }, [navigation]);
 
   async function checkActiveVisit() {
     try {
@@ -33,6 +55,20 @@ export default function HomeScreen() {
       setHasActiveVisit(false);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadDailySummary() {
+    try {
+      setSummaryLoading(true);
+      const summary = await visitService.getDailySummary();
+      setDailySummary(summary);
+    } catch (error: any) {
+      console.warn('⚠️ Erro ao carregar resumo do dia:', error?.message || error);
+      // Não definir erro crítico, apenas não mostrar resumo
+      setDailySummary(null);
+    } finally {
+      setSummaryLoading(false);
     }
   }
 
@@ -110,20 +146,46 @@ export default function HomeScreen() {
         )}
       </View>
 
-      {/* Quick Stats */}
-      <View style={styles.statsContainer}>
-        <Text style={styles.statsTitle}>Resumo do Dia</Text>
-        <View style={styles.statsGrid}>
-          <Card style={styles.statCard} variant="default" shadow>
-            <Text style={styles.statValue}>0</Text>
-            <Text style={styles.statLabel}>Visitas</Text>
-          </Card>
-          <Card style={styles.statCard} variant="default" shadow>
-            <Text style={styles.statValue}>0h</Text>
-            <Text style={styles.statLabel}>Horas</Text>
-          </Card>
-        </View>
-      </View>
+      {/* Daily Summary Card */}
+      {!summaryLoading && dailySummary && (
+        <Card style={styles.summaryCard} shadow>
+          <Text style={styles.summaryTitle}>Resumo do Dia</Text>
+          <View style={styles.summaryGrid}>
+            <View style={styles.summaryItem}>
+              <Text style={styles.summaryValue}>{dailySummary.totalVisits}</Text>
+              <Text style={styles.summaryLabel}>Visitas</Text>
+            </View>
+            <View style={styles.summaryItem}>
+              <Text style={styles.summaryValue}>{dailySummary.totalHours.toFixed(1)}h</Text>
+              <Text style={styles.summaryLabel}>Horas</Text>
+            </View>
+            <View style={styles.summaryItem}>
+              <Text style={styles.summaryValue}>{dailySummary.totalPhotos}</Text>
+              <Text style={styles.summaryLabel}>Fotos</Text>
+            </View>
+            <View style={styles.summaryItem}>
+              <Text style={[styles.summaryValue, styles.summaryCompliance]}>
+                {dailySummary.photoCompliance.toFixed(0)}%
+              </Text>
+              <Text style={styles.summaryLabel}>Meta</Text>
+            </View>
+          </View>
+          {dailySummary.inProgressVisits > 0 && (
+            <View style={styles.inProgressBadge}>
+              <Text style={styles.inProgressText}>
+                {dailySummary.inProgressVisits} visita(s) em andamento
+              </Text>
+            </View>
+          )}
+        </Card>
+      )}
+
+      {summaryLoading && (
+        <Card style={styles.summaryCard} shadow>
+          <ActivityIndicator size="small" color={colors.primary[600]} />
+          <Text style={styles.loadingText}>Carregando resumo...</Text>
+        </Card>
+      )}
     </ScrollView>
   );
 }
@@ -196,33 +258,53 @@ const styles = StyleSheet.create({
   actionButton: {
     width: '100%',
   },
-  statsContainer: {
+  summaryCard: {
     marginTop: theme.spacing.lg,
+    padding: theme.spacing.lg,
   },
-  statsTitle: {
+  summaryTitle: {
     fontSize: theme.typography.fontSize.lg,
     fontWeight: theme.typography.fontWeight.bold,
     color: colors.text.primary,
     marginBottom: theme.spacing.md,
   },
-  statsGrid: {
+  summaryGrid: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: theme.spacing.md,
   },
-  statCard: {
+  summaryItem: {
     flex: 1,
+    minWidth: '45%',
     alignItems: 'center',
-    padding: theme.spacing.lg,
+    padding: theme.spacing.md,
+    backgroundColor: colors.dark.cardElevated,
+    borderRadius: theme.borderRadius.lg,
   },
-  statValue: {
-    fontSize: theme.typography.fontSize['3xl'],
+  summaryValue: {
+    fontSize: theme.typography.fontSize['2xl'],
     fontWeight: theme.typography.fontWeight.bold,
     color: colors.primary[400],
     marginBottom: theme.spacing.xs,
   },
-  statLabel: {
+  summaryCompliance: {
+    color: colors.primary[500],
+  },
+  summaryLabel: {
     fontSize: theme.typography.fontSize.sm,
     color: colors.text.secondary,
+    fontWeight: theme.typography.fontWeight.medium,
+  },
+  inProgressBadge: {
+    marginTop: theme.spacing.md,
+    padding: theme.spacing.sm,
+    backgroundColor: colors.primary[600] + '20',
+    borderRadius: theme.borderRadius.md,
+    alignItems: 'center',
+  },
+  inProgressText: {
+    fontSize: theme.typography.fontSize.sm,
+    color: colors.primary[400],
     fontWeight: theme.typography.fontWeight.medium,
   },
   loadingText: {

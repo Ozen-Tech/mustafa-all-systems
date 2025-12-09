@@ -174,12 +174,20 @@ export async function generatePhotoBooking(
     pdf.text(`Total de visitas nesta loja: ${storeVisits.length}`, margin, yPosition);
     yPosition += 8;
 
-    // Processar cada visita da loja
-    for (let visitIndex = 0; visitIndex < storeVisits.length; visitIndex++) {
-      const visit = storeVisits[visitIndex];
-      const organizedPhotos = organizePhotos(visit.photos, visit.checkInPhotoUrl, visit.checkOutPhotoUrl);
+      // Processar cada visita da loja
+      for (let visitIndex = 0; visitIndex < storeVisits.length; visitIndex++) {
+        const visit = storeVisits[visitIndex];
+        // Filtrar apenas fotos do trabalho (OTHER) - excluir check-in/checkout
+        const workPhotos = visit.photos.filter(p => p.type === 'OTHER' || (!p.type && p.url !== visit.checkInPhotoUrl && p.url !== visit.checkOutPhotoUrl));
+        
+        // Organizar apenas fotos do trabalho em ordem cronológica
+        const organizedPhotos = workPhotos.sort((a, b) => {
+          const aDate = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const bDate = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return aDate - bDate;
+        });
 
-      if (organizedPhotos.length === 0) continue;
+        if (organizedPhotos.length === 0) continue;
 
       // Título da visita
       checkNewPage(25);
@@ -236,12 +244,10 @@ export async function generatePhotoBooking(
               try {
                 pdf.addImage(img, 'JPEG', x, y, photoWidth, photoHeight);
                 
-                // Adicionar label da foto
+                // Adicionar label da foto (apenas fotos do trabalho)
                 pdf.setFontSize(8);
                 pdf.setTextColor(100, 100, 100);
-                const label = photo.type === 'FACADE_CHECKIN' ? 'Check-in' : 
-                             photo.type === 'FACADE_CHECKOUT' ? 'Check-out' : 
-                             `Foto ${i - (photo.type === 'FACADE_CHECKIN' ? 0 : 1)}`;
+                const label = `Foto ${i + 1}`;
                 pdf.text(label, x, y + photoHeight + 4);
                 resolve();
               } catch (error) {

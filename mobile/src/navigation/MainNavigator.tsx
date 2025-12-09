@@ -6,6 +6,9 @@ import { colors, theme } from '../styles/theme';
 import HomeScreen from '../screens/HomeScreen';
 import HistoryScreen from '../screens/HistoryScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import HomeIcon from '../components/icons/HomeIcon';
+import ClockIcon from '../components/icons/ClockIcon';
+import UserIcon from '../components/icons/UserIcon';
 
 // Componente de loading/erro
 function LoadingScreen() {
@@ -254,9 +257,30 @@ function MainTabs() {
         },
       }}
     >
-      <Tab.Screen name="Home" component={HomeScreen} options={{ title: 'Início' }} />
-      <Tab.Screen name="History" component={HistoryScreen} options={{ title: 'Histórico' }} />
-      <Tab.Screen name="Profile" component={ProfileScreen} options={{ title: 'Perfil' }} />
+      <Tab.Screen
+        name="Home"
+        component={HomeScreen}
+        options={{
+          title: 'Início',
+          tabBarIcon: ({ color, size }) => <HomeIcon size={size} color={color} />,
+        }}
+      />
+      <Tab.Screen
+        name="History"
+        component={HistoryScreen}
+        options={{
+          title: 'Histórico',
+          tabBarIcon: ({ color, size }) => <ClockIcon size={size} color={color} />,
+        }}
+      />
+      <Tab.Screen
+        name="Profile"
+        component={ProfileScreen}
+        options={{
+          title: 'Perfil',
+          tabBarIcon: ({ color, size }) => <UserIcon size={size} color={color} />,
+        }}
+      />
     </Tab.Navigator>
   );
 }

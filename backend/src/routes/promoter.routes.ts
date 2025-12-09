@@ -7,6 +7,7 @@ import {
   getCurrentVisit,
   getStores,
   getVisits,
+  getDailySummary,
 } from '../controllers/promoter.controller';
 import { authenticate } from '../middleware/auth';
 
@@ -20,6 +21,7 @@ router.post('/checkout', checkOut);
 router.post('/photos', uploadPhotos);
 router.post('/price-research', submitPriceResearch);
 router.get('/current-visit', getCurrentVisit);
+router.get('/daily-summary', getDailySummary);
 
 export default router;
 

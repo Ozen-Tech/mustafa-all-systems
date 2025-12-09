@@ -5,7 +5,9 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
+    "icon": "./assets/images/logo.png",
     "splash": {
+      "image": "./assets/images/logo.png",
       "backgroundColor": "#ffffff",
       "resizeMode": "contain"
     },
@@ -13,11 +15,14 @@
       "**/*"
     ],
     "ios": {
+      "icon": "./assets/images/logo.png",
       "supportsTablet": true,
       "bundleIdentifier": "com.promogestao.mobile"
     },
     "android": {
+      "icon": "./assets/images/logo.png",
       "adaptiveIcon": {
+        "foregroundImage": "./assets/images/logo.png",
         "backgroundColor": "#ffffff"
       },
       "package": "com.promogestao.mobile",

@@ -1,5 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import CheckInOutGallery from './CheckInOutGallery';
+import React, { useState, useEffect } from 'react';
 
 interface Photo {
   id?: string;
@@ -8,8 +7,7 @@ interface Photo {
   createdAt?: string | Date;
 }
 
-interface PhotoGalleryProps {
-  photos: Photo[];
+interface CheckInOutGalleryProps {
   checkInPhotoUrl?: string | null;
   checkOutPhotoUrl?: string | null;
   isOpen: boolean;
@@ -20,24 +18,17 @@ interface PhotoGalleryProps {
 
 // Função para validar se uma string é uma URL válida
 function isValidUrl(url: any): url is string {
-  if (typeof url !== 'string') {
-    console.warn('[PhotoGallery] URL não é uma string:', typeof url, url);
-    return false;
-  }
-  if (!url || url.trim() === '') {
-    return false;
-  }
-  // Verificar se parece com uma URL (http/https ou data URI)
+  if (typeof url !== 'string') return false;
+  if (!url || url.trim() === '') return false;
   try {
     const urlObj = new URL(url);
-    return urlObj.protocol === 'http:' || urlObj.protocol === 'https:' || url.startsWith('data:');
+    return urlObj.protocol === 'http:' || urlObj.protocol === 'https:';
   } catch {
-    // Se não for uma URL válida, verificar se é uma string que parece URL
-    return url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:');
+    return url.startsWith('http://') || url.startsWith('https://');
   }
 }
 
-// Função para normalizar URL (garantir que seja string)
+// Função para normalizar URL
 function normalizeUrl(url: any): string | null {
   if (!url) return null;
   
@@ -45,41 +36,23 @@ function normalizeUrl(url: any): string | null {
   
   if (typeof url === 'string') {
     urlString = url.trim();
-  } else if (typeof url === 'object' && url !== null) {
-    if ('url' in url && typeof url.url === 'string') {
-      urlString = url.url.trim();
-    } else {
-      try {
-        const str = String(url);
-        urlString = isValidUrl(str) ? str : null;
-      } catch {
-        return null;
-      }
-    }
+  } else if (typeof url === 'object' && url !== null && 'url' in url && typeof url.url === 'string') {
+    urlString = url.url.trim();
   }
   
-  if (!urlString || urlString === '') {
+  if (!urlString || urlString === '' || 
+      urlString.includes('placeholder.com') || 
+      urlString.includes('mock-storage.local')) {
     return null;
   }
   
-  // Filtrar URLs inválidas ou temporárias
-  if (urlString.includes('placeholder.com') || 
-      urlString.includes('mock-storage.local') ||
-      urlString === '' ||
-      urlString.trim() === '') {
-    return null;
-  }
-  
-  // Verificar se é uma URL válida
   try {
     const parsed = new URL(urlString);
-    // Verificar se é uma URL válida (http ou https)
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
       return null;
     }
     return parsed.href;
   } catch {
-    // Se não conseguir fazer parse, verificar se parece com URL
     if (urlString.startsWith('http://') || urlString.startsWith('https://')) {
       return urlString;
     }
@@ -87,67 +60,35 @@ function normalizeUrl(url: any): string | null {
   }
 }
 
-export default function PhotoGallery({
-  photos = [],
+export default function CheckInOutGallery({
   checkInPhotoUrl,
   checkOutPhotoUrl,
   isOpen,
   onClose,
   visitDate,
   storeName,
-}: PhotoGalleryProps) {
+}: CheckInOutGalleryProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [failedUrls, setFailedUrls] = useState<Set<string>>(new Set());
 
-  const [isCheckInOutOpen, setIsCheckInOutOpen] = useState(false);
+  // Combinar check-in e check-out
+  const allPhotos = React.useMemo(() => {
+    const result: Array<{ url: string; label: string; type: string }> = [];
 
-  // Filtrar apenas fotos do trabalho (OTHER) - excluir check-in/checkout
-  const allPhotos: Array<{ url: string; label: string; type?: string; createdAt?: string | Date }> = useMemo(() => {
-    const result: Array<{ url: string; label: string; type?: string; createdAt?: string | Date }> = [];
+    const normalizedCheckIn = normalizeUrl(checkInPhotoUrl);
+    if (normalizedCheckIn && isValidUrl(normalizedCheckIn)) {
+      result.push({ url: normalizedCheckIn, label: 'Check-in', type: 'FACADE_CHECKIN' });
+    }
 
-    // Processar apenas fotos do trabalho (tipo OTHER)
-    photos.forEach((photo, index) => {
-      // Filtrar apenas fotos OTHER (trabalho realizado)
-      if (photo.type !== 'OTHER' && photo.type !== undefined) {
-        return; // Pular check-in e checkout
-      }
+    const normalizedCheckOut = normalizeUrl(checkOutPhotoUrl);
+    if (normalizedCheckOut && isValidUrl(normalizedCheckOut)) {
+      result.push({ url: normalizedCheckOut, label: 'Check-out', type: 'FACADE_CHECKOUT' });
+    }
 
-      // Verificar se não é check-in ou checkout por URL
-      if (photo.url === checkInPhotoUrl || photo.url === checkOutPhotoUrl) {
-        return; // Pular se for check-in ou checkout
-      }
-
-      const normalizedUrl = normalizeUrl(photo.url);
-      if (normalizedUrl && isValidUrl(normalizedUrl)) {
-        // Verificar se não é uma URL temporária/placeholder
-        if (!normalizedUrl.includes('placeholder.com') && 
-            !normalizedUrl.includes('mock-storage.local')) {
-          result.push({
-            url: normalizedUrl,
-            label: 'Foto da Visita',
-            type: 'OTHER',
-            createdAt: photo.createdAt,
-          });
-        } else {
-          console.warn(`[PhotoGallery] Foto ${index} filtrada (placeholder):`, photo);
-        }
-      } else {
-        console.warn(`[PhotoGallery] Foto ${index} com URL inválida:`, photo);
-      }
-    });
-
-    // Ordenar fotos do trabalho por data de criação (mais antiga primeiro)
-    result.sort((a, b) => {
-      const aDate = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const bDate = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-      return aDate - bDate;
-    });
-
-    console.log('[PhotoGallery] Fotos do trabalho encontradas:', result.length);
     return result;
-  }, [photos, checkInPhotoUrl, checkOutPhotoUrl]);
+  }, [checkInPhotoUrl, checkOutPhotoUrl]);
 
-  // Resetar índice quando modal abrir/fechar ou fotos mudarem
+  // Resetar índice quando modal abrir/fechar
   useEffect(() => {
     if (isOpen && allPhotos.length > 0) {
       setCurrentIndex(0);
@@ -155,9 +96,6 @@ export default function PhotoGallery({
   }, [isOpen, allPhotos.length]);
 
   if (!isOpen || allPhotos.length === 0) {
-    if (isOpen && allPhotos.length === 0) {
-      console.warn('[PhotoGallery] Modal aberto mas nenhuma foto válida encontrada');
-    }
     return null;
   }
 
@@ -194,7 +132,6 @@ export default function PhotoGallery({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
   return (
@@ -210,7 +147,7 @@ export default function PhotoGallery({
         <div className="flex items-center justify-between p-4 border-b border-dark-border bg-dark-backgroundSecondary">
           <div className="flex-1">
             <h3 className="text-lg font-semibold text-text-primary">
-              Fotos da Visita
+              Comprovantes de Presença
             </h3>
             {storeName && (
               <p className="text-sm text-text-secondary mt-1">{storeName}</p>
@@ -270,29 +207,15 @@ export default function PhotoGallery({
                   const target = e.target as HTMLImageElement;
                   const imageUrl = currentPhoto.url;
                   
-                  console.warn('[PhotoGallery] Erro ao carregar imagem:', imageUrl);
-                  
-                  // Marcar URL como falhada
+                  console.warn('[CheckInOutGallery] Erro ao carregar imagem:', imageUrl);
                   setFailedUrls((prev) => new Set(prev).add(imageUrl));
                   
-                  // Verificar se é erro 404 (arquivo não encontrado)
-                  if (imageUrl.includes('firebasestorage.googleapis.com')) {
-                    console.warn('[PhotoGallery] Erro 404 - Arquivo não encontrado no Firebase Storage');
-                    console.warn('[PhotoGallery] Possíveis causas:');
-                    console.warn('  - Arquivo não foi enviado corretamente');
-                    console.warn('  - Regras do Firebase Storage bloqueando acesso');
-                    console.warn('  - URL incorreta');
-                  }
-                  
-                  // Não tentar recarregar se já for a imagem de erro
                   if (!target.src.includes('data:image/svg+xml')) {
-                    target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300"%3E%3Crect fill="%23241F35" width="400" height="300"/%3E%3Ctext fill="%239CA3AF" font-family="sans-serif" font-size="18" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3EImagem não disponível%3C/text%3E%3Ctext fill="%239CA3AF" font-family="sans-serif" font-size="14" x="50%25" y="60%25" text-anchor="middle" dy=".3em"%3EArquivo não encontrado no servidor%3C/text%3E%3C/svg%3E';
+                    target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300"%3E%3Crect fill="%23241F35" width="400" height="300"/%3E%3Ctext fill="%239CA3AF" font-family="sans-serif" font-size="18" x="50%25" y="50%25" text-anchor="middle" dy=".3em"%3EImagem não disponível%3C/text%3E%3C/svg%3E';
                   }
                 }}
                 onLoad={() => {
                   const imageUrl = currentPhoto.url;
-                  console.log('[PhotoGallery] Imagem carregada com sucesso:', imageUrl);
-                  // Remover da lista de URLs falhadas se estava lá
                   setFailedUrls((prev) => {
                     const next = new Set(prev);
                     next.delete(imageUrl);
@@ -353,18 +276,7 @@ export default function PhotoGallery({
             </div>
           </div>
         )}
-
       </div>
-
-      {/* Modal de Comprovantes (Check-in/Checkout) */}
-      <CheckInOutGallery
-        checkInPhotoUrl={checkInPhotoUrl}
-        checkOutPhotoUrl={checkOutPhotoUrl}
-        isOpen={isCheckInOutOpen}
-        onClose={() => setIsCheckInOutOpen(false)}
-        visitDate={visitDate}
-        storeName={storeName}
-      />
     </div>
   );
 }

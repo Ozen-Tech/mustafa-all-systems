@@ -7,6 +7,7 @@ import Card, { CardHeader, CardContent } from '../components/ui/Card';
 import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
 import PhotoGallery from '../components/PhotoGallery';
+import PhotoQualityIndicator from '../components/dashboard/PhotoQualityIndicator';
 import {
   LineChart,
   Line,
@@ -506,11 +507,14 @@ export default function PromoterDetails() {
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-text-primary font-medium">
                         {visit.hoursWorked ? `${visit.hoursWorked}h` : '-'}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-text-primary">
-                        <div className="flex items-center gap-2">
-                          <Badge variant="primary" size="sm">
-                            {visit.photoCount || 0}
-                          </Badge>
+                      <td className="px-6 py-4 text-sm text-text-primary">
+                        <div className="space-y-2 min-w-[200px]">
+                          <PhotoQualityIndicator
+                            visitId={visit.id}
+                            photoCount={visit.photoCount || 0}
+                            photoGoal={20}
+                            photos={visit.photos || []}
+                          />
                           {(visit.photoCount > 0 || visit.checkInPhotoUrl || visit.checkOutPhotoUrl) && (
                             <button
                               onClick={() => {

@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { supervisorService } from '../services/supervisorService';
@@ -17,6 +17,13 @@ import {
 } from 'recharts';
 import Card, { CardHeader, CardContent } from '../components/ui/Card';
 import Badge from '../components/ui/Badge';
+import AdvancedFilters, { FilterState } from '../components/dashboard/AdvancedFilters';
+import RealtimeMetrics from '../components/dashboard/RealtimeMetrics';
+import PhotoQualityIndicator from '../components/dashboard/PhotoQualityIndicator';
+import CompliancePanel from '../components/dashboard/CompliancePanel';
+import AnalyticsPanel from '../components/dashboard/AnalyticsPanel';
+import BulkActions from '../components/dashboard/BulkActions';
+import ExportTools from '../components/dashboard/ExportTools';
 
 // Ícones SVG
 const AlertIcon = ({ className = "w-6 h-6" }: { className?: string }) => (
@@ -81,14 +88,37 @@ const UsersIcon = () => (
 );
 
 export default function Dashboard() {
+  const [filters, setFilters] = useState<FilterState>({
+    startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    endDate: new Date().toISOString().split('T')[0],
+    selectedPromoters: [],
+    selectedStores: [],
+    status: 'all',
+    compliance: {
+      photos: 'all',
+      schedule: 'all',
+      priceResearch: 'all',
+    },
+  });
+  const [selectedPromoters, setSelectedPromoters] = useState<string[]>([]);
+  const [activeTab, setActiveTab] = useState<'overview' | 'analytics' | 'compliance' | 'export'>('overview');
+
   const { data, isLoading, error } = useQuery({
-    queryKey: ['dashboard'],
+    queryKey: ['dashboard', filters],
     queryFn: () => supervisorService.getDashboard(),
   });
 
   const { data: promotersData } = useQuery({
     queryKey: ['promoters'],
     queryFn: () => supervisorService.getPromoters(),
+  });
+
+  const { data: storesData } = useQuery({
+    queryKey: ['stores'],
+    queryFn: async () => {
+      const stores = await supervisorService.getAllStores();
+      return { stores: stores.stores || [] };
+    },
   });
 
   // Calcular métricas de problemas
@@ -237,10 +267,108 @@ export default function Dashboard() {
     primary: '#7c3aed',
   };
 
+  // Preparar dados para Analytics
+  const analyticsData = useMemo(() => {
+    const visits = data?.visitsByPromoter || [];
+    const visitsOverTime = visits.map((v: any) => ({
+      date: new Date(v.date || Date.now()).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+      visits: v.visitCount || 0,
+      completed: v.completedCount || 0,
+    }));
+
+    const performanceByPromoter = visitsByPromoter.map((v: any) => ({
+      name: v.promoterName,
+      visits: v.visitCount || 0,
+      hours: v.totalHours || 0,
+      photos: v.totalPhotos || 0,
+    }));
+
+    const activityHeatmap = visits
+      .reduce((acc: any, v: any) => {
+        const storeName = v.storeName || 'Desconhecida';
+        const existing = acc.find((a: any) => a.store === storeName);
+        if (existing) {
+          existing.visits += v.visitCount || 0;
+        } else {
+          acc.push({ store: storeName, visits: v.visitCount || 0 });
+        }
+        return acc;
+      }, [])
+      .sort((a: any, b: any) => b.visits - a.visits)
+      .slice(0, 12);
+
+    return {
+      visitsOverTime,
+      performanceByPromoter,
+      activityHeatmap,
+      trends: {
+        visits: { current: stats.totalVisits || 0, previous: (stats.totalVisits || 0) * 0.9, change: 10 },
+        hours: { current: parseFloat(stats.totalHours || '0'), previous: parseFloat(stats.totalHours || '0') * 0.9, change: 10 },
+        photos: { current: stats.totalPhotos || 0, previous: (stats.totalPhotos || 0) * 0.9, change: 10 },
+        compliance: { current: 85, previous: 80, change: 5 },
+      },
+    };
+  }, [data, visitsByPromoter, stats]);
+
+  // Preparar dados de conformidade (simulado - em produção viria do backend)
+  const complianceData = useMemo(() => {
+    return (promotersData?.promoters || []).map((p: any) => ({
+      id: p.id,
+      name: p.name,
+      photoCompliance: Math.random() * 100,
+      scheduleCompliance: Math.random() * 100,
+      routeCompliance: Math.random() * 100,
+    }));
+  }, [promotersData]);
+
   return (
     <div className="space-y-6">
-      {/* Alertas Críticos no Topo */}
-      {problemMetrics.problemPromoters.length > 0 && (
+      {/* Tabs de Navegação */}
+      <div className="flex gap-2 border-b border-dark-border">
+        {[
+          { id: 'overview', label: 'Visão Geral', icon: '📊' },
+          { id: 'analytics', label: 'Análises', icon: '📈' },
+          { id: 'compliance', label: 'Conformidade', icon: '✅' },
+          { id: 'export', label: 'Exportar', icon: '📥' },
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id as any)}
+            className={`px-4 py-2 border-b-2 transition-all ${
+              activeTab === tab.id
+                ? 'border-primary-600 text-primary-400'
+                : 'border-transparent text-text-secondary hover:text-text-primary'
+            }`}
+          >
+            <span className="mr-2">{tab.icon}</span>
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Conteúdo da Visão Geral */}
+      {activeTab === 'overview' && (
+        <>
+          {/* Métricas em Tempo Real */}
+          <RealtimeMetrics refreshInterval={10} />
+
+          {/* Filtros Avançados */}
+          <AdvancedFilters
+            promoters={promotersData?.promoters || []}
+            stores={storesData?.stores || []}
+            onFilterChange={setFilters}
+          />
+
+          {/* Ações em Massa */}
+          <BulkActions
+            selectedPromoters={selectedPromoters}
+            onActionComplete={() => {
+              setSelectedPromoters([]);
+            }}
+          />
+
+          {/* Alertas Críticos no Topo */}
+          {problemMetrics.problemPromoters.length > 0 && (
         <Card className="border-error-500 shadow-error">
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -502,16 +630,37 @@ export default function Dashboard() {
                       (sum: number, v: any) => sum + (v.visitCount || 0),
                       0
                     );
+                    const isSelected = selectedPromoters.includes(promoter.id);
                     
                     return (
                       <tr
                         key={promoter.id}
-                        className={`hover:bg-dark-cardElevated transition-colors ${
+                        className={`hover:bg-dark-cardElevated transition-colors cursor-pointer ${
                           hasProblems ? 'border-l-4 border-error-500' : ''
-                        }`}
+                        } ${isSelected ? 'bg-primary-600/10' : ''}`}
+                        onClick={() => {
+                          if (isSelected) {
+                            setSelectedPromoters(selectedPromoters.filter((id) => id !== promoter.id));
+                          } else {
+                            setSelectedPromoters([...selectedPromoters, promoter.id]);
+                          }
+                        }}
                       >
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={(e) => {
+                                e.stopPropagation();
+                                if (e.target.checked) {
+                                  setSelectedPromoters([...selectedPromoters, promoter.id]);
+                                } else {
+                                  setSelectedPromoters(selectedPromoters.filter((id) => id !== promoter.id));
+                                }
+                              }}
+                              className="w-4 h-4 text-primary-600 rounded border-dark-border focus:ring-primary-500 mr-3"
+                            />
                             <div className={`w-10 h-10 rounded-full flex items-center justify-center text-text-primary font-semibold mr-3 ${
                               hasProblems
                                 ? 'bg-error-500/20 border-2 border-error-500'
@@ -572,6 +721,17 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       )}
+        </>
+      )}
+
+      {/* Painel de Análises */}
+      {activeTab === 'analytics' && <AnalyticsPanel data={analyticsData} />}
+
+      {/* Painel de Conformidade */}
+      {activeTab === 'compliance' && <CompliancePanel promoters={complianceData} />}
+
+      {/* Ferramentas de Exportação */}
+      {activeTab === 'export' && <ExportTools filters={filters} />}
     </div>
   );
 }

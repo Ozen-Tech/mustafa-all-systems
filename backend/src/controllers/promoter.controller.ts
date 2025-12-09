@@ -463,3 +463,85 @@ export async function getVisits(req: AuthRequest, res: Response) {
   }
 }
 
+/**
+ * Obter resumo do dia do promotor
+ */
+export async function getDailySummary(req: AuthRequest, res: Response) {
+  try {
+    const promoterId = req.userId;
+    if (!promoterId) {
+      return res.status(401).json({ error: 'Não autenticado' });
+    }
+
+    // Data de hoje (início e fim do dia)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    // Buscar todas as visitas do dia
+    const visits = await prisma.visit.findMany({
+      where: {
+        promoterId,
+        checkInAt: {
+          gte: today,
+          lt: tomorrow,
+        },
+      },
+      include: {
+        photos: {
+          select: {
+            id: true,
+          },
+        },
+        store: {
+          select: {
+            name: true,
+          },
+        },
+      },
+      orderBy: {
+        checkInAt: 'asc',
+      },
+    });
+
+    // Calcular métricas
+    const totalVisits = visits.length;
+    const completedVisits = visits.filter((v: any) => v.checkOutAt !== null).length;
+    const inProgressVisits = visits.filter((v: any) => v.checkOutAt === null).length;
+    
+    // Calcular total de horas trabalhadas
+    let totalHours = 0;
+    visits.forEach((visit: any) => {
+      if (visit.checkInAt && visit.checkOutAt) {
+        const checkIn = new Date(visit.checkInAt);
+        const checkOut = new Date(visit.checkOutAt);
+        const hours = (checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60);
+        totalHours += hours;
+      }
+    });
+
+    // Total de fotos enviadas
+    const totalPhotos = visits.reduce((sum: number, visit: any) => sum + visit.photos.length, 0);
+
+    // Meta de fotos (assumindo 20 fotos por visita como padrão)
+    const photoGoalPerVisit = 20;
+    const photoGoal = totalVisits * photoGoalPerVisit;
+    const photoCompliance = photoGoal > 0 ? (totalPhotos / photoGoal) * 100 : 100;
+
+    res.json({
+      totalVisits,
+      totalHours: parseFloat(totalHours.toFixed(2)),
+      completedVisits,
+      inProgressVisits,
+      totalPhotos,
+      photoGoal,
+      photoCompliance: parseFloat(photoCompliance.toFixed(1)),
+      status: photoCompliance >= 80 ? 'conforme' : photoCompliance >= 50 ? 'atencao' : 'fora_meta',
+    });
+  } catch (error) {
+    console.error('Erro ao obter resumo do dia:', error);
+    res.status(500).json({ error: 'Erro ao obter resumo do dia' });
+  }
+}
+
