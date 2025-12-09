@@ -827,20 +827,20 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Painel de Análises - TEMPORARIAMENTE DESABILITADO */}
-      {/* {activeTab === 'analytics' && (
+      {/* Painel de Análises */}
+      {activeTab === 'analytics' && (
         <AnalyticsPanel data={analyticsData} />
-      )} */}
+      )}
 
-      {/* Painel de Conformidade - TEMPORARIAMENTE DESABILITADO */}
-      {/* {activeTab === 'compliance' && (
+      {/* Painel de Conformidade */}
+      {activeTab === 'compliance' && (
         <CompliancePanel promoters={complianceData} />
-      )} */}
+      )}
 
-      {/* Ferramentas de Exportação - TEMPORARIAMENTE DESABILITADO */}
-      {/* {activeTab === 'export' && (
+      {/* Ferramentas de Exportação */}
+      {activeTab === 'export' && (
         <ExportTools filters={filters} />
-      )} */}
+      )}
     </div>
   );
 }
