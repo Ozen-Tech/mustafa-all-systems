@@ -189,43 +189,47 @@ export async function uploadPhotos(req: AuthRequest, res: Response) {
       return res.status(404).json({ message: 'Visita não encontrada' });
     }
 
-    // Processar cada foto: atualizar se existir (mesmo tipo), criar se não existir
+    // Processar cada foto
+    // Para FACADE_CHECKIN e FACADE_CHECKOUT: apenas uma por visita (atualizar se existir)
+    // Para OTHER: permitir múltiplas fotos (sempre criar nova)
     const createdPhotos = await Promise.all(
       photos.map(async (photo) => {
-        // Verificar se já existe uma foto do mesmo tipo para esta visita
-        const existingPhoto = await prisma.photo.findFirst({
-          where: {
+        // Para fotos de check-in e check-out, verificar se já existe e atualizar
+        if (photo.type === PhotoType.FACADE_CHECKIN || photo.type === PhotoType.FACADE_CHECKOUT) {
+          const existingPhoto = await prisma.photo.findFirst({
+            where: {
+              visitId,
+              type: photo.type,
+            },
+          });
+
+          if (existingPhoto) {
+            // Atualizar foto existente (especialmente para substituir URLs placeholder)
+            const updated = await prisma.photo.update({
+              where: { id: existingPhoto.id },
+              data: {
+                url: photo.url,
+                latitude: photo.latitude || existingPhoto.latitude,
+                longitude: photo.longitude || existingPhoto.longitude,
+              },
+            });
+            console.log(`✅ Foto ${photo.type} atualizada: ${existingPhoto.url} -> ${photo.url}`);
+            return updated;
+          }
+        }
+        
+        // Para fotos OTHER ou se não existe foto de check-in/checkout, criar nova
+        const created = await prisma.photo.create({
+          data: {
             visitId,
+            url: photo.url,
             type: photo.type,
+            latitude: photo.latitude || null,
+            longitude: photo.longitude || null,
           },
         });
-
-        if (existingPhoto) {
-          // Atualizar foto existente (especialmente para substituir URLs placeholder)
-          const updated = await prisma.photo.update({
-            where: { id: existingPhoto.id },
-            data: {
-              url: photo.url,
-              latitude: photo.latitude || existingPhoto.latitude,
-              longitude: photo.longitude || existingPhoto.longitude,
-            },
-          });
-          console.log(`✅ Foto ${photo.type} atualizada: ${existingPhoto.url} -> ${photo.url}`);
-          return updated;
-        } else {
-          // Criar nova foto
-          const created = await prisma.photo.create({
-            data: {
-              visitId,
-              url: photo.url,
-              type: photo.type,
-              latitude: photo.latitude || null,
-              longitude: photo.longitude || null,
-            },
-          });
-          console.log(`✅ Nova foto ${photo.type} criada: ${photo.url}`);
-          return created;
-        }
+        console.log(`✅ Nova foto ${photo.type} criada: ${photo.url}`);
+        return created;
       })
     );
 
