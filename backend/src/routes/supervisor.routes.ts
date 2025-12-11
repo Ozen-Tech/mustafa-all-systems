@@ -15,6 +15,9 @@ import {
   getPromoterRoute as getPromoterRouteAssignment,
   getAllRoutes,
   getAvailableStores,
+  updateStoreHours,
+  getPromoterHoursReport,
+  getAllPromotersHoursReport,
 } from '../controllers/route.controller';
 import {
   createStore,
@@ -44,6 +47,9 @@ router.get('/export/download/:id', downloadExport);
 // Rotas de configuração de rotas (assignments)
 router.post('/promoters/:promoterId/route-assignment', setPromoterRoute);
 router.get('/promoters/:promoterId/route-assignment', getPromoterRouteAssignment);
+router.put('/promoters/:promoterId/stores/:storeId/hours', updateStoreHours);
+router.get('/promoters/:promoterId/hours-report', getPromoterHoursReport);
+router.get('/promoters/hours-report', getAllPromotersHoursReport);
 router.get('/routes', getAllRoutes);
 router.get('/stores/available', getAvailableStores);
 

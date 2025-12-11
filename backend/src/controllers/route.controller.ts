@@ -6,6 +6,7 @@ import prisma from '../prisma/client';
 const createRouteSchema = z.object({
   storeIds: z.array(z.string().uuid()).min(1, 'Selecione pelo menos uma loja'),
   orders: z.array(z.number().int().min(0)).optional(), // Ordem opcional
+  expectedHours: z.record(z.string().uuid(), z.number()).optional(), // { [storeId]: hours }
 });
 
 const updateRouteSchema = z.object({
@@ -23,7 +24,7 @@ export async function setPromoterRoute(req: AuthRequest, res: Response) {
       return res.status(400).json({ message: 'ID do promotor inválido' });
     }
 
-    const { storeIds, orders } = createRouteSchema.parse(req.body);
+    const { storeIds, orders, expectedHours } = createRouteSchema.parse(req.body);
 
     // Verificar se o promotor existe
     const promoter = await prisma.user.findUnique({
@@ -56,6 +57,7 @@ export async function setPromoterRoute(req: AuthRequest, res: Response) {
             promoterId,
             storeId,
             order: orders?.[index] ?? index,
+            expectedHours: expectedHours?.[storeId] || null,
             isActive: true,
           },
           include: {
@@ -133,6 +135,7 @@ export async function getPromoterRoute(req: AuthRequest, res: Response) {
           longitude: a.store.longitude,
         },
         order: a.order,
+        expectedHours: a.expectedHours,
         isActive: a.isActive,
       })),
       totalStores: assignments.length,
@@ -168,10 +171,14 @@ export async function getAllRoutes(req: AuthRequest, res: Response) {
         email: promoter.email,
       },
       stores: promoter.routeAssignments.map((a: any) => ({
-        id: a.store.id,
-        name: a.store.name,
-        address: a.store.address,
+        id: a.id,
+        store: {
+          id: a.store.id,
+          name: a.store.name,
+          address: a.store.address,
+        },
         order: a.order,
+        expectedHours: a.expectedHours,
       })),
       totalStores: promoter.routeAssignments.length,
     }));
@@ -198,4 +205,261 @@ export async function getAvailableStores(req: AuthRequest, res: Response) {
     res.status(500).json({ message: 'Internal server error' });
   }
 }
+
+// Atualizar horas esperadas de uma loja específica
+export async function updateStoreHours(req: AuthRequest, res: Response) {
+  try {
+    const { promoterId, storeId } = req.params;
+    const { expectedHours } = req.body;
+
+    if (expectedHours !== undefined && (typeof expectedHours !== 'number' || expectedHours < 0)) {
+      return res.status(400).json({ message: 'Horas esperadas deve ser um número positivo' });
+    }
+
+    const assignment = await prisma.routeAssignment.findUnique({
+      where: {
+        promoterId_storeId: {
+          promoterId,
+          storeId,
+        },
+      },
+    });
+
+    if (!assignment) {
+      return res.status(404).json({ message: 'Atribuição não encontrada' });
+    }
+
+    const updated = await prisma.routeAssignment.update({
+      where: {
+        id: assignment.id,
+      },
+      data: {
+        expectedHours: expectedHours !== undefined ? expectedHours : null,
+      },
+      include: {
+        store: true,
+      },
+    });
+
+    res.json({ assignment: updated });
+  } catch (error) {
+    console.error('Update store hours error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+}
+
+// Relatório de horas trabalhadas vs esperadas por promotor
+export async function getPromoterHoursReport(req: AuthRequest, res: Response) {
+  try {
+    const { promoterId } = req.params;
+    const { startDate, endDate } = req.query;
+
+    const promoter = await prisma.user.findUnique({
+      where: { id: promoterId },
+    });
+
+    if (!promoter || promoter.role !== 'PROMOTER') {
+      return res.status(404).json({ message: 'Promotor não encontrado' });
+    }
+
+    const assignments = await prisma.routeAssignment.findMany({
+      where: {
+        promoterId,
+        isActive: true,
+      },
+      include: {
+        store: true,
+      },
+    });
+
+    const where: any = {
+      promoterId,
+    };
+
+    if (startDate || endDate) {
+      where.checkInAt = {};
+      if (startDate) {
+        where.checkInAt.gte = new Date(startDate as string);
+      }
+      if (endDate) {
+        where.checkInAt.lte = new Date(endDate as string);
+      }
+    }
+
+    const visits = await prisma.visit.findMany({
+      where,
+      select: {
+        id: true,
+        storeId: true,
+        checkInAt: true,
+        checkOutAt: true,
+      },
+    });
+
+    // Calcular horas trabalhadas por loja
+    const workedHoursByStore: Record<string, number> = {};
+    visits.forEach((visit: { storeId: string; checkInAt: Date; checkOutAt: Date | null }) => {
+      if (visit.checkOutAt) {
+        const hours = (visit.checkOutAt.getTime() - visit.checkInAt.getTime()) / (1000 * 60 * 60);
+        workedHoursByStore[visit.storeId] = (workedHoursByStore[visit.storeId] || 0) + hours;
+      }
+    });
+
+    const report = assignments.map((assignment: any) => {
+      const workedHours = workedHoursByStore[assignment.storeId] || 0;
+      const expectedHours = assignment.expectedHours || 0;
+      const difference = workedHours - expectedHours;
+      const percentage = expectedHours > 0 ? (workedHours / expectedHours) * 100 : 0;
+
+      return {
+        assignmentId: assignment.id,
+        store: {
+          id: assignment.store.id,
+          name: assignment.store.name,
+          address: assignment.store.address,
+        },
+        expectedHours,
+        workedHours: Math.round(workedHours * 100) / 100,
+        difference: Math.round(difference * 100) / 100,
+        percentage: Math.round(percentage * 100) / 100,
+        status: expectedHours > 0
+          ? percentage >= 100
+            ? 'complete'
+            : percentage >= 80
+            ? 'warning'
+            : 'incomplete'
+          : 'no_target',
+      };
+    });
+
+    const totalExpected = report.reduce((sum: number, r: any) => sum + r.expectedHours, 0);
+    const totalWorked = report.reduce((sum: number, r: any) => sum + r.workedHours, 0);
+    const totalDifference = totalWorked - totalExpected;
+    const totalPercentage = totalExpected > 0 ? (totalWorked / totalExpected) * 100 : 0;
+
+    res.json({
+      promoter: {
+        id: promoter.id,
+        name: promoter.name,
+        email: promoter.email,
+      },
+      period: {
+        startDate: startDate || null,
+        endDate: endDate || null,
+      },
+      stores: report,
+      summary: {
+        totalExpected: Math.round(totalExpected * 100) / 100,
+        totalWorked: Math.round(totalWorked * 100) / 100,
+        totalDifference: Math.round(totalDifference * 100) / 100,
+        totalPercentage: Math.round(totalPercentage * 100) / 100,
+      },
+    });
+  } catch (error) {
+    console.error('Get promoter hours report error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+}
+
+// Relatório consolidado de todos os promotores
+export async function getAllPromotersHoursReport(req: AuthRequest, res: Response) {
+  try {
+    const { startDate, endDate } = req.query;
+
+    const promoters = await prisma.user.findMany({
+      where: { role: 'PROMOTER' },
+      include: {
+        routeAssignments: {
+          where: { isActive: true },
+          include: {
+            store: true,
+          },
+        },
+      },
+    });
+
+    const where: any = {};
+    if (startDate || endDate) {
+      where.checkInAt = {};
+      if (startDate) {
+        where.checkInAt.gte = new Date(startDate as string);
+      }
+      if (endDate) {
+        where.checkInAt.lte = new Date(endDate as string);
+      }
+    }
+
+    const allVisits = await prisma.visit.findMany({
+      where,
+      select: {
+        promoterId: true,
+        storeId: true,
+        checkInAt: true,
+        checkOutAt: true,
+      },
+    });
+
+    // Calcular horas trabalhadas por promotor e loja
+    const workedHoursByPromoterStore: Record<string, Record<string, number>> = {};
+    allVisits.forEach((visit: { promoterId: string; storeId: string; checkInAt: Date; checkOutAt: Date | null }) => {
+      if (visit.checkOutAt) {
+        const hours = (visit.checkOutAt.getTime() - visit.checkInAt.getTime()) / (1000 * 60 * 60);
+        if (!workedHoursByPromoterStore[visit.promoterId]) {
+          workedHoursByPromoterStore[visit.promoterId] = {};
+        }
+        workedHoursByPromoterStore[visit.promoterId][visit.storeId] =
+          (workedHoursByPromoterStore[visit.promoterId][visit.storeId] || 0) + hours;
+      }
+    });
+
+    const report = promoters.map((promoter: any) => {
+      const promoterWorkedHours = workedHoursByPromoterStore[promoter.id] || {};
+      let totalExpected = 0;
+      let totalWorked = 0;
+
+      promoter.routeAssignments.forEach((assignment: any) => {
+        const expected = assignment.expectedHours || 0;
+        const worked = promoterWorkedHours[assignment.storeId] || 0;
+        totalExpected += expected;
+        totalWorked += worked;
+      });
+
+      const totalDifference = totalWorked - totalExpected;
+      const totalPercentage = totalExpected > 0 ? (totalWorked / totalExpected) * 100 : 0;
+
+      return {
+        promoter: {
+          id: promoter.id,
+          name: promoter.name,
+          email: promoter.email,
+        },
+        summary: {
+          totalExpected: Math.round(totalExpected * 100) / 100,
+          totalWorked: Math.round(totalWorked * 100) / 100,
+          totalDifference: Math.round(totalDifference * 100) / 100,
+          totalPercentage: Math.round(totalPercentage * 100) / 100,
+          status: totalExpected > 0
+            ? totalPercentage >= 100
+              ? 'complete'
+              : totalPercentage >= 80
+              ? 'warning'
+              : 'incomplete'
+            : 'no_target',
+        },
+      };
+    });
+
+    res.json({
+      period: {
+        startDate: startDate || null,
+        endDate: endDate || null,
+      },
+      promoters: report,
+    });
+  } catch (error) {
+    console.error('Get all promoters hours report error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+}
+
 

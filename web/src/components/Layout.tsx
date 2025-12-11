@@ -166,13 +166,40 @@ export default function Layout() {
     </svg>
   );
 
+  const AdminIndustriesIcon = ({ active }: { active: boolean }) => (
+    <svg
+      className={`w-5 h-5 ${active ? 'text-primary-400' : 'text-text-tertiary'}`}
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+      />
+    </svg>
+  );
+
+  // ADMIN vê todas as funcionalidades (supervisor + admin)
+  const isAdmin = user?.role === 'ADMIN';
+  const isSupervisor = user?.role === 'SUPERVISOR';
+  const isSupervisorOrAdmin = isSupervisor || isAdmin;
+
   const navigation = [
     { name: 'Dashboard', path: '/', icon: DashboardIcon },
-    { name: 'Gerenciar Lojas', path: '/stores', icon: StoresIcon },
-    { name: 'Configurar Rotas', path: '/routes/config', icon: RouteIcon },
-    { name: 'Relatórios', path: '/reports', icon: ReportsIcon },
+    ...(isSupervisorOrAdmin ? [
+      { name: 'Gerenciar Lojas', path: '/stores', icon: StoresIcon },
+      { name: 'Configurar Rotas', path: '/routes/config', icon: RouteIcon },
+      { name: 'Relatórios', path: '/reports', icon: ReportsIcon },
+    ] : []),
     { name: 'Configurações', path: '/settings', icon: SettingsIcon },
-    ...(user?.role === 'ADMIN' ? [{ name: 'Administração', path: '/admin', icon: AdminIcon }] : []),
+    ...(isAdmin ? [
+      { name: 'Indústrias', path: '/industries', icon: AdminIndustriesIcon },
+      { name: 'Cobertura', path: '/industries/coverage', icon: ReportsIcon },
+      { name: 'Administração', path: '/admin', icon: AdminIcon }
+    ] : []),
   ];
 
   const handleLogout = () => {

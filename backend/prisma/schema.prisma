@@ -32,9 +32,13 @@ model User {
   updatedAt DateTime @updatedAt
 
   // Relations
-  visitsAsPromoter Visit[]
-  photoQuotas      PhotoQuota[]
-  routeAssignments RouteAssignment[]
+  visitsAsPromoter      Visit[]
+  photoQuotas           PhotoQuota[]
+  routeAssignments      RouteAssignment[]
+  industryAssignments   IndustryAssignment[]
+  photoIndustries       PhotoIndustry[]
+  informationDistributions InformationDistribution[]
+  whatsappReports       WhatsAppReport[]
 }
 
 model Store {
@@ -47,9 +51,12 @@ model Store {
   updatedAt DateTime @updatedAt
 
   // Relations
-  visits         Visit[]
-  priceResearch  PriceResearch[]
-  routeAssignments RouteAssignment[]
+  visits                Visit[]
+  priceResearch         PriceResearch[]
+  routeAssignments      RouteAssignment[]
+  industryAssignments   IndustryAssignment[]
+  photoIndustries       PhotoIndustry[]
+  informationDistributions InformationDistribution[]
 }
 
 model Visit {
@@ -73,6 +80,7 @@ model Visit {
   photos         Photo[]
   priceResearch  PriceResearch[]
   locations      Location[]
+  photoIndustries PhotoIndustry[]
 
   @@index([promoterId])
   @@index([storeId])
@@ -80,19 +88,24 @@ model Visit {
 }
 
 model Photo {
-  id        String    @id @default(uuid())
-  visitId   String
-  url       String
-  type      PhotoType
-  latitude  Float?
-  longitude Float?
-  createdAt DateTime  @default(now())
+  id                String    @id @default(uuid())
+  visitId           String
+  url               String
+  type              PhotoType
+  latitude          Float?
+  longitude         Float?
+  industryId        String?   // Opcional, para rastreamento direto
+  selectedIndustryId String?  // Indústria selecionada manualmente pelo promotor
+  createdAt         DateTime  @default(now())
 
   // Relations
-  visit Visit @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  visit         Visit          @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  photoIndustries PhotoIndustry[]
 
   @@index([visitId])
   @@index([type])
+  @@index([industryId])
+  @@index([selectedIndustryId])
 }
 
 model PriceResearch {
@@ -155,13 +168,14 @@ model ExportJob {
 }
 
 model RouteAssignment {
-  id        String   @id @default(uuid())
-  promoterId String
-  storeId   String
-  order     Int      @default(0) // Ordem de visita sugerida
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id            String   @id @default(uuid())
+  promoterId    String
+  storeId       String
+  order         Int      @default(0) // Ordem de visita sugerida
+  expectedHours Float?   // Horas esperadas por semana/mês
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   // Relations
   promoter User  @relation(fields: [promoterId], references: [id], onDelete: Cascade)
@@ -171,5 +185,162 @@ model RouteAssignment {
   @@index([promoterId])
   @@index([storeId])
   @@index([isActive])
+}
+
+model Industry {
+  id          String   @id @default(uuid())
+  name        String
+  code        String   @unique // Código único da indústria
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  products            Product[]
+  photoIndustries     PhotoIndustry[]
+  industryAssignments IndustryAssignment[]
+  informationDistributions InformationDistribution[]
+  whatsappReports     WhatsAppReport[]
+
+  @@index([code])
+  @@index([isActive])
+}
+
+model Product {
+  id          String   @id @default(uuid())
+  name        String
+  industryId  String
+  code        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  industry Industry @relation(fields: [industryId], references: [id], onDelete: Cascade)
+
+  @@unique([industryId, code])
+  @@index([industryId])
+}
+
+model IndustryAssignment {
+  id         String   @id @default(uuid())
+  promoterId String
+  industryId String
+  storeId    String?  // Opcional, se específico por loja
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  promoter User     @relation(fields: [promoterId], references: [id], onDelete: Cascade)
+  industry Industry @relation(fields: [industryId], references: [id], onDelete: Cascade)
+  store    Store?   @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([promoterId, industryId, storeId])
+  @@index([promoterId])
+  @@index([industryId])
+  @@index([storeId])
+  @@index([isActive])
+}
+
+model PhotoIndustry {
+  id             String    @id @default(uuid())
+  photoId        String
+  industryId     String
+  promoterId     String
+  storeId        String
+  visitId        String
+  qualityScore   Float?    // Score de qualidade (0-100)
+  qualityAnalysis Json?    // JSON com análise detalhada
+  hasRupture     Boolean   @default(false)
+  analyzedAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  // Relations
+  photo              Photo                @relation(fields: [photoId], references: [id], onDelete: Cascade)
+  industry            Industry             @relation(fields: [industryId], references: [id], onDelete: Cascade)
+  promoter            User                 @relation(fields: [promoterId], references: [id], onDelete: Cascade)
+  store               Store                @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  visit               Visit                @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  photoQualityAnalysis PhotoQualityAnalysis?
+
+  @@unique([photoId, industryId])
+  @@index([photoId])
+  @@index([industryId])
+  @@index([promoterId])
+  @@index([storeId])
+  @@index([visitId])
+  @@index([hasRupture])
+  @@index([createdAt])
+}
+
+model PhotoQualityAnalysis {
+  id              String    @id @default(uuid())
+  photoIndustryId String    @unique
+  overallScore    Float     // Score geral (0-100)
+  technicalScore  Float?    // Score técnico
+  contentScore    Float?    // Score de conteúdo
+  complianceScore Float?    // Score de conformidade
+  ruptureDetected Boolean   @default(false)
+  analysisDetails Json      // Detalhes da análise em JSON
+  analyzedAt      DateTime  @default(now())
+  createdAt       DateTime  @default(now())
+
+  // Relations
+  photoIndustry PhotoIndustry @relation(fields: [photoIndustryId], references: [id], onDelete: Cascade)
+
+  @@index([overallScore])
+  @@index([ruptureDetected])
+  @@index([analyzedAt])
+}
+
+model InformationDistribution {
+  id            String   @id @default(uuid())
+  title         String
+  content       String   // Texto ou JSON
+  industryId    String?
+  storeId       String?
+  promoterId    String?
+  type          String   // estoque, produto, geral
+  sourceData    Json?    // Dados do Excel em JSON
+  geminiSummary String?  // Resumo gerado pelo Gemini
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  industry Industry? @relation(fields: [industryId], references: [id], onDelete: Cascade)
+  store    Store?    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  promoter User?     @relation(fields: [promoterId], references: [id], onDelete: Cascade)
+
+  @@index([industryId])
+  @@index([storeId])
+  @@index([promoterId])
+  @@index([type])
+  @@index([isActive])
+}
+
+model WhatsAppReport {
+  id            String   @id @default(uuid())
+  recipientPhone String
+  recipientName  String
+  reportType     String   // promoter, industry, general
+  promoterId     String?
+  industryId     String?
+  dateRange      Json     // {startDate, endDate}
+  pdfUrl         String?
+  status         String   @default("pending") // pending, sent, failed
+  sentAt         DateTime?
+  createdAt      DateTime @default(now())
+
+  // Relations
+  promoter User?     @relation(fields: [promoterId], references: [id], onDelete: Cascade)
+  industry Industry?  @relation(fields: [industryId], references: [id], onDelete: Cascade)
+
+  @@index([promoterId])
+  @@index([industryId])
+  @@index([status])
+  @@index([createdAt])
 }
 

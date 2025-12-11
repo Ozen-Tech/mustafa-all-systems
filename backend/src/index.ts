@@ -8,6 +8,12 @@ import promoterRoutes from './routes/promoter.routes';
 import supervisorRoutes from './routes/supervisor.routes';
 import uploadRoutes from './routes/upload.routes';
 import adminRoutes from './routes/admin.routes';
+import industryRoutes from './routes/industry.routes';
+import productRoutes from './routes/product.routes';
+import industryAssignmentRoutes from './routes/industryAssignment.routes';
+import photoIndustryRoutes from './routes/photoIndustry.routes';
+import informationRoutes from './routes/information.routes';
+import whatsappReportRoutes from './routes/whatsappReport.routes';
 
 dotenv.config();
 
@@ -57,7 +63,13 @@ app.use('/api/auth', authRoutes);
 app.use('/api/promoters', promoterRoutes);
 app.use('/api/supervisors', supervisorRoutes);
 app.use('/api/upload', uploadRoutes);
-app.use('/api/admin', adminRoutes); // ⚠️ TEMPORÁRIO: Remover em produção
+app.use('/api/admin', adminRoutes);
+app.use('/api/industries', industryRoutes);
+app.use('/api/products', productRoutes);
+app.use('/api/industry-assignments', industryAssignmentRoutes);
+app.use('/api/photo-industries', photoIndustryRoutes);
+app.use('/api/information', informationRoutes);
+app.use('/api/whatsapp-reports', whatsappReportRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

@@ -13,6 +13,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useNavigation, NavigationProp } from '@react-navigation/native';
 import { visitService } from '../services/visitService';
 import { photoService } from '../services/photoService';
+import { industryService } from '../services/industryService';
 import { colors, theme } from '../styles/theme';
 import { requestForegroundPermissions, getCurrentPosition } from '../utils/locationHelper';
 import { savePendingPhotos, getPendingPhotos, clearPendingPhotos, PendingPhoto } from '../utils/sessionStorage';
@@ -37,6 +38,7 @@ type VisitPhoto = {
   uri?: string;
   url?: string;
   type: 'FACADE_CHECKIN' | 'FACADE_CHECKOUT' | 'OTHER';
+  industryId?: string; // Indústria selecionada para fotos OTHER
 };
 
 type ActiveVisitNavigation = NavigationProp<Record<string, object | undefined>>;
@@ -49,11 +51,24 @@ export default function ActiveVisitScreen({ route }: any) {
   const [uploading, setUploading] = useState(false);
   const [photos, setPhotos] = useState<VisitPhoto[]>([]);
   const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number | null>(null);
+  const [industries, setIndustries] = useState<any[]>([]);
+  const [showIndustryModal, setShowIndustryModal] = useState(false);
+  const [photoForIndustrySelection, setPhotoForIndustrySelection] = useState<number | null>(null);
 
   useEffect(() => {
     loadCurrentVisit();
     restorePendingPhotos();
+    loadIndustries();
   }, []);
+
+  async function loadIndustries() {
+    try {
+      const assignments = await industryService.getPromoterIndustries();
+      setIndustries(assignments.map(a => a.industry));
+    } catch (error) {
+      console.error('Error loading industries:', error);
+    }
+  }
 
   // Restaurar fotos pendentes ao abrir a tela
   async function restorePendingPhotos() {
@@ -125,6 +140,11 @@ export default function ActiveVisitScreen({ route }: any) {
           }
           return updated;
         });
+        // Se houver apenas uma foto e houver indústrias, mostrar modal de seleção
+        if (result.assets.length === 1 && industries.length > 0) {
+          setPhotoForIndustrySelection(photos.length);
+          setShowIndustryModal(true);
+        }
       }
     } catch (error) {
       console.error('Erro ao selecionar imagem:', error);
@@ -178,6 +198,11 @@ export default function ActiveVisitScreen({ route }: any) {
           }
           return updated;
         });
+        // Se houver indústrias, mostrar modal de seleção
+        if (industries.length > 0) {
+          setPhotoForIndustrySelection(photos.length);
+          setShowIndustryModal(true);
+        }
       }
     } catch (error) {
       console.error('Erro ao capturar foto:', error);
@@ -281,12 +306,41 @@ export default function ActiveVisitScreen({ route }: any) {
             throw new Error('Presigned URL ou photoUri não disponível');
           }
 
-          return {
+          const photoData = {
             url,
             type: (photo.type || 'OTHER') as 'FACADE_CHECKIN' | 'FACADE_CHECKOUT' | 'OTHER',
             latitude: location.coords.latitude,
             longitude: location.coords.longitude,
           };
+
+          // Se for foto OTHER e tiver indústria selecionada, associar após upload
+          if (photo.type === 'OTHER' && photo.industryId && visit.id) {
+            try {
+              // Aguardar um pouco para garantir que a foto foi salva no banco
+              setTimeout(async () => {
+                try {
+                  // Buscar a foto recém-criada pelo URL
+                  const visitData = await visitService.getCurrentVisit();
+                  const uploadedPhoto = visitData.visit.photos.find((p: any) => p.url === url);
+                  
+                  if (uploadedPhoto) {
+                    await industryService.associatePhotoToIndustry({
+                      photoId: uploadedPhoto.id,
+                      industryId: photo.industryId,
+                      visitId: visit.id,
+                    });
+                    console.log('✅ [ActiveVisit] Foto associada à indústria:', photo.industryId);
+                  }
+                } catch (error) {
+                  console.error('❌ [ActiveVisit] Erro ao associar foto à indústria:', error);
+                }
+              }, 2000);
+            } catch (error) {
+              console.error('❌ [ActiveVisit] Erro ao agendar associação de indústria:', error);
+            }
+          }
+
+          return photoData;
         } catch (error: any) {
           console.error('❌ [ActiveVisit] Erro no upload da foto:', error);
           console.error('❌ [ActiveVisit] Mensagem:', error?.message);
@@ -532,6 +586,55 @@ export default function ActiveVisitScreen({ route }: any) {
           </TouchableOpacity>
         </View>
       )}
+
+      {/* Modal de Seleção de Indústria */}
+      {showIndustryModal && photoForIndustrySelection !== null && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Selecione a Indústria</Text>
+            <Text style={styles.modalSubtitle}>
+              Para qual indústria é esta foto?
+            </Text>
+            <ScrollView style={styles.industriesList}>
+              {industries.map((industry) => (
+                <TouchableOpacity
+                  key={industry.id}
+                  style={[
+                    styles.industryOption,
+                    photos[photoForIndustrySelection]?.industryId === industry.id && styles.industryOptionSelected,
+                  ]}
+                  onPress={() => {
+                    setPhotos((prev) => {
+                      const updated = [...prev];
+                      if (updated[photoForIndustrySelection]) {
+                        updated[photoForIndustrySelection] = {
+                          ...updated[photoForIndustrySelection],
+                          industryId: industry.id,
+                        };
+                      }
+                      return updated;
+                    });
+                    setShowIndustryModal(false);
+                    setPhotoForIndustrySelection(null);
+                  }}
+                >
+                  <Text style={styles.industryOptionText}>{industry.name}</Text>
+                  <Text style={styles.industryOptionCode}>{industry.code}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <TouchableOpacity
+              style={styles.modalCancelButton}
+              onPress={() => {
+                setShowIndustryModal(false);
+                setPhotoForIndustrySelection(null);
+              }}
+            >
+              <Text style={styles.modalCancelText}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
     </ScrollView>
   );
 }
@@ -744,6 +847,140 @@ const styles = StyleSheet.create({
   fullscreenImage: {
     width: '100%',
     height: '100%',
+  },
+  modalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  modalContent: {
+    backgroundColor: colors.dark.card,
+    borderRadius: 12,
+    padding: 20,
+    width: '90%',
+    maxHeight: '80%',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: colors.text.primary,
+    marginBottom: 8,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: colors.text.secondary,
+    marginBottom: 16,
+  },
+  industriesList: {
+    maxHeight: 300,
+    marginBottom: 16,
+  },
+  industryOption: {
+    padding: 16,
+    backgroundColor: colors.dark.background,
+    borderRadius: 8,
+    marginBottom: 8,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  industryOptionSelected: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primary + '20',
+  },
+  industryOptionText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text.primary,
+    marginBottom: 4,
+  },
+  industryOptionCode: {
+    fontSize: 12,
+    color: colors.text.secondary,
+    fontFamily: 'monospace',
+  },
+  modalCancelButton: {
+    padding: 12,
+    alignItems: 'center',
+    borderRadius: 8,
+    backgroundColor: colors.dark.background,
+  },
+  modalCancelText: {
+    fontSize: 16,
+    color: colors.text.primary,
+    fontWeight: '600',
+  },
+  modalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+  },
+  modalContent: {
+    backgroundColor: colors.dark.card,
+    borderRadius: 12,
+    padding: 20,
+    width: '90%',
+    maxHeight: '80%',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: colors.text.primary,
+    marginBottom: 8,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: colors.text.secondary,
+    marginBottom: 16,
+  },
+  industriesList: {
+    maxHeight: 300,
+    marginBottom: 16,
+  },
+  industryOption: {
+    padding: 16,
+    backgroundColor: colors.dark.background,
+    borderRadius: 8,
+    marginBottom: 8,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  industryOptionSelected: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primary + '20',
+  },
+  industryOptionText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text.primary,
+    marginBottom: 4,
+  },
+  industryOptionCode: {
+    fontSize: 12,
+    color: colors.text.secondary,
+    fontFamily: 'monospace',
+  },
+  modalCancelButton: {
+    padding: 12,
+    alignItems: 'center',
+    borderRadius: 8,
+    backgroundColor: colors.dark.background,
+  },
+  modalCancelText: {
+    fontSize: 16,
+    color: colors.text.primary,
+    fontWeight: '600',
   },
 });
 

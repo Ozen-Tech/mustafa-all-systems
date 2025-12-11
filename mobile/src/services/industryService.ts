@@ -1,45 +1,48 @@
-import axios from 'axios';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import apiConfig from '../config/api';
+import { apiClient, apiConfig } from './api';
 
-const apiClient = axios.create({
-  baseURL: apiConfig.BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
-
-// Interceptor para adicionar token
-apiClient.interceptors.request.use(
-  async (config) => {
-    const token = await AsyncStorage.getItem('accessToken');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
-
-export interface Store {
+export interface Industry {
   id: string;
   name: string;
-  address: string;
-  latitude: number;
-  longitude: number;
+  code: string;
+  description?: string;
+  isActive: boolean;
 }
 
-export const storeService = {
-  async getStores(): Promise<Store[]> {
+export interface IndustryAssignment {
+  id: string;
+  industry: Industry;
+  store?: {
+    id: string;
+    name: string;
+  };
+}
+
+export const industryService = {
+  async getPromoterIndustries(promoterId?: string): Promise<IndustryAssignment[]> {
     try {
-      const response = await apiClient.get('/promoters/stores');
-      return response.data.stores || [];
+      // Se não tiver promoterId, usar o endpoint que busca pelo token do usuário logado
+      const endpoint = promoterId 
+        ? `/industry-assignments/promoter/${promoterId}`
+        : '/industry-assignments/promoter/me';
+      const response = await apiClient.get(endpoint);
+      return response.data.assignments || [];
     } catch (error) {
-      console.error('Erro ao buscar lojas:', error);
-      // Retornar dados mockados se a API falhar (usando IDs do seed)
-      // Nota: Os IDs precisam ser os UUIDs reais do banco
-      return [];
+      console.error('Error fetching promoter industries:', error);
+      throw error;
+    }
+  },
+
+  async associatePhotoToIndustry(data: {
+    photoId: string;
+    industryId: string;
+    visitId: string;
+  }): Promise<any> {
+    try {
+      const response = await apiClient.post('/photo-industries/associate', data);
+      return response.data;
+    } catch (error) {
+      console.error('Error associating photo to industry:', error);
+      throw error;
     }
   },
 };
-

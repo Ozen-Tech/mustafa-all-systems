@@ -26,8 +26,9 @@ export function authenticate(req: AuthRequest, res: Response, next: NextFunction
 }
 
 export function requireSupervisor(req: AuthRequest, res: Response, next: NextFunction) {
-  if (req.userRole !== UserRole.SUPERVISOR) {
-    return res.status(403).json({ message: 'Supervisor access required' });
+  // ADMIN tem acesso a todas as funcionalidades de SUPERVISOR
+  if (req.userRole !== UserRole.SUPERVISOR && req.userRole !== UserRole.ADMIN) {
+    return res.status(403).json({ message: 'Supervisor or Admin access required' });
   }
   next();
 }

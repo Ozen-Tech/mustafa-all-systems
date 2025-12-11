@@ -6,6 +6,7 @@ import { colors, theme } from '../styles/theme';
 import HomeScreen from '../screens/HomeScreen';
 import HistoryScreen from '../screens/HistoryScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import InformationHubScreen from '../screens/InformationHubScreen';
 import HomeIcon from '../components/icons/HomeIcon';
 import ClockIcon from '../components/icons/ClockIcon';
 import UserIcon from '../components/icons/UserIcon';
@@ -290,6 +291,18 @@ function MainTabs() {
         options={{
           title: 'Histórico',
           tabBarIcon: ({ color, size }) => <ClockIcon size={size} color={color} />,
+        }}
+      />
+      <Tab.Screen
+        name="Information"
+        component={InformationHubScreen}
+        options={{
+          title: 'Informações',
+          tabBarIcon: ({ color, size }) => (
+            <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
+              <Text style={{ fontSize: size * 0.8, color }}>ℹ️</Text>
+            </View>
+          ),
         }}
       />
       <Tab.Screen

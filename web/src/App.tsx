@@ -8,6 +8,8 @@ import RouteConfig from './pages/RouteConfig';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 import StoresManagement from './pages/StoresManagement';
+import IndustriesManagement from './pages/IndustriesManagement';
+import IndustryCoverage from './pages/IndustryCoverage';
 import Admin from './pages/Admin';
 import Layout from './components/Layout';
 
@@ -43,6 +45,25 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function SupervisorOrAdminRoute({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return <div>Carregando...</div>;
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  // ADMIN tem acesso a todas as funcionalidades de SUPERVISOR
+  if (user.role !== 'SUPERVISOR' && user.role !== 'ADMIN') {
+    return <Navigate to="/" replace />;
+  }
+
+  return <>{children}</>;
+}
+
 function AppRoutes() {
   return (
     <Routes>
@@ -60,7 +81,30 @@ function AppRoutes() {
         <Route path="promoters/:id/route" element={<RouteMap />} />
         <Route path="routes/config" element={<RouteConfig />} />
         <Route path="stores" element={<StoresManagement />} />
-        <Route path="reports" element={<Reports />} />
+        <Route
+          path="industries"
+          element={
+            <AdminRoute>
+              <IndustriesManagement />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="industries/coverage"
+          element={
+            <AdminRoute>
+              <IndustryCoverage />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="reports"
+          element={
+            <SupervisorOrAdminRoute>
+              <Reports />
+            </SupervisorOrAdminRoute>
+          }
+        />
         <Route path="settings" element={<Settings />} />
         <Route
           path="admin"
