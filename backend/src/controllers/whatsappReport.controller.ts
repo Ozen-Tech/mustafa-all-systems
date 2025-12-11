@@ -94,7 +94,7 @@ export async function generateReport(req: AuthRequest, res: Response) {
     const pdfUrl = await savePDFToStorage(pdfBuffer, filename);
 
     // Criar registro de relatório
-    const report = await prisma.whatsappReport.create({
+    const report = await prisma.whatsAppReport.create({
       data: {
         recipientPhone: data.recipientPhone,
         recipientName: data.recipientName,
@@ -127,7 +127,7 @@ export async function sendReportViaWhatsApp(req: AuthRequest, res: Response) {
   try {
     const { id } = req.params;
 
-    const report = await prisma.whatsappReport.findUnique({
+    const report = await prisma.whatsAppReport.findUnique({
       where: { id },
     });
 
@@ -141,7 +141,7 @@ export async function sendReportViaWhatsApp(req: AuthRequest, res: Response) {
 
     // TODO: Implementar integração com WhatsApp
     // Por enquanto, apenas marcar como enviado
-    const updated = await prisma.whatsappReport.update({
+    const updated = await prisma.whatsAppReport.update({
       where: { id },
       data: {
         status: 'sent',
@@ -183,7 +183,7 @@ export async function scheduleReport(req: AuthRequest, res: Response) {
  */
 export async function listReports(req: AuthRequest, res: Response) {
   try {
-    const reports = await prisma.whatsappReport.findMany({
+    const reports = await prisma.whatsAppReport.findMany({
       include: {
         promoter: {
           select: {

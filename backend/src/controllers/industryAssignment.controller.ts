@@ -47,14 +47,18 @@ export async function assignPromoterToIndustry(req: AuthRequest, res: Response) 
     }
 
     // Verificar se já existe atribuição
-    const existing = await prisma.industryAssignment.findUnique({
-      where: {
-        promoterId_industryId_storeId: {
-          promoterId: data.promoterId,
-          industryId: data.industryId,
-          storeId: data.storeId || null,
-        },
-      },
+    const whereClause: any = {
+      promoterId: data.promoterId,
+      industryId: data.industryId,
+    };
+    if (data.storeId) {
+      whereClause.storeId = data.storeId;
+    } else {
+      whereClause.storeId = null;
+    }
+    
+    const existing = await prisma.industryAssignment.findFirst({
+      where: whereClause,
     });
 
     let assignment;

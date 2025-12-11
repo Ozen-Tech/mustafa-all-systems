@@ -193,7 +193,13 @@ export async function createInformation(req: AuthRequest, res: Response) {
     const data = createInformationSchema.parse(req.body);
 
     const information = await prisma.informationDistribution.create({
-      data,
+      data: {
+        ...data,
+        industryId: data.industryId || null,
+        storeId: data.storeId || null,
+        promoterId: data.promoterId || null,
+        content: data.content || '',
+      },
     });
 
     res.status(201).json({ information });
