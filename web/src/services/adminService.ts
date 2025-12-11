@@ -39,6 +39,7 @@ export interface User {
   id: string;
   email: string;
   name: string;
+  phone?: string | null;
   role: 'PROMOTER' | 'SUPERVISOR' | 'ADMIN';
   createdAt: string;
   updatedAt: string;
@@ -49,6 +50,7 @@ export interface CreateUserRequest {
   name: string;
   password: string;
   role: 'PROMOTER' | 'SUPERVISOR' | 'ADMIN';
+  phone?: string;
 }
 
 export interface UpdateUserRequest {
@@ -56,6 +58,7 @@ export interface UpdateUserRequest {
   name?: string;
   password?: string;
   role?: 'PROMOTER' | 'SUPERVISOR' | 'ADMIN';
+  phone?: string;
 }
 
 export interface ListUsersResponse {

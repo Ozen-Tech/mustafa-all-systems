@@ -27,6 +27,7 @@ model User {
   email     String   @unique
   name      String
   password  String
+  phone     String?  // Celular do promotor (opcional)
   role      UserRole
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

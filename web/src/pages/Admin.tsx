@@ -16,6 +16,7 @@ export default function Admin() {
     name: '',
     email: '',
     password: '',
+    phone: '',
     role: 'PROMOTER' as 'PROMOTER' | 'SUPERVISOR' | 'ADMIN',
   });
 
@@ -56,6 +57,7 @@ export default function Admin() {
       name: '',
       email: '',
       password: '',
+      phone: '',
       role: 'PROMOTER',
     });
     setEditingUser(null);
@@ -68,6 +70,7 @@ export default function Admin() {
         name: user.name,
         email: user.email,
         password: '',
+        phone: user.phone || '',
         role: user.role,
       });
     } else {
@@ -89,6 +92,7 @@ export default function Admin() {
         name: formData.name,
         email: formData.email,
         role: formData.role,
+        phone: formData.phone || undefined,
       };
       if (formData.password) {
         updateData.password = formData.password;
@@ -169,6 +173,7 @@ export default function Admin() {
                 <tr className="border-b border-dark-border">
                   <th className="text-left py-3 px-4 text-text-secondary font-medium">Nome</th>
                   <th className="text-left py-3 px-4 text-text-secondary font-medium">Email</th>
+                  <th className="text-left py-3 px-4 text-text-secondary font-medium">Celular</th>
                   <th className="text-left py-3 px-4 text-text-secondary font-medium">Função</th>
                   <th className="text-left py-3 px-4 text-text-secondary font-medium">Criado em</th>
                   <th className="text-right py-3 px-4 text-text-secondary font-medium">Ações</th>
@@ -179,6 +184,7 @@ export default function Admin() {
                   <tr key={user.id} className="border-b border-dark-border hover:bg-dark-card">
                     <td className="py-3 px-4 text-text-primary">{user.name}</td>
                     <td className="py-3 px-4 text-text-secondary">{user.email}</td>
+                    <td className="py-3 px-4 text-text-secondary">{user.phone || '-'}</td>
                     <td className="py-3 px-4">
                       <Badge variant={getRoleColor(user.role)}>{getRoleLabel(user.role)}</Badge>
                     </td>
@@ -240,6 +246,13 @@ export default function Admin() {
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   required
+                />
+                <Input
+                  label="Celular"
+                  type="tel"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  placeholder="(00) 00000-0000"
                 />
                 <Input
                   label={editingUser ? 'Nova Senha (deixe em branco para manter)' : 'Senha'}
