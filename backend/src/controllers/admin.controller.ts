@@ -153,6 +153,7 @@ export async function seedDatabase(req: Request, res: Response) {
 
 // Schemas de validação
 const createUserSchema = z.object({
+  phone: z.string().optional(),
   email: z.string().email(),
   name: z.string().min(1),
   password: z.string().min(6),
@@ -164,6 +165,7 @@ const updateUserSchema = z.object({
   name: z.string().min(1).optional(),
   password: z.string().min(6).optional(),
   role: z.nativeEnum(UserRole).optional(),
+  phone: z.string().optional(),
 });
 
 /**
@@ -176,6 +178,7 @@ export async function listUsers(req: AuthRequest, res: Response) {
         id: true,
         email: true,
         name: true,
+        phone: true,
         role: true,
         createdAt: true,
         updatedAt: true,
@@ -218,10 +221,12 @@ export async function createUser(req: AuthRequest, res: Response) {
         name: data.name,
         password: hashedPassword,
         role: data.role,
+        phone: data.phone || null,
       },
       select: {
         id: true,
         email: true,
+        phone: true,
         name: true,
         role: true,
         createdAt: true,
@@ -272,6 +277,7 @@ export async function updateUser(req: AuthRequest, res: Response) {
     if (data.email) updateData.email = data.email;
     if (data.name) updateData.name = data.name;
     if (data.role) updateData.role = data.role;
+    if (data.phone !== undefined) updateData.phone = data.phone || null;
     if (data.password) {
       updateData.password = await hashPassword(data.password);
     }
@@ -284,6 +290,7 @@ export async function updateUser(req: AuthRequest, res: Response) {
         id: true,
         email: true,
         name: true,
+        phone: true,
         role: true,
         createdAt: true,
         updatedAt: true,
@@ -346,6 +353,7 @@ export async function getUser(req: AuthRequest, res: Response) {
         id: true,
         email: true,
         name: true,
+        phone: true,
         role: true,
         createdAt: true,
         updatedAt: true,
