@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 // Initialize Firebase Admin (only if credentials are provided)
 let storage: ReturnType<typeof getStorage> | null = null;
+let bucketName: string | null = null;
 
 const hasFirebaseCredentials = 
   process.env.FIREBASE_PROJECT_ID && 
@@ -14,7 +15,7 @@ const hasFirebaseCredentials =
 if (hasFirebaseCredentials) {
   try {
     if (getApps().length === 0) {
-      initializeApp({
+      const app = initializeApp({
         credential: cert({
           projectId: process.env.FIREBASE_PROJECT_ID,
           clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
@@ -22,14 +23,35 @@ if (hasFirebaseCredentials) {
         }),
         storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
       });
+      
+      console.log('✅ Firebase App inicializado');
+      console.log('📦 Bucket configurado:', process.env.FIREBASE_STORAGE_BUCKET);
     }
+    
     storage = getStorage();
+    bucketName = process.env.FIREBASE_STORAGE_BUCKET || null;
+    
     console.log('✅ Firebase Storage inicializado');
-    console.log('📦 Bucket:', process.env.FIREBASE_STORAGE_BUCKET);
+    console.log('📦 Bucket configurado:', bucketName);
+    
+    // Verificar bucket de forma assíncrona (sem bloquear inicialização)
+    if (storage && bucketName) {
+      verifyBucketAccess().catch((error) => {
+        console.error('❌ Erro ao verificar bucket (não crítico):', error.message);
+      });
+    }
   } catch (error: any) {
     console.error('❌ Erro ao inicializar Firebase Storage:', error);
     console.error('❌ Detalhes:', error.message);
+    console.error('❌ Código:', error.code);
     console.error('❌ Stack:', error.stack);
+    
+    if (error.code === 403 || error.code === 412) {
+      console.error('');
+      console.error('🚨 ERRO DE PERMISSÃO: Verifique as permissões da conta de serviço!');
+      console.error('📖 Veja: docs/SOLUCAO_ERRO_412_FIREBASE.md');
+      console.error('');
+    }
   }
 } else {
   console.error('❌ Firebase credentials não configuradas!');
@@ -39,6 +61,41 @@ if (hasFirebaseCredentials) {
   console.error('   - FIREBASE_PRIVATE_KEY:', process.env.FIREBASE_PRIVATE_KEY ? '✅' : '❌');
   console.error('   - FIREBASE_STORAGE_BUCKET:', process.env.FIREBASE_STORAGE_BUCKET ? '✅' : '❌');
   console.warn('⚠️  Usando URLs mockadas - uploads NÃO funcionarão!');
+}
+
+/**
+ * Verifica se o bucket está acessível (chamada assíncrona)
+ */
+async function verifyBucketAccess(): Promise<void> {
+  if (!storage || !bucketName) return;
+  
+  try {
+    const bucket = storage.bucket(bucketName);
+    // Tentar acessar metadados do bucket para verificar permissões
+    const [metadata] = await bucket.getMetadata().catch(() => [null]);
+    
+    if (metadata) {
+      console.log('✅ Bucket verificado e acessível');
+      console.log('📦 Bucket location:', metadata.location || 'N/A');
+    } else {
+      console.warn('⚠️  Bucket configurado mas não foi possível verificar metadados');
+      console.warn('⚠️  Isso pode indicar problema de permissões');
+    }
+  } catch (bucketError: any) {
+    console.error('❌ Erro ao acessar bucket:', bucketError.message);
+    console.error('❌ Código:', bucketError.code);
+    if (bucketError.code === 403 || bucketError.code === 412) {
+      console.error('');
+      console.error('🚨 ERRO DE PERMISSÃO: A conta de serviço não tem acesso ao bucket!');
+      console.error('📋 SOLUÇÃO:');
+      console.error('1. Acesse: https://console.cloud.google.com/');
+      console.error('2. Vá em IAM & Admin > Service Accounts');
+      console.error(`3. Encontre: ${process.env.FIREBASE_CLIENT_EMAIL}`);
+      console.error('4. Adicione a role: Storage Admin');
+      console.error('5. Aguarde 5-10 minutos e reinicie o serviço');
+      console.error('');
+    }
+  }
 }
 
 export interface PresignedUrlOptions {
@@ -54,7 +111,7 @@ export async function getPresignedUploadUrl(
   key: string,
   options: PresignedUrlOptions
 ): Promise<string> {
-  if (!storage || !hasFirebaseCredentials) {
+  if (!storage || !hasFirebaseCredentials || !bucketName) {
     // Retornar URL mockada para desenvolvimento
     const mockUrl = `https://mock-storage.local/photos/${key}?upload=true`;
     console.error(`❌ [Firebase Mock] Firebase não configurado! Retornando URL mockada para key: ${key}`);
@@ -63,7 +120,8 @@ export async function getPresignedUploadUrl(
   }
 
   try {
-    const bucket = storage.bucket();
+    // Usar bucket específico ao invés de default
+    const bucket = storage.bucket(bucketName);
     const file = bucket.file(key);
 
     console.log(`📸 Gerando presigned URL para upload: ${key}`);
@@ -86,16 +144,20 @@ export async function getPresignedUploadUrl(
     console.error('❌ Stack:', error.stack);
     
     // Tratamento específico para erro 412 (permissões)
-    if (error.code === 412 || error.message?.includes('412') || error.message?.includes('missing necessary permissions')) {
+    if (error.code === 412 || error.code === 403 || error.message?.includes('412') || error.message?.includes('403') || error.message?.includes('missing necessary permissions')) {
       console.error('');
-      console.error('🚨 ERRO 412: Conta de serviço sem permissões necessárias!');
+      console.error('🚨 ERRO 412/403: Conta de serviço sem permissões necessárias!');
       console.error('');
-      console.error('📋 SOLUÇÃO:');
+      console.error('📋 SOLUÇÃO PASSO A PASSO:');
       console.error('1. Acesse: https://console.cloud.google.com/');
-      console.error('2. Vá em IAM & Admin > Service Accounts');
-      console.error(`3. Encontre: ${process.env.FIREBASE_CLIENT_EMAIL}`);
-      console.error('4. Adicione a role: Storage Admin');
-      console.error('5. Aguarde 5-10 minutos e tente novamente');
+      console.error('2. Selecione o projeto: mustafabucket');
+      console.error('3. Vá em IAM & Admin > Service Accounts');
+      console.error(`4. Encontre: ${process.env.FIREBASE_CLIENT_EMAIL}`);
+      console.error('5. Clique nela > Permissions > Grant Access');
+      console.error('6. Adicione a role: Storage Admin (roles/storage.admin)');
+      console.error('7. Clique em Save');
+      console.error('8. Aguarde 5-10 minutos para propagação');
+      console.error('9. Reinicie o serviço no Render');
       console.error('');
       console.error('📖 Veja mais detalhes em: docs/SOLUCAO_ERRO_412_FIREBASE.md');
       console.error('');
@@ -109,14 +171,14 @@ export async function getPresignedUploadUrl(
  * Gera URL de download para Firebase Storage
  */
 export async function getPresignedDownloadUrl(key: string, expiresIn: number = 3600): Promise<string> {
-  if (!storage || !hasFirebaseCredentials) {
+  if (!storage || !hasFirebaseCredentials || !bucketName) {
     const mockUrl = `https://mock-storage.local/photos/${key}?download=true`;
     console.log(`📸 [Firebase Mock] Generated mock download URL for key: ${key}`);
     return mockUrl;
   }
 
   try {
-    const bucket = storage.bucket();
+    const bucket = storage.bucket(bucketName);
     const file = bucket.file(key);
 
     // Criar URL assinada para download
@@ -132,9 +194,9 @@ export async function getPresignedDownloadUrl(key: string, expiresIn: number = 3
     console.error('❌ Código:', error.code);
     
     // Tratamento específico para erro 412 (permissões)
-    if (error.code === 412 || error.message?.includes('412') || error.message?.includes('missing necessary permissions')) {
+    if (error.code === 412 || error.code === 403 || error.message?.includes('412') || error.message?.includes('403') || error.message?.includes('missing necessary permissions')) {
       console.error('');
-      console.error('🚨 ERRO 412: Conta de serviço sem permissões necessárias!');
+      console.error('🚨 ERRO 412/403: Conta de serviço sem permissões necessárias!');
       console.error('📖 Veja: docs/SOLUCAO_ERRO_412_FIREBASE.md');
       console.error('');
     }
@@ -148,7 +210,7 @@ export async function getPresignedDownloadUrl(key: string, expiresIn: number = 3
  * Formato: https://firebasestorage.googleapis.com/v0/b/{bucket}/o/{encodedKey}?alt=media
  */
 export function getPublicUrl(key: string): string {
-  const bucket = process.env.FIREBASE_STORAGE_BUCKET || 'promo-gestao-photos';
+  const bucket = bucketName || process.env.FIREBASE_STORAGE_BUCKET || 'promo-gestao-photos';
   // Firebase Storage requer encoding específico: / vira %2F
   const encodedKey = encodeURIComponent(key);
   const url = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodedKey}?alt=media`;
@@ -160,12 +222,12 @@ export function getPublicUrl(key: string): string {
  * Gera URL assinada para download (fallback quando pública não funciona)
  */
 export async function getSignedUrlForPhoto(key: string): Promise<string> {
-  if (!storage || !hasFirebaseCredentials) {
+  if (!storage || !hasFirebaseCredentials || !bucketName) {
     return getPublicUrl(key); // Fallback para URL pública se Firebase não configurado
   }
 
   try {
-    const bucket = storage.bucket();
+    const bucket = storage.bucket(bucketName);
     const file = bucket.file(key);
     
     // Verificar se arquivo existe
@@ -189,9 +251,9 @@ export async function getSignedUrlForPhoto(key: string): Promise<string> {
     console.error('❌ Mensagem:', error.message);
     
     // Tratamento específico para erro 412 (permissões)
-    if (error.code === 412 || error.message?.includes('412') || error.message?.includes('missing necessary permissions')) {
+    if (error.code === 412 || error.code === 403 || error.message?.includes('412') || error.message?.includes('403') || error.message?.includes('missing necessary permissions')) {
       console.error('');
-      console.error('🚨 ERRO 412: Conta de serviço sem permissões necessárias!');
+      console.error('🚨 ERRO 412/403: Conta de serviço sem permissões necessárias!');
       console.error('📖 Veja: docs/SOLUCAO_ERRO_412_FIREBASE.md');
       console.error('');
     }
@@ -214,13 +276,13 @@ export function generatePhotoKey(visitId: string, type: string, extension: strin
  * Deleta foto do Firebase Storage
  */
 export async function deletePhoto(key: string): Promise<void> {
-  if (!storage || !hasFirebaseCredentials) {
+  if (!storage || !hasFirebaseCredentials || !bucketName) {
     console.log(`📸 [Firebase Mock] Would delete photo: ${key} (mock mode)`);
     return;
   }
 
   try {
-    const bucket = storage.bucket();
+    const bucket = storage.bucket(bucketName);
     const file = bucket.file(key);
     await file.delete();
     console.log(`✅ Foto deletada: ${key}`);
@@ -229,4 +291,3 @@ export async function deletePhoto(key: string): Promise<void> {
     throw error;
   }
 }
-
