@@ -1,9 +1,8 @@
-// User types
-export enum UserRole {
-  PROMOTER = 'PROMOTER',
-  SUPERVISOR = 'SUPERVISOR',
-  ADMIN = 'ADMIN',
-}
+import { UserRole as PrismaUserRole } from '@prisma/client';
+
+// User types - reutiliza o enum gerado pelo Prisma para evitar divergência de tipos
+export const UserRole = PrismaUserRole;
+export type UserRole = PrismaUserRole;
 
 export interface User {
   id: string;

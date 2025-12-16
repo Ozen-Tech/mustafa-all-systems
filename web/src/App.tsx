@@ -76,11 +76,51 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       >
-        <Route index element={<Dashboard />} />
-        <Route path="promoters/:id" element={<PromoterDetails />} />
-        <Route path="promoters/:id/route" element={<RouteMap />} />
-        <Route path="routes/config" element={<RouteConfig />} />
-        <Route path="stores" element={<StoresManagement />} />
+        {/* Dashboard e telas de supervisão: apenas SUPERVISOR e ADMIN */}
+        <Route
+          index
+          element={
+            <SupervisorOrAdminRoute>
+              <Dashboard />
+            </SupervisorOrAdminRoute>
+          }
+        />
+        <Route
+          path="promoters/:id"
+          element={
+            <SupervisorOrAdminRoute>
+              <PromoterDetails />
+            </SupervisorOrAdminRoute>
+          }
+        />
+        <Route
+          path="promoters/:id/route"
+          element={
+            <SupervisorOrAdminRoute>
+              <RouteMap />
+            </SupervisorOrAdminRoute>
+          }
+        />
+
+        {/* Configuração de rotas e gestão de lojas: apenas ADMIN */}
+        <Route
+          path="routes/config"
+          element={
+            <AdminRoute>
+              <RouteConfig />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="stores"
+          element={
+            <SupervisorOrAdminRoute>
+              <StoresManagement />
+            </SupervisorOrAdminRoute>
+          }
+        />
+
+        {/* Telas exclusivas de admin */}
         <Route
           path="industries"
           element={
@@ -98,15 +138,6 @@ function AppRoutes() {
           }
         />
         <Route
-          path="reports"
-          element={
-            <SupervisorOrAdminRoute>
-              <Reports />
-            </SupervisorOrAdminRoute>
-          }
-        />
-        <Route path="settings" element={<Settings />} />
-        <Route
           path="admin"
           element={
             <AdminRoute>
@@ -114,6 +145,19 @@ function AppRoutes() {
             </AdminRoute>
           }
         />
+
+        {/* Relatórios: SUPERVISOR e ADMIN */}
+        <Route
+          path="reports"
+          element={
+            <SupervisorOrAdminRoute>
+              <Reports />
+            </SupervisorOrAdminRoute>
+          }
+        />
+
+        {/* Configurações gerais - qualquer usuário autenticado */}
+        <Route path="settings" element={<Settings />} />
       </Route>
     </Routes>
   );

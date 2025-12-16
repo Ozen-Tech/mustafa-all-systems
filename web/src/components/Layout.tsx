@@ -189,17 +189,25 @@ export default function Layout() {
 
   const navigation = [
     { name: 'Dashboard', path: '/', icon: DashboardIcon },
-    ...(isSupervisorOrAdmin ? [
-      { name: 'Gerenciar Lojas', path: '/stores', icon: StoresIcon },
-      { name: 'Configurar Rotas', path: '/routes/config', icon: RouteIcon },
-      { name: 'Relatórios', path: '/reports', icon: ReportsIcon },
-    ] : []),
+    // Dashboard e Relatórios para Supervisor e Admin
+    ...(isSupervisorOrAdmin
+      ? [{ name: 'Relatórios', path: '/reports', icon: ReportsIcon }]
+      : []),
+    // Configuração de rotas e gestão avançada apenas para Admin
+    ...(isAdmin
+      ? [
+          { name: 'Gerenciar Lojas', path: '/stores', icon: StoresIcon },
+          { name: 'Configurar Rotas', path: '/routes/config', icon: RouteIcon },
+        ]
+      : []),
     { name: 'Configurações', path: '/settings', icon: SettingsIcon },
-    ...(isAdmin ? [
-      { name: 'Indústrias', path: '/industries', icon: AdminIndustriesIcon },
-      { name: 'Cobertura', path: '/industries/coverage', icon: ReportsIcon },
-      { name: 'Administração', path: '/admin', icon: AdminIcon }
-    ] : []),
+    ...(isAdmin
+      ? [
+          { name: 'Indústrias', path: '/industries', icon: AdminIndustriesIcon },
+          { name: 'Cobertura', path: '/industries/coverage', icon: ReportsIcon },
+          { name: 'Administração', path: '/admin', icon: AdminIcon },
+        ]
+      : []),
   ];
 
   const handleLogout = () => {

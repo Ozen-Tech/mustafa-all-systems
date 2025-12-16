@@ -26,39 +26,48 @@ import {
   getAllStores,
   getStore,
 } from '../controllers/store.controller';
-import { authenticate, requireSupervisor } from '../middleware/auth';
+import { authenticate, requireAdmin, requireSupervisor } from '../middleware/auth';
 
 const router = Router();
 
+// Todas as rotas abaixo requerem autenticação
 router.use(authenticate);
-router.use(requireSupervisor);
 
-router.get('/dashboard', getDashboard);
-router.get('/promoters', getPromoters);
-router.get('/promoters/:id/performance', getPromoterPerformance);
-router.get('/promoters/:id/visits', getPromoterVisits);
-router.get('/promoters/:id/route', getPromoterRoute); // Rota histórica (visitas do dia)
-router.get('/missing-photos', getMissingPhotos);
-router.put('/promoters/:id/photo-quota', setPhotoQuota);
-router.post('/export/report', exportReport);
-router.get('/export/status/:id', getExportStatus);
-router.get('/export/download/:id', downloadExport);
+// 🔒 Rotas de dashboard e relatórios - acessíveis para SUPERVISOR e ADMIN
+router.get('/dashboard', requireSupervisor, getDashboard);
+router.get('/promoters', requireSupervisor, getPromoters);
+router.get('/promoters/:id/performance', requireSupervisor, getPromoterPerformance);
+router.get('/promoters/:id/visits', requireSupervisor, getPromoterVisits);
+router.get('/promoters/:id/route', requireSupervisor, getPromoterRoute); // Rota histórica (visitas do dia)
+router.get('/missing-photos', requireSupervisor, getMissingPhotos);
+router.put('/promoters/:id/photo-quota', requireSupervisor, setPhotoQuota);
+router.post('/export/report', requireSupervisor, exportReport);
+router.get('/export/status/:id', requireSupervisor, getExportStatus);
+router.get('/export/download/:id', requireSupervisor, downloadExport);
 
-// Rotas de configuração de rotas (assignments)
-router.post('/promoters/:promoterId/route-assignment', setPromoterRoute);
-router.get('/promoters/:promoterId/route-assignment', getPromoterRouteAssignment);
-router.put('/promoters/:promoterId/stores/:storeId/hours', updateStoreHours);
-router.get('/promoters/:promoterId/hours-report', getPromoterHoursReport);
-router.get('/promoters/hours-report', getAllPromotersHoursReport);
-router.get('/routes', getAllRoutes);
-router.get('/stores/available', getAvailableStores);
+// 🔒 Rotas de configuração de rotas (assignments) - apenas ADMIN
+router.post('/promoters/:promoterId/route-assignment', requireAdmin, setPromoterRoute);
+router.get(
+  '/promoters/:promoterId/route-assignment',
+  requireAdmin,
+  getPromoterRouteAssignment
+);
+router.put(
+  '/promoters/:promoterId/stores/:storeId/hours',
+  requireAdmin,
+  updateStoreHours
+);
+router.get('/promoters/:promoterId/hours-report', requireAdmin, getPromoterHoursReport);
+router.get('/promoters/hours-report', requireAdmin, getAllPromotersHoursReport);
+router.get('/routes', requireAdmin, getAllRoutes);
+router.get('/stores/available', requireAdmin, getAvailableStores);
 
-// Rotas de gerenciamento de lojas
-router.get('/stores', getAllStores);
-router.get('/stores/:id', getStore);
-router.post('/stores', createStore);
-router.put('/stores/:id', updateStore);
-router.delete('/stores/:id', deleteStore);
+// 🔒 Rotas de gerenciamento de lojas - SUPERVISOR e ADMIN
+router.get('/stores', requireSupervisor, getAllStores);
+router.get('/stores/:id', requireSupervisor, getStore);
+router.post('/stores', requireSupervisor, createStore);
+router.put('/stores/:id', requireSupervisor, updateStore);
+router.delete('/stores/:id', requireSupervisor, deleteStore);
 
 export default router;
 
