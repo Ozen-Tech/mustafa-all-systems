@@ -104,6 +104,30 @@ export interface PresignedUrlOptions {
 }
 
 /**
+ * Obtém o bucket correto, tentando diferentes formatos se necessário
+ */
+function getBucket(): any {
+  if (!storage) return null;
+  
+  // Tentar usar o bucket name explícito primeiro
+  if (bucketName) {
+    try {
+      return storage.bucket(bucketName);
+    } catch (e) {
+      console.warn(`⚠️  Erro ao usar bucket explícito "${bucketName}", tentando bucket padrão...`);
+    }
+  }
+  
+  // Fallback: usar bucket padrão da inicialização
+  try {
+    return storage.bucket();
+  } catch (e) {
+    console.error('❌ Erro ao obter bucket padrão:', e);
+    return null;
+  }
+}
+
+/**
  * Gera URL de upload para Firebase Storage
  * Retorna uma URL que pode ser usada para upload direto
  */
@@ -111,7 +135,7 @@ export async function getPresignedUploadUrl(
   key: string,
   options: PresignedUrlOptions
 ): Promise<string> {
-  if (!storage || !hasFirebaseCredentials || !bucketName) {
+  if (!storage || !hasFirebaseCredentials) {
     // Retornar URL mockada para desenvolvimento
     const mockUrl = `https://mock-storage.local/photos/${key}?upload=true`;
     console.error(`❌ [Firebase Mock] Firebase não configurado! Retornando URL mockada para key: ${key}`);
@@ -119,9 +143,12 @@ export async function getPresignedUploadUrl(
     return mockUrl;
   }
 
+  const bucket = getBucket();
+  if (!bucket) {
+    throw new Error('Não foi possível obter o bucket do Firebase Storage');
+  }
+
   try {
-    // Usar bucket específico ao invés de default
-    const bucket = storage.bucket(bucketName);
     const file = bucket.file(key);
 
     console.log(`📸 Gerando presigned URL para upload: ${key}`);
@@ -159,6 +186,9 @@ export async function getPresignedUploadUrl(
       console.error('8. Aguarde 5-10 minutos para propagação');
       console.error('9. Reinicie o serviço no Render');
       console.error('');
+      console.error('💡 DICA: Verifique também se FIREBASE_STORAGE_BUCKET está correto no Render');
+      console.error('   Deve ser: mustafabucket.firebasestorage.app');
+      console.error('');
       console.error('📖 Veja mais detalhes em: docs/SOLUCAO_ERRO_412_FIREBASE.md');
       console.error('');
     }
@@ -171,14 +201,18 @@ export async function getPresignedUploadUrl(
  * Gera URL de download para Firebase Storage
  */
 export async function getPresignedDownloadUrl(key: string, expiresIn: number = 3600): Promise<string> {
-  if (!storage || !hasFirebaseCredentials || !bucketName) {
+  if (!storage || !hasFirebaseCredentials) {
     const mockUrl = `https://mock-storage.local/photos/${key}?download=true`;
     console.log(`📸 [Firebase Mock] Generated mock download URL for key: ${key}`);
     return mockUrl;
   }
 
+  const bucket = getBucket();
+  if (!bucket) {
+    throw new Error('Não foi possível obter o bucket do Firebase Storage');
+  }
+
   try {
-    const bucket = storage.bucket(bucketName);
     const file = bucket.file(key);
 
     // Criar URL assinada para download
@@ -222,12 +256,17 @@ export function getPublicUrl(key: string): string {
  * Gera URL assinada para download (fallback quando pública não funciona)
  */
 export async function getSignedUrlForPhoto(key: string): Promise<string> {
-  if (!storage || !hasFirebaseCredentials || !bucketName) {
+  if (!storage || !hasFirebaseCredentials) {
     return getPublicUrl(key); // Fallback para URL pública se Firebase não configurado
   }
 
+  const bucket = getBucket();
+  if (!bucket) {
+    console.warn('⚠️  Não foi possível obter bucket, usando URL pública');
+    return getPublicUrl(key);
+  }
+
   try {
-    const bucket = storage.bucket(bucketName);
     const file = bucket.file(key);
     
     // Verificar se arquivo existe
@@ -276,13 +315,17 @@ export function generatePhotoKey(visitId: string, type: string, extension: strin
  * Deleta foto do Firebase Storage
  */
 export async function deletePhoto(key: string): Promise<void> {
-  if (!storage || !hasFirebaseCredentials || !bucketName) {
+  if (!storage || !hasFirebaseCredentials) {
     console.log(`📸 [Firebase Mock] Would delete photo: ${key} (mock mode)`);
     return;
   }
 
+  const bucket = getBucket();
+  if (!bucket) {
+    throw new Error('Não foi possível obter o bucket do Firebase Storage');
+  }
+
   try {
-    const bucket = storage.bucket(bucketName);
     const file = bucket.file(key);
     await file.delete();
     console.log(`✅ Foto deletada: ${key}`);
