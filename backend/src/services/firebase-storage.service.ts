@@ -82,7 +82,25 @@ export async function getPresignedUploadUrl(
   } catch (error: any) {
     console.error('❌ Erro ao gerar presigned URL do Firebase:', error);
     console.error('❌ Mensagem:', error.message);
+    console.error('❌ Código:', error.code);
     console.error('❌ Stack:', error.stack);
+    
+    // Tratamento específico para erro 412 (permissões)
+    if (error.code === 412 || error.message?.includes('412') || error.message?.includes('missing necessary permissions')) {
+      console.error('');
+      console.error('🚨 ERRO 412: Conta de serviço sem permissões necessárias!');
+      console.error('');
+      console.error('📋 SOLUÇÃO:');
+      console.error('1. Acesse: https://console.cloud.google.com/');
+      console.error('2. Vá em IAM & Admin > Service Accounts');
+      console.error(`3. Encontre: ${process.env.FIREBASE_CLIENT_EMAIL}`);
+      console.error('4. Adicione a role: Storage Admin');
+      console.error('5. Aguarde 5-10 minutos e tente novamente');
+      console.error('');
+      console.error('📖 Veja mais detalhes em: docs/SOLUCAO_ERRO_412_FIREBASE.md');
+      console.error('');
+    }
+    
     throw error;
   }
 }
@@ -108,8 +126,19 @@ export async function getPresignedDownloadUrl(key: string, expiresIn: number = 3
     });
 
     return url;
-  } catch (error) {
-    console.error('Erro ao gerar download URL do Firebase:', error);
+  } catch (error: any) {
+    console.error('❌ Erro ao gerar download URL do Firebase:', error);
+    console.error('❌ Mensagem:', error.message);
+    console.error('❌ Código:', error.code);
+    
+    // Tratamento específico para erro 412 (permissões)
+    if (error.code === 412 || error.message?.includes('412') || error.message?.includes('missing necessary permissions')) {
+      console.error('');
+      console.error('🚨 ERRO 412: Conta de serviço sem permissões necessárias!');
+      console.error('📖 Veja: docs/SOLUCAO_ERRO_412_FIREBASE.md');
+      console.error('');
+    }
+    
     throw error;
   }
 }
@@ -156,6 +185,17 @@ export async function getSignedUrlForPhoto(key: string): Promise<string> {
     return url;
   } catch (error: any) {
     console.error(`❌ Erro ao gerar URL assinada para ${key}:`, error);
+    console.error('❌ Código:', error.code);
+    console.error('❌ Mensagem:', error.message);
+    
+    // Tratamento específico para erro 412 (permissões)
+    if (error.code === 412 || error.message?.includes('412') || error.message?.includes('missing necessary permissions')) {
+      console.error('');
+      console.error('🚨 ERRO 412: Conta de serviço sem permissões necessárias!');
+      console.error('📖 Veja: docs/SOLUCAO_ERRO_412_FIREBASE.md');
+      console.error('');
+    }
+    
     // Fallback para URL pública em caso de erro
     return getPublicUrl(key);
   }
