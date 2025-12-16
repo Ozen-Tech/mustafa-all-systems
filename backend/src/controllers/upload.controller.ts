@@ -34,11 +34,24 @@ export async function getPresignedUrl(req: AuthRequest, res: Response) {
       key,
       url: finalUrl,
     });
-  } catch (error) {
+  } catch (error: any) {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ message: 'Validation error', errors: error.errors });
     }
+    
     console.error('Presigned URL error:', error);
+    
+    // Tratamento específico para erro 412 (permissões do Firebase)
+    if (error.code === 412 || error.message?.includes('412') || error.message?.includes('missing necessary permissions')) {
+      return res.status(412).json({ 
+        error: {
+          code: 412,
+          message: 'A required service account is missing necessary permissions. Please resolve by visiting the Storage page of the Firebase Console and re-linking your Firebase bucket or see this FAQ for more info: https://firebase.google.com/support/faq#storage-accounts. If you recently made changes to your service account, please wait a few minutes for the changes to propagate through our systems and try again.',
+          details: 'A conta de serviço do Firebase não tem as permissões necessárias. Veja docs/SOLUCAO_ERRO_412_FIREBASE.md para mais detalhes.'
+        }
+      });
+    }
+    
     res.status(500).json({ message: 'Internal server error' });
   }
 }
