@@ -254,6 +254,7 @@ export function getPublicUrl(key: string): string {
 
 /**
  * Gera URL assinada para download (fallback quando pública não funciona)
+ * Tenta gerar URL assinada, se falhar por erro 412, retorna URL pública
  */
 export async function getSignedUrlForPhoto(key: string): Promise<string> {
   if (!storage || !hasFirebaseCredentials) {
@@ -293,11 +294,22 @@ export async function getSignedUrlForPhoto(key: string): Promise<string> {
     if (error.code === 412 || error.code === 403 || error.message?.includes('412') || error.message?.includes('403') || error.message?.includes('missing necessary permissions')) {
       console.error('');
       console.error('🚨 ERRO 412/403: Conta de serviço sem permissões necessárias!');
+      console.error('⚠️  Usando URL pública como fallback, mas uploads NÃO funcionarão!');
+      console.error('');
+      console.error('📋 SOLUÇÃO URGENTE:');
+      console.error('1. Acesse: https://console.cloud.google.com/');
+      console.error('2. Selecione o projeto: mustafabucket');
+      console.error('3. Vá em IAM & Admin > Service Accounts');
+      console.error(`4. Encontre: ${process.env.FIREBASE_CLIENT_EMAIL}`);
+      console.error('5. Adicione a role: Storage Admin');
+      console.error('6. Aguarde 5-10 minutos e reinicie o serviço');
+      console.error('');
       console.error('📖 Veja: docs/SOLUCAO_ERRO_412_FIREBASE.md');
       console.error('');
     }
     
     // Fallback para URL pública em caso de erro
+    // Mesmo com erro 412, a URL pública pode funcionar se as regras permitirem
     return getPublicUrl(key);
   }
 }
