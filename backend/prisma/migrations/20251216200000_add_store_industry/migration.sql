@@ -28,3 +28,4 @@ ALTER TABLE "StoreIndustry" ADD CONSTRAINT "StoreIndustry_storeId_fkey" FOREIGN 
 -- AddForeignKey
 ALTER TABLE "StoreIndustry" ADD CONSTRAINT "StoreIndustry_industryId_fkey" FOREIGN KEY ("industryId") REFERENCES "Industry"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
+

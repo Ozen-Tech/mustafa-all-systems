@@ -24,3 +24,4 @@ router.delete('/:storeId/:industryId', authenticate, requireAdmin, removeIndustr
 
 export default router;
 
+

@@ -267,3 +267,4 @@ export async function getAllStoreIndustries(req: AuthRequest, res: Response) {
   }
 }
 
+
