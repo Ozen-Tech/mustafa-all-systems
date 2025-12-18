@@ -54,19 +54,37 @@ export default function ActiveVisitScreen({ route }: any) {
   const [industries, setIndustries] = useState<any[]>([]);
   const [showIndustryModal, setShowIndustryModal] = useState(false);
   const [photoForIndustrySelection, setPhotoForIndustrySelection] = useState<number | null>(null);
+  const [tempPhoto, setTempPhoto] = useState<string | null>(null); // Foto temporária aguardando seleção de indústria
 
   useEffect(() => {
     loadCurrentVisit();
     restorePendingPhotos();
-    loadIndustries();
   }, []);
 
+  // Carregar indústrias quando a visita estiver disponível
+  useEffect(() => {
+    if (visit?.store?.id) {
+      loadIndustries();
+    }
+  }, [visit?.store?.id]);
+
   async function loadIndustries() {
+    if (!visit?.store?.id) return;
+    
     try {
-      const assignments = await industryService.getPromoterIndustries();
-      setIndustries(assignments.map(a => a.industry));
+      // Buscar indústrias obrigatórias da LOJA atual
+      const storeIndustries = await industryService.getStoreIndustries(visit.store.id);
+      setIndustries(storeIndustries);
+      console.log(`📦 [ActiveVisit] Carregadas ${storeIndustries.length} indústrias da loja`);
     } catch (error) {
-      console.error('Error loading industries:', error);
+      console.error('Error loading store industries:', error);
+      // Se falhar, tentar buscar indústrias do promotor como fallback
+      try {
+        const assignments = await industryService.getPromoterIndustries();
+        setIndustries(assignments.map(a => a.industry));
+      } catch (e) {
+        console.error('Error loading fallback industries:', e);
+      }
     }
   }
 
@@ -123,27 +141,29 @@ export default function ActiveVisitScreen({ route }: any) {
 
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsMultipleSelection: true,
+        allowsMultipleSelection: false, // Apenas uma foto por vez para garantir seleção de indústria
         quality: 0.8,
       });
 
-      if (!result.canceled && result.assets) {
-        const newPhotos = result.assets.map<VisitPhoto>((asset) => ({
-          uri: asset.uri,
-          type: 'OTHER',
-        }));
-        setPhotos((prev) => {
-          const updated = [...prev, ...newPhotos];
-          // Salvar fotos pendentes
-          if (visit?.id) {
-            savePendingPhotosToStorage(visit.id, updated);
-          }
-          return updated;
-        });
-        // Se houver apenas uma foto e houver indústrias, mostrar modal de seleção
-        if (result.assets.length === 1 && industries.length > 0) {
-          setPhotoForIndustrySelection(photos.length);
+      if (!result.canceled && result.assets[0]) {
+        // Se houver indústrias configuradas, exigir seleção
+        if (industries.length > 0) {
+          // Guardar foto temporariamente e abrir modal
+          setTempPhoto(result.assets[0].uri);
           setShowIndustryModal(true);
+        } else {
+          // Sem indústrias configuradas, adicionar direto
+          const newPhoto: VisitPhoto = {
+            uri: result.assets[0].uri,
+            type: 'OTHER',
+          };
+          setPhotos((prev) => {
+            const updated = [...prev, newPhoto];
+            if (visit?.id) {
+              savePendingPhotosToStorage(visit.id, updated);
+            }
+            return updated;
+          });
         }
       }
     } catch (error) {
@@ -186,28 +206,75 @@ export default function ActiveVisitScreen({ route }: any) {
       });
 
       if (!result.canceled && result.assets[0]) {
-        const newPhoto: VisitPhoto = {
-          uri: result.assets[0].uri,
-          type: 'OTHER',
-        };
-        setPhotos((prev) => {
-          const updated = [...prev, newPhoto];
-          // Salvar fotos pendentes
-          if (visit?.id) {
-            savePendingPhotosToStorage(visit.id, updated);
-          }
-          return updated;
-        });
-        // Se houver indústrias, mostrar modal de seleção
+        // Se houver indústrias configuradas, exigir seleção
         if (industries.length > 0) {
-          setPhotoForIndustrySelection(photos.length);
+          // Guardar foto temporariamente e abrir modal
+          setTempPhoto(result.assets[0].uri);
           setShowIndustryModal(true);
+        } else {
+          // Sem indústrias configuradas, adicionar direto
+          const newPhoto: VisitPhoto = {
+            uri: result.assets[0].uri,
+            type: 'OTHER',
+          };
+          setPhotos((prev) => {
+            const updated = [...prev, newPhoto];
+            if (visit?.id) {
+              savePendingPhotosToStorage(visit.id, updated);
+            }
+            return updated;
+          });
         }
       }
     } catch (error) {
       console.error('Erro ao capturar foto:', error);
       Alert.alert('Erro', 'Não foi possível capturar a foto');
     }
+  }
+
+  // Função para selecionar indústria para a foto temporária
+  function handleIndustrySelect(industryId: string) {
+    if (tempPhoto) {
+      const newPhoto: VisitPhoto = {
+        uri: tempPhoto,
+        type: 'OTHER',
+        industryId: industryId,
+      };
+      setPhotos((prev) => {
+        const updated = [...prev, newPhoto];
+        if (visit?.id) {
+          savePendingPhotosToStorage(visit.id, updated);
+        }
+        return updated;
+      });
+      setTempPhoto(null);
+    }
+    setShowIndustryModal(false);
+    setPhotoForIndustrySelection(null);
+  }
+
+  // Função para cancelar seleção de indústria (descarta a foto)
+  function handleCancelIndustrySelection() {
+    setTempPhoto(null);
+    setShowIndustryModal(false);
+    setPhotoForIndustrySelection(null);
+  }
+
+  // Função para obter o código da indústria pelo ID
+  function getIndustryById(industryId: string) {
+    return industries.find(i => i.id === industryId);
+  }
+
+  // Cores para badges de indústria (baseado no código)
+  function getIndustryColor(code: string): string {
+    const colors: Record<string, string> = {
+      'A': '#FF6B6B', 'B': '#4ECDC4', 'C': '#45B7D1', 'D': '#96CEB4',
+      'E': '#FFEAA7', 'F': '#DDA0DD', 'G': '#98D8C8', 'H': '#F7DC6F',
+      'I': '#BB8FCE', 'J': '#85C1E9', 'K': '#F8B500', 'L': '#00CED1',
+      'M': '#FF69B4', 'N': '#32CD32', 'O': '#FFD700', 'P': '#FF4500',
+    };
+    const firstChar = (code || 'A').charAt(0).toUpperCase();
+    return colors[firstChar] || '#6C63FF';
   }
 
   async function uploadPhotos() {
@@ -323,7 +390,7 @@ export default function ActiveVisitScreen({ route }: any) {
                   const visitData = await visitService.getCurrentVisit();
                   const uploadedPhoto = visitData.visit.photos.find((p: any) => p.url === url);
                   
-                  if (uploadedPhoto) {
+                  if (uploadedPhoto && photo.industryId) {
                     await industryService.associatePhotoToIndustry({
                       photoId: uploadedPhoto.id,
                       industryId: photo.industryId,
@@ -474,6 +541,7 @@ export default function ActiveVisitScreen({ route }: any) {
               return null;
             }
             const isPending = !!photo.uri && !photo.url;
+            const industry = photo.industryId ? getIndustryById(photo.industryId) : null;
             return (
               <TouchableOpacity
                 key={photo.id ?? sourceUri ?? index}
@@ -483,8 +551,14 @@ export default function ActiveVisitScreen({ route }: any) {
               >
                 <Image
                   source={{ uri: sourceUri }}
-                  style={styles.photoThumbnail}
+                  style={styles.photoThumbnail as any}
                 />
+                {/* Badge da indústria */}
+                {industry && (
+                  <View style={[styles.industryBadgeSmall, { backgroundColor: getIndustryColor(industry.code) }]}>
+                    <Text style={styles.industryBadgeSmallText}>{industry.code}</Text>
+                  </View>
+                )}
                 {isPending && (
                   <View style={styles.pendingBadge}>
                     <Text style={styles.pendingBadgeText}>Pendente</Text>
@@ -579,7 +653,7 @@ export default function ActiveVisitScreen({ route }: any) {
               </TouchableOpacity>
               <Image
                 source={{ uri: photos[selectedPhotoIndex].uri || photos[selectedPhotoIndex].url }}
-                style={styles.fullscreenImage}
+                style={styles.fullscreenImage as any}
                 resizeMode="contain"
               />
             </View>
@@ -587,50 +661,46 @@ export default function ActiveVisitScreen({ route }: any) {
         </View>
       )}
 
-      {/* Modal de Seleção de Indústria */}
-      {showIndustryModal && photoForIndustrySelection !== null && (
+      {/* Modal de Seleção de Indústria com Preview */}
+      {showIndustryModal && tempPhoto && (
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Selecione a Indústria</Text>
+            
+            {/* Preview da foto */}
+            <View style={styles.photoPreviewContainer}>
+              <Image source={{ uri: tempPhoto }} style={styles.photoPreview as any} />
+            </View>
+            
             <Text style={styles.modalSubtitle}>
               Para qual indústria é esta foto?
             </Text>
+            
             <ScrollView style={styles.industriesList}>
               {industries.map((industry) => (
                 <TouchableOpacity
                   key={industry.id}
-                  style={[
-                    styles.industryOption,
-                    photos[photoForIndustrySelection]?.industryId === industry.id && styles.industryOptionSelected,
-                  ]}
-                  onPress={() => {
-                    setPhotos((prev) => {
-                      const updated = [...prev];
-                      if (updated[photoForIndustrySelection]) {
-                        updated[photoForIndustrySelection] = {
-                          ...updated[photoForIndustrySelection],
-                          industryId: industry.id,
-                        };
-                      }
-                      return updated;
-                    });
-                    setShowIndustryModal(false);
-                    setPhotoForIndustrySelection(null);
-                  }}
+                  style={styles.industryOption}
+                  onPress={() => handleIndustrySelect(industry.id)}
                 >
-                  <Text style={styles.industryOptionText}>{industry.name}</Text>
-                  <Text style={styles.industryOptionCode}>{industry.code}</Text>
+                  <View style={[styles.industryBadge, { backgroundColor: getIndustryColor(industry.code) }]}>
+                    <Text style={styles.industryBadgeText}>{industry.code}</Text>
+                  </View>
+                  <View style={styles.industryTextContainer}>
+                    <Text style={styles.industryOptionText}>{industry.name}</Text>
+                    {industry.description && (
+                      <Text style={styles.industryDescription}>{industry.description}</Text>
+                    )}
+                  </View>
                 </TouchableOpacity>
               ))}
             </ScrollView>
+            
             <TouchableOpacity
               style={styles.modalCancelButton}
-              onPress={() => {
-                setShowIndustryModal(false);
-                setPhotoForIndustrySelection(null);
-              }}
+              onPress={handleCancelIndustrySelection}
             >
-              <Text style={styles.modalCancelText}>Cancelar</Text>
+              <Text style={styles.modalCancelText}>Cancelar (descartar foto)</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -882,7 +952,9 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   industryOption: {
-    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
     backgroundColor: colors.dark.background,
     borderRadius: 8,
     marginBottom: 8,
@@ -890,14 +962,13 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   industryOptionSelected: {
-    borderColor: colors.primary,
-    backgroundColor: colors.primary + '20',
+    borderColor: colors.primary[600],
+    backgroundColor: colors.primary[600] + '20',
   },
   industryOptionText: {
     fontSize: 16,
     fontWeight: '600',
     color: colors.text.primary,
-    marginBottom: 4,
   },
   industryOptionCode: {
     fontSize: 12,
@@ -908,79 +979,63 @@ const styles = StyleSheet.create({
     padding: 12,
     alignItems: 'center',
     borderRadius: 8,
-    backgroundColor: colors.dark.background,
+    backgroundColor: colors.error + '30',
+    borderWidth: 1,
+    borderColor: colors.error,
   },
   modalCancelText: {
     fontSize: 16,
-    color: colors.text.primary,
+    color: colors.error,
     fontWeight: '600',
   },
-  modalOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+  // Estilos para preview da foto no modal
+  photoPreviewContainer: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  photoPreview: {
+    width: 150,
+    height: 150,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: colors.dark.border,
+  },
+  // Estilos para badges de indústria
+  industryBadge: {
+    width: 48,
+    height: 48,
+    borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 1000,
+    marginRight: 12,
   },
-  modalContent: {
-    backgroundColor: colors.dark.card,
-    borderRadius: 12,
-    padding: 20,
-    width: '90%',
-    maxHeight: '80%',
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: colors.text.primary,
-    marginBottom: 8,
-  },
-  modalSubtitle: {
+  industryBadgeText: {
     fontSize: 14,
-    color: colors.text.secondary,
-    marginBottom: 16,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
   },
-  industriesList: {
-    maxHeight: 300,
-    marginBottom: 16,
+  industryTextContainer: {
+    flex: 1,
   },
-  industryOption: {
-    padding: 16,
-    backgroundColor: colors.dark.background,
-    borderRadius: 8,
-    marginBottom: 8,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  industryOptionSelected: {
-    borderColor: colors.primary,
-    backgroundColor: colors.primary + '20',
-  },
-  industryOptionText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: colors.text.primary,
-    marginBottom: 4,
-  },
-  industryOptionCode: {
+  industryDescription: {
     fontSize: 12,
-    color: colors.text.secondary,
-    fontFamily: 'monospace',
+    color: colors.text.tertiary,
+    marginTop: 2,
   },
-  modalCancelButton: {
-    padding: 12,
+  industryBadgeSmall: {
+    position: 'absolute',
+    bottom: 4,
+    left: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    minWidth: 28,
     alignItems: 'center',
-    borderRadius: 8,
-    backgroundColor: colors.dark.background,
   },
-  modalCancelText: {
-    fontSize: 16,
-    color: colors.text.primary,
-    fontWeight: '600',
+  industryBadgeSmallText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
   },
 });
 

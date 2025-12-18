@@ -11,7 +11,9 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "seed": "tsx src/scripts/seed.ts",
-    "create-admin": "tsx src/scripts/create-admin.ts"
+    "create-admin": "tsx src/scripts/create-admin.ts",
+    "test:firebase": "tsx src/scripts/test-firebase.ts",
+    "test:firebase:direct": "tsx src/scripts/test-firebase-direct.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.7.1",

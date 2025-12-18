@@ -168,5 +168,32 @@ export const supervisorService = {
     const response = await apiClient.delete(`/supervisors/stores/${storeId}`);
     return response.data;
   },
+
+  // Rotas de indústrias por loja
+  async getStoreIndustries(storeId: string) {
+    const response = await apiClient.get(`/store-industries/${storeId}?isActive=true`);
+    return response.data;
+  },
+
+  async updateStoreIndustries(storeId: string, industryIds: string[]) {
+    const response = await apiClient.put(`/store-industries/${storeId}`, {
+      industryIds,
+    });
+    return response.data;
+  },
+
+  async getAllStoreIndustries() {
+    const response = await apiClient.get('/store-industries');
+    return response.data;
+  },
+
+  // Rotas de pendências de indústrias
+  async getPendingIndustries(view: 'store' | 'promoter' = 'store', date?: string) {
+    const params = new URLSearchParams();
+    params.append('view', view);
+    if (date) params.append('date', date);
+    const response = await apiClient.get(`/supervisors/pending-industries?${params.toString()}`);
+    return response.data;
+  },
 };
 

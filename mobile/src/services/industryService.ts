@@ -1,4 +1,25 @@
-import { apiClient, apiConfig } from './api';
+import axios from 'axios';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import apiConfig from '../config/api';
+
+const apiClient = axios.create({
+  baseURL: apiConfig.BASE_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Interceptor para adicionar token
+apiClient.interceptors.request.use(
+  async (config) => {
+    const token = await AsyncStorage.getItem('accessToken');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
 
 export interface Industry {
   id: string;
@@ -17,10 +38,31 @@ export interface IndustryAssignment {
   };
 }
 
+export interface CoverageItem {
+  industry: Industry;
+  covered: boolean;
+  photoCount: number;
+}
+
+export interface CoverageResponse {
+  visitId: string;
+  storeId: string;
+  storeName: string;
+  coverage: CoverageItem[];
+  pending: CoverageItem[];
+  covered: CoverageItem[];
+  isComplete: boolean;
+  totalRequired: number;
+  totalCovered: number;
+  percentComplete: number;
+}
+
 export const industryService = {
+  /**
+   * Buscar indústrias atribuídas ao promotor logado
+   */
   async getPromoterIndustries(promoterId?: string): Promise<IndustryAssignment[]> {
     try {
-      // Se não tiver promoterId, usar o endpoint que busca pelo token do usuário logado
       const endpoint = promoterId 
         ? `/industry-assignments/promoter/${promoterId}`
         : '/industry-assignments/promoter/me';
@@ -32,6 +74,36 @@ export const industryService = {
     }
   },
 
+  /**
+   * Buscar indústrias obrigatórias de uma loja específica
+   */
+  async getStoreIndustries(storeId: string): Promise<Industry[]> {
+    try {
+      const response = await apiClient.get(`/store-industries/${storeId}?isActive=true`);
+      return response.data.industries || [];
+    } catch (error) {
+      console.error('Error fetching store industries:', error);
+      // Retornar array vazio se não houver indústrias configuradas
+      return [];
+    }
+  },
+
+  /**
+   * Verificar cobertura de indústrias em uma visita
+   */
+  async getVisitCoverage(visitId: string): Promise<CoverageResponse> {
+    try {
+      const response = await apiClient.get(`/promoters/visits/${visitId}/coverage`);
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching visit coverage:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Associar foto a uma indústria
+   */
   async associatePhotoToIndustry(data: {
     photoId: string;
     industryId: string;

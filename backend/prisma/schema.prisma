@@ -58,6 +58,7 @@ model Store {
   industryAssignments   IndustryAssignment[]
   photoIndustries       PhotoIndustry[]
   informationDistributions InformationDistribution[]
+  storeIndustries       StoreIndustry[]
 }
 
 model Visit {
@@ -203,6 +204,7 @@ model Industry {
   industryAssignments IndustryAssignment[]
   informationDistributions InformationDistribution[]
   whatsappReports     WhatsAppReport[]
+  storeIndustries     StoreIndustry[]
 
   @@index([code])
   @@index([isActive])
@@ -343,5 +345,23 @@ model WhatsAppReport {
   @@index([industryId])
   @@index([status])
   @@index([createdAt])
+}
+
+model StoreIndustry {
+  id         String   @id @default(uuid())
+  storeId    String
+  industryId String
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  store    Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  industry Industry @relation(fields: [industryId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, industryId])
+  @@index([storeId])
+  @@index([industryId])
+  @@index([isActive])
 }
 

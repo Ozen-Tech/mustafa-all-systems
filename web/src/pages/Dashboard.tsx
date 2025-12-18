@@ -24,6 +24,7 @@ import CompliancePanel from '../components/dashboard/CompliancePanel';
 import AnalyticsPanel from '../components/dashboard/AnalyticsPanel';
 import BulkActions from '../components/dashboard/BulkActions';
 import ExportTools from '../components/dashboard/ExportTools';
+import PendingIndustriesWidget from '../components/PendingIndustriesWidget';
 
 // Ícones SVG
 const AlertIcon = ({ className = "w-6 h-6" }: { className?: string }) => (
@@ -454,6 +455,11 @@ export default function Dashboard() {
         <div>
           {/* Métricas em Tempo Real */}
           <RealtimeMetrics refreshInterval={10} />
+
+          {/* Pendências de Indústrias */}
+          <div className="mt-6">
+            <PendingIndustriesWidget />
+          </div>
 
         {/* Filtros Avançados */}
         <AdvancedFilters

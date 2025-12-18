@@ -7,6 +7,7 @@ import {
   getMissingPhotos,
   setPhotoQuota,
   exportReport,
+  getPendingIndustries,
 } from '../controllers/supervisor.controller';
 import { getPromoters } from '../controllers/promoters.controller';
 import { downloadExport, getExportStatus } from '../controllers/export.controller';
@@ -40,6 +41,7 @@ router.get('/promoters/:id/performance', requireSupervisor, getPromoterPerforman
 router.get('/promoters/:id/visits', requireSupervisor, getPromoterVisits);
 router.get('/promoters/:id/route', requireSupervisor, getPromoterRoute); // Rota histórica (visitas do dia)
 router.get('/missing-photos', requireSupervisor, getMissingPhotos);
+router.get('/pending-industries', requireSupervisor, getPendingIndustries);
 router.put('/promoters/:id/photo-quota', requireSupervisor, setPhotoQuota);
 router.post('/export/report', requireSupervisor, exportReport);
 router.get('/export/status/:id', requireSupervisor, getExportStatus);

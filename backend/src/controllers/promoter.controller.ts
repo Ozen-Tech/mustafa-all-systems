@@ -545,3 +545,87 @@ export async function getDailySummary(req: AuthRequest, res: Response) {
   }
 }
 
+/**
+ * Verificar cobertura de indústrias em uma visita
+ * GET /promoters/visits/:visitId/coverage
+ */
+export async function getVisitCoverage(req: AuthRequest, res: Response) {
+  try {
+    const { visitId } = req.params;
+    const promoterId = req.userId;
+
+    // Buscar visita com loja e indústrias da loja
+    const visit = await prisma.visit.findUnique({
+      where: { id: visitId },
+      include: {
+        store: {
+          include: {
+            storeIndustries: {
+              where: { isActive: true },
+              include: { industry: true },
+            },
+          },
+        },
+        promoter: {
+          select: { id: true, name: true },
+        },
+      },
+    });
+
+    if (!visit) {
+      return res.status(404).json({ message: 'Visita não encontrada' });
+    }
+
+    // Verificar se a visita pertence ao promotor (se não for admin/supervisor)
+    if (promoterId && visit.promoterId !== promoterId) {
+      // Verificar se é admin ou supervisor
+      const user = await prisma.user.findUnique({
+        where: { id: promoterId },
+        select: { role: true },
+      });
+      
+      if (user?.role === 'PROMOTER') {
+        return res.status(403).json({ message: 'Acesso não autorizado' });
+      }
+    }
+
+    // Buscar fotos da visita com indústria (via PhotoIndustry)
+    const photosWithIndustry = await prisma.photoIndustry.findMany({
+      where: { visitId },
+      select: { industryId: true },
+    });
+
+    const coveredIds = new Set(photosWithIndustry.map(p => p.industryId));
+
+    // Calcular cobertura
+    const requiredIndustries = visit.store.storeIndustries;
+    const coverage = requiredIndustries.map(si => ({
+      industry: si.industry,
+      covered: coveredIds.has(si.industryId),
+      photoCount: photosWithIndustry.filter(p => p.industryId === si.industryId).length,
+    }));
+
+    const pending = coverage.filter(c => !c.covered);
+    const covered = coverage.filter(c => c.covered);
+
+    res.json({
+      visitId: visit.id,
+      storeId: visit.storeId,
+      storeName: visit.store.name,
+      promoter: visit.promoter,
+      coverage,
+      pending,
+      covered,
+      isComplete: pending.length === 0,
+      totalRequired: requiredIndustries.length,
+      totalCovered: covered.length,
+      percentComplete: requiredIndustries.length > 0 
+        ? Math.round((covered.length / requiredIndustries.length) * 100) 
+        : 100,
+    });
+  } catch (error) {
+    console.error('Get visit coverage error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+}
+

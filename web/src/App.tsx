@@ -10,6 +10,7 @@ import Settings from './pages/Settings';
 import StoresManagement from './pages/StoresManagement';
 import IndustriesManagement from './pages/IndustriesManagement';
 import IndustryCoverage from './pages/IndustryCoverage';
+import StoreIndustriesConfig from './pages/StoreIndustriesConfig';
 import Admin from './pages/Admin';
 import Layout from './components/Layout';
 
@@ -134,6 +135,14 @@ function AppRoutes() {
           element={
             <AdminRoute>
               <IndustryCoverage />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="stores/industries"
+          element={
+            <AdminRoute>
+              <StoreIndustriesConfig />
             </AdminRoute>
           }
         />

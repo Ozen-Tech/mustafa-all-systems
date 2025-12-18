@@ -624,3 +624,186 @@ export async function exportReport(req: AuthRequest, res: Response) {
   }
 }
 
+/**
+ * Dashboard de pendências de indústrias
+ * GET /supervisors/pending-industries
+ * Query params: ?view=store | ?view=promoter | ?date=2024-12-16
+ */
+export async function getPendingIndustries(req: AuthRequest, res: Response) {
+  try {
+    const { view = 'store', date } = req.query;
+
+    // Configurar período (hoje por padrão)
+    const targetDate = date ? new Date(date as string) : new Date();
+    const startOfDay = new Date(targetDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(targetDate);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    if (view === 'store') {
+      // Visão por Loja: quais lojas têm indústrias não cobertas
+      const stores = await prisma.store.findMany({
+        include: {
+          storeIndustries: {
+            where: { isActive: true },
+            include: { industry: true },
+          },
+          visits: {
+            where: {
+              checkInAt: {
+                gte: startOfDay,
+                lte: endOfDay,
+              },
+            },
+            include: {
+              photoIndustries: true,
+              promoter: {
+                select: { id: true, name: true },
+              },
+            },
+          },
+        },
+      });
+
+      const pendingByStore = stores
+        .filter(s => s.storeIndustries.length > 0)
+        .map(store => {
+          // Coletar todas as indústrias cobertas em todas as visitas do dia
+          const allPhotoIndustries = store.visits.flatMap(v => v.photoIndustries);
+          const coveredIds = new Set(allPhotoIndustries.map(pi => pi.industryId));
+          
+          const pendingIndustries = store.storeIndustries
+            .filter(si => !coveredIds.has(si.industryId))
+            .map(si => si.industry);
+
+          const coveredIndustries = store.storeIndustries
+            .filter(si => coveredIds.has(si.industryId))
+            .map(si => si.industry);
+
+          // Última visita do dia
+          const lastVisit = store.visits.length > 0
+            ? store.visits.sort((a, b) => 
+                new Date(b.checkInAt).getTime() - new Date(a.checkInAt).getTime()
+              )[0]
+            : null;
+
+          return {
+            store: { id: store.id, name: store.name, address: store.address },
+            totalRequired: store.storeIndustries.length,
+            totalCovered: coveredIndustries.length,
+            pendingIndustries,
+            coveredIndustries,
+            lastVisit: lastVisit ? {
+              id: lastVisit.id,
+              checkInAt: lastVisit.checkInAt,
+              promoter: lastVisit.promoter,
+            } : null,
+            visitsCount: store.visits.length,
+          };
+        })
+        .filter(s => s.pendingIndustries.length > 0)
+        .sort((a, b) => b.pendingIndustries.length - a.pendingIndustries.length);
+
+      // Estatísticas gerais
+      const totalStoresWithRequirements = stores.filter(s => s.storeIndustries.length > 0).length;
+      const totalStoresWithPending = pendingByStore.length;
+      const totalStoresComplete = totalStoresWithRequirements - totalStoresWithPending;
+
+      res.json({
+        view: 'store',
+        date: targetDate.toISOString().split('T')[0],
+        stats: {
+          totalStoresWithRequirements,
+          totalStoresWithPending,
+          totalStoresComplete,
+          complianceRate: totalStoresWithRequirements > 0
+            ? Math.round((totalStoresComplete / totalStoresWithRequirements) * 100)
+            : 100,
+        },
+        pending: pendingByStore,
+      });
+
+    } else {
+      // Visão por Promotor: quais promotores não cobriram indústrias
+      const visits = await prisma.visit.findMany({
+        where: {
+          checkInAt: {
+            gte: startOfDay,
+            lte: endOfDay,
+          },
+        },
+        include: {
+          promoter: { select: { id: true, name: true, email: true } },
+          store: {
+            include: {
+              storeIndustries: {
+                where: { isActive: true },
+                include: { industry: true },
+              },
+            },
+          },
+          photoIndustries: true,
+        },
+      });
+
+      const pendingByPromoter = visits
+        .filter(v => v.store.storeIndustries.length > 0)
+        .map(visit => {
+          const coveredIds = new Set(visit.photoIndustries.map(pi => pi.industryId));
+          
+          const pendingIndustries = visit.store.storeIndustries
+            .filter(si => !coveredIds.has(si.industryId))
+            .map(si => ({
+              ...si.industry,
+              storeName: visit.store.name,
+            }));
+
+          const coveredIndustries = visit.store.storeIndustries
+            .filter(si => coveredIds.has(si.industryId))
+            .map(si => si.industry);
+
+          return {
+            promoter: visit.promoter,
+            store: { id: visit.store.id, name: visit.store.name },
+            visitId: visit.id,
+            visitDate: visit.checkInAt,
+            checkOutAt: visit.checkOutAt,
+            totalRequired: visit.store.storeIndustries.length,
+            totalCovered: coveredIndustries.length,
+            pendingIndustries,
+            coveredIndustries,
+            percentComplete: visit.store.storeIndustries.length > 0
+              ? Math.round((coveredIndustries.length / visit.store.storeIndustries.length) * 100)
+              : 100,
+          };
+        })
+        .filter(v => v.pendingIndustries.length > 0)
+        .sort((a, b) => b.pendingIndustries.length - a.pendingIndustries.length);
+
+      // Estatísticas gerais
+      const visitsWithRequirements = visits.filter(v => v.store.storeIndustries.length > 0);
+      const visitsComplete = visitsWithRequirements.filter(v => {
+        const coveredIds = new Set(v.photoIndustries.map(pi => pi.industryId));
+        return v.store.storeIndustries.every(si => coveredIds.has(si.industryId));
+      });
+
+      res.json({
+        view: 'promoter',
+        date: targetDate.toISOString().split('T')[0],
+        stats: {
+          totalVisitsWithRequirements: visitsWithRequirements.length,
+          totalVisitsWithPending: pendingByPromoter.length,
+          totalVisitsComplete: visitsComplete.length,
+          complianceRate: visitsWithRequirements.length > 0
+            ? Math.round((visitsComplete.length / visitsWithRequirements.length) * 100)
+            : 100,
+        },
+        pending: pendingByPromoter,
+      });
+    }
+  } catch (error) {
+    console.error('Get pending industries error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+}
+

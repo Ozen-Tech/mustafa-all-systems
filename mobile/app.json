@@ -4,16 +4,23 @@
     "slug": "promo-gestao-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "icon": "./assets/images/icon-square.png",
     "splash": {
       "image": "./assets/images/logo.png",
-      "backgroundColor": "#ffffff",
+      "backgroundColor": "#0D1117",
       "resizeMode": "contain"
     },
     "assetBundlePatterns": [
       "**/*"
     ],
+    "updates": {
+      "enabled": true,
+      "fallbackToCacheTimeout": 30000
+    },
+    "runtimeVersion": {
+      "policy": "sdkVersion"
+    },
     "ios": {
       "icon": "./assets/images/icon-square.png",
       "supportsTablet": true,

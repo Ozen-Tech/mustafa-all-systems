@@ -14,6 +14,7 @@ import * as FileSystem from 'expo-file-system';
 import { useNavigation, NavigationProp } from '@react-navigation/native';
 import { visitService } from '../services/visitService';
 import { photoService } from '../services/photoService';
+import { industryService } from '../services/industryService';
 import { colors, theme } from '../styles/theme';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
@@ -155,6 +156,78 @@ export default function CheckoutScreen({ route }: any) {
     }
   }
 
+  // Função auxiliar para prosseguir com o checkout após validações
+  async function proceedWithCheckout(currentLocation: LocationObject) {
+    setLoading(true);
+    try {
+      console.log('📸 [Checkout] Iniciando processo de checkout...');
+      console.log('📸 [Checkout] Visit ID:', visit!.id);
+      console.log('📸 [Checkout] Location:', currentLocation.coords);
+      console.log('📸 [Checkout] Photo URI:', photoUri);
+
+      // 1. Obter presigned URL para upload da foto
+      console.log('📸 [Checkout] Obtendo presigned URL...');
+      const { presignedUrl, url } = await photoService.getPresignedUrl({
+        visitId: visit!.id,
+        type: 'FACADE_CHECKOUT',
+        contentType: 'image/jpeg',
+        extension: 'jpg',
+      });
+
+      console.log('📸 [Checkout] Presigned URL obtida:', presignedUrl ? 'Sim' : 'Não');
+      console.log('📸 [Checkout] URL final:', url);
+
+      // 2. Upload da foto para Firebase Storage
+      if (photoUri && presignedUrl) {
+        try {
+          console.log('📸 [Checkout] Fazendo upload da foto...');
+          const uploadSuccess = await photoService.uploadToFirebase(presignedUrl, photoUri, 'image/jpeg');
+          
+          if (!uploadSuccess) {
+            console.warn('⚠️ [Checkout] Upload da foto falhou, mas continuando com checkout...');
+          } else {
+            console.log('✅ [Checkout] Upload da foto concluído com sucesso');
+          }
+        } catch (uploadError: any) {
+          console.error('❌ [Checkout] Erro no upload da foto:', uploadError);
+          console.error('❌ [Checkout] Mensagem:', uploadError?.message);
+          console.warn('⚠️ [Checkout] Continuando checkout sem confirmação de upload...');
+        }
+      } else {
+        console.warn('⚠️ [Checkout] Presigned URL ou photoUri não disponível');
+      }
+
+      // 3. Fazer checkout
+      console.log('📸 [Checkout] Enviando requisição de checkout...');
+      const result = await visitService.checkOut({
+        visitId: visit!.id,
+        latitude: currentLocation.coords.latitude,
+        longitude: currentLocation.coords.longitude,
+        photoUrl: url,
+      });
+
+      console.log('✅ [Checkout] Checkout realizado com sucesso:', result);
+
+      const hoursWorked = result.visit?.hoursWorked || '0.00';
+      Alert.alert(
+        '✅ Sucesso',
+        `Checkout realizado com sucesso!\n\nHoras trabalhadas: ${hoursWorked}h`,
+        [
+          {
+            text: 'OK',
+            onPress: () => navigation.navigate('Home'),
+          },
+        ]
+      );
+    } catch (error: any) {
+      console.error('❌ [Checkout] Erro no checkout:', error);
+      console.error('❌ [Checkout] Response:', error?.response?.data);
+      Alert.alert('Erro', error?.response?.data?.message || 'Não foi possível fazer checkout');
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleCheckout() {
     if (!visit) {
       Alert.alert('Erro', 'Visita não encontrada');
@@ -180,13 +253,11 @@ export default function CheckoutScreen({ route }: any) {
             { text: 'Tentar novamente', onPress: async () => {
               const retryLocation = await updateLocation();
               if (retryLocation) {
-                // Tentar novamente se conseguir localização
                 handleCheckout();
               }
             }},
           ]
         );
-        setLoading(false);
         return;
       }
       currentLocation = updatedLocation;
@@ -194,91 +265,47 @@ export default function CheckoutScreen({ route }: any) {
 
     if (!currentLocation) {
       Alert.alert('Erro', 'Não foi possível obter a localização');
-      setLoading(false);
       return;
     }
 
-    setLoading(true);
+    // Verificar cobertura de indústrias antes do checkout
     try {
-      console.log('📸 [Checkout] Iniciando processo de checkout...');
-      console.log('📸 [Checkout] Visit ID:', visit.id);
-      console.log('📸 [Checkout] Location:', currentLocation.coords);
-      console.log('📸 [Checkout] Photo URI:', photoUri);
-
-      // 1. Obter presigned URL para upload da foto
-      console.log('📸 [Checkout] Obtendo presigned URL...');
-      const { presignedUrl, url } = await photoService.getPresignedUrl({
-        visitId: visit.id,
-        type: 'FACADE_CHECKOUT',
-        contentType: 'image/jpeg',
-        extension: 'jpg',
-      });
-
-      console.log('📸 [Checkout] Presigned URL obtida:', presignedUrl ? 'Sim' : 'Não');
-      console.log('📸 [Checkout] URL final:', url);
-
-      // 2. Upload da foto para Firebase Storage
-      if (photoUri && presignedUrl) {
-        try {
-          console.log('📸 [Checkout] Fazendo upload da foto...');
-          const uploadSuccess = await photoService.uploadToFirebase(presignedUrl, photoUri, 'image/jpeg');
-          
-          if (!uploadSuccess) {
-            console.warn('⚠️ [Checkout] Upload da foto falhou, mas continuando com checkout...');
-          } else {
-            console.log('✅ [Checkout] Upload da foto concluído com sucesso');
-          }
-        } catch (uploadError: any) {
-          console.error('❌ [Checkout] Erro no upload da foto:', uploadError);
-          console.error('❌ [Checkout] Mensagem:', uploadError?.message);
-          // Continuar mesmo se o upload falhar
-          console.warn('⚠️ [Checkout] Continuando checkout sem confirmação de upload...');
-        }
-      } else {
-        console.warn('⚠️ [Checkout] Presigned URL ou photoUri não disponível');
-      }
-
-      // 3. Fazer checkout
-      console.log('📸 [Checkout] Enviando requisição de checkout...');
-      const result = await visitService.checkOut({
-        visitId: visit.id,
-        latitude: currentLocation.coords.latitude,
-        longitude: currentLocation.coords.longitude,
-        photoUrl: url,
-      });
-
-      console.log('✅ [Checkout] Checkout realizado com sucesso:', result);
-
-      const hoursWorked = result.visit?.hoursWorked || '0.00';
-      Alert.alert(
-        '✅ Sucesso',
-        `Checkout realizado com sucesso!\n\nHoras trabalhadas: ${hoursWorked}h`,
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              navigation.navigate('Home');
+      console.log('📦 [Checkout] Verificando cobertura de indústrias...');
+      const coverage = await industryService.getVisitCoverage(visit.id);
+      
+      if (!coverage.isComplete && coverage.pending.length > 0) {
+        const pendingNames = coverage.pending.map(p => p.industry.name).join(', ');
+        const percentComplete = coverage.percentComplete;
+        
+        Alert.alert(
+          '⚠️ Indústrias Pendentes',
+          `Esta loja requer fotos de ${coverage.totalRequired} indústrias.\n\n` +
+          `Você cobriu ${coverage.totalCovered} de ${coverage.totalRequired} (${percentComplete}%).\n\n` +
+          `Faltam: ${pendingNames}`,
+          [
+            { 
+              text: 'Voltar e completar', 
+              style: 'cancel',
+              onPress: () => navigation.goBack(),
             },
-          },
-        ]
-      );
-    } catch (error: any) {
-      console.error('❌ [Checkout] Erro no checkout:', error);
-      console.error('❌ [Checkout] Tipo do erro:', error?.constructor?.name);
-      console.error('❌ [Checkout] Mensagem:', error?.message);
-      console.error('❌ [Checkout] Response:', error?.response?.data);
-      console.error('❌ [Checkout] Status:', error?.response?.status);
-      console.error('❌ [Checkout] Stack:', error?.stack);
+            { 
+              text: 'Checkout mesmo assim', 
+              style: 'destructive',
+              onPress: () => proceedWithCheckout(currentLocation!),
+            },
+          ]
+        );
+        return;
+      }
       
-      const errorMessage = 
-        error?.response?.data?.message || 
-        error?.message || 
-        'Erro ao fazer checkout. Verifique sua conexão e tente novamente.';
-      
-      Alert.alert('Erro', errorMessage);
-    } finally {
-      setLoading(false);
+      console.log('✅ [Checkout] Cobertura completa, prosseguindo...');
+    } catch (error) {
+      // Se falhar a verificação de cobertura, continuar com checkout
+      console.warn('⚠️ [Checkout] Erro ao verificar cobertura, prosseguindo:', error);
     }
+
+    // Prosseguir com checkout
+    proceedWithCheckout(currentLocation);
   }
 
   function calculateDuration() {

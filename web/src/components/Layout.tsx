@@ -198,6 +198,7 @@ export default function Layout() {
       ? [
           { name: 'Gerenciar Lojas', path: '/stores', icon: StoresIcon },
           { name: 'Configurar Rotas', path: '/routes/config', icon: RouteIcon },
+          { name: 'Indústrias/Loja', path: '/stores/industries', icon: AdminIndustriesIcon },
         ]
       : []),
     { name: 'Configurações', path: '/settings', icon: SettingsIcon },

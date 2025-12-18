@@ -1,4 +1,25 @@
-import { apiClient, apiConfig } from './api';
+import axios from 'axios';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import apiConfig from '../config/api';
+
+const apiClient = axios.create({
+  baseURL: apiConfig.BASE_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Interceptor para adicionar token
+apiClient.interceptors.request.use(
+  async (config) => {
+    const token = await AsyncStorage.getItem('accessToken');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
 
 export interface Information {
   id: string;
