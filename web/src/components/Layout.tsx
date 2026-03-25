@@ -147,6 +147,22 @@ export default function Layout() {
     </svg>
   );
 
+  const PromoterOpsIcon = ({ active }: { active: boolean }) => (
+    <svg
+      className={`w-5 h-5 ${active ? 'text-primary-400' : 'text-text-tertiary'}`}
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
+      />
+    </svg>
+  );
+
   const AdminIcon = ({ active }: { active: boolean }) => (
     <svg
       className={`w-5 h-5 ${active ? 'text-primary-400' : 'text-text-tertiary'}`}
@@ -210,6 +226,8 @@ export default function Layout() {
       ? [
           { name: 'Indústrias', path: '/industries', icon: AdminIndustriesIcon },
           { name: 'Cobertura', path: '/industries/coverage', icon: ReportsIcon },
+          { name: 'Hoje (Promotores)', path: '/admin/promoters/today', icon: ReportsIcon },
+          { name: 'Correções promotor', path: '/admin/promoter-correcoes', icon: PromoterOpsIcon },
           { name: 'Administração', path: '/admin', icon: AdminIcon },
         ]
       : []),
@@ -224,8 +242,20 @@ export default function Layout() {
     if (path === '/') {
       return location.pathname === '/';
     }
+    if (path === '/admin') {
+      return location.pathname === '/admin' || location.pathname === '/admin/';
+    }
     return location.pathname.startsWith(path);
   };
+
+  const hiddenPageTitles: Record<string, string> = {
+    '/internal/pg-mobile-stores': 'App mobile — lojas (interno)',
+  };
+
+  const headerTitle =
+    hiddenPageTitles[location.pathname] ??
+    navigation.find((item) => isActive(item.path))?.name ??
+    'Dashboard';
 
   return (
     <div className="min-h-screen bg-dark-background flex">
@@ -336,7 +366,7 @@ export default function Layout() {
                 </button>
                 <div>
                   <h2 className="text-xl sm:text-2xl font-semibold text-text-primary">
-                    {navigation.find((item) => isActive(item.path))?.name || 'Dashboard'}
+                    {headerTitle}
                   </h2>
                   <p className="text-sm text-text-tertiary mt-1 hidden sm:block">
                     {new Date().toLocaleDateString('pt-BR', {
