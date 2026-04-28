@@ -13,6 +13,7 @@ import {
   getScopedPromoters,
   getPromoterMissHistory,
 } from '../controllers/supervisor.controller';
+import { opsPromoterDayDetail, opsTeamToday, opsTradeMetrics } from '../controllers/ops.controller';
 import { getPromoters } from '../controllers/promoters.controller';
 import { downloadExport, getExportStatus } from '../controllers/export.controller';
 import {
@@ -47,6 +48,9 @@ router.use(authenticate);
 router.get('/dashboard', requireSupervisor, getDashboard);
 router.get('/my-states', requireSupervisor, getMyStates);
 router.get('/pending-overview', requireSupervisor, getPendingOverview);
+router.get('/ops/team-today', requireSupervisor, opsTeamToday);
+router.get('/ops/trade-metrics', requireSupervisor, opsTradeMetrics);
+router.get('/ops/promoters/:promoterId/day', requireSupervisor, opsPromoterDayDetail);
 router.get('/promoters', requireSupervisor, getScopedPromoters);
 router.get('/promoters/:id/performance', requireSupervisor, getPromoterPerformance);
 router.get('/promoters/:id/visits', requireSupervisor, getPromoterVisits);

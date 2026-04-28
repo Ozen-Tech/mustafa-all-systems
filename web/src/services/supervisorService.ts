@@ -42,6 +42,34 @@ export const supervisorService = {
     return response.data;
   },
 
+  async getOpsTeamToday(params?: { state?: string; date?: string }) {
+    const qs = new URLSearchParams();
+    if (params?.state) qs.set('state', params.state);
+    if (params?.date) qs.set('date', params.date);
+    const query = qs.toString();
+    const response = await apiClient.get(`/supervisors/ops/team-today${query ? `?${query}` : ''}`);
+    return response.data;
+  },
+
+  async getOpsTradeMetrics(params?: { state?: string; date?: string }) {
+    const qs = new URLSearchParams();
+    if (params?.state) qs.set('state', params.state);
+    if (params?.date) qs.set('date', params.date);
+    const query = qs.toString();
+    const response = await apiClient.get(`/supervisors/ops/trade-metrics${query ? `?${query}` : ''}`);
+    return response.data;
+  },
+
+  async getOpsPromoterDayDetail(promoterId: string, params?: { date?: string }) {
+    const qs = new URLSearchParams();
+    if (params?.date) qs.set('date', params.date);
+    const query = qs.toString();
+    const response = await apiClient.get(
+      `/supervisors/ops/promoters/${promoterId}/day${query ? `?${query}` : ''}`
+    );
+    return response.data;
+  },
+
   async getPromoters() {
     const response = await apiClient.get('/supervisors/promoters');
     return response.data;

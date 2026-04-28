@@ -207,7 +207,9 @@ export default function Layout() {
   const isSupervisorOrAdmin = isSupervisor || isAdmin;
 
   const navigation = [
-    ...(isSupervisorOrAdmin ? [{ name: 'Dashboard', path: '/', icon: DashboardIcon }] : []),
+    ...(isSupervisorOrAdmin ? [{ name: 'Equipe Hoje', path: '/', icon: DashboardIcon }] : []),
+    ...(isSupervisorOrAdmin ? [{ name: 'Métricas Trade', path: '/ops/trade-metrics', icon: ReportsIcon }] : []),
+    ...(isSupervisorOrAdmin ? [{ name: 'Dashboard (legado)', path: '/dashboard-legacy', icon: DashboardIcon }] : []),
     ...(isIndustryOwner ? [{ name: 'Minha Industria', path: '/industry-dashboard', icon: DashboardIcon }] : []),
     ...(isSupervisorOrAdmin
       ? [{ name: 'Relatórios', path: '/reports', icon: ReportsIcon }]
@@ -250,6 +252,7 @@ export default function Layout() {
 
   const hiddenPageTitles: Record<string, string> = {
     '/internal/pg-mobile-stores': 'App mobile — lojas (interno)',
+    '/ops/team-today': 'Equipe Hoje',
   };
 
   const headerTitle =
