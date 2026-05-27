@@ -7,6 +7,9 @@ const RouterRoutes = Routes as ComponentType<{ children?: React.ReactNode }>;
 const RouterRoute = Route as ComponentType<Record<string, unknown>>;
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
+import OpsTeamToday from './pages/OpsTeamToday';
+import OpsTradeMetrics from './pages/OpsTradeMetrics';
+import OpsPromoterDayDetail from './pages/OpsPromoterDayDetail';
 import PromoterDetails from './pages/PromoterDetails';
 import RouteMap from './pages/RouteMap';
 import RouteConfig from './pages/RouteConfig';
@@ -110,6 +113,38 @@ function AppRoutes() {
         {/* Dashboard e telas de supervisão: apenas SUPERVISOR e ADMIN */}
         <RouterRoute
           index
+          element={
+            <SupervisorOrAdminRoute>
+              <OpsTeamToday />
+            </SupervisorOrAdminRoute>
+          }
+        />
+        <RouterRoute
+          path="ops/team-today"
+          element={
+            <SupervisorOrAdminRoute>
+              <OpsTeamToday />
+            </SupervisorOrAdminRoute>
+          }
+        />
+        <RouterRoute
+          path="ops/trade-metrics"
+          element={
+            <SupervisorOrAdminRoute>
+              <OpsTradeMetrics />
+            </SupervisorOrAdminRoute>
+          }
+        />
+        <RouterRoute
+          path="ops/promoters/:promoterId/day"
+          element={
+            <SupervisorOrAdminRoute>
+              <OpsPromoterDayDetail />
+            </SupervisorOrAdminRoute>
+          }
+        />
+        <RouterRoute
+          path="dashboard-legacy"
           element={
             <SupervisorOrAdminRoute>
               <Dashboard />
