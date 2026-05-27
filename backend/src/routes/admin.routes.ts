@@ -12,6 +12,8 @@ import {
   getPromoterSupervisors,
   createPromoterStoreRedoGrant,
   getAdminTodayPromoterOverview,
+  forceCheckoutVisit,
+  listOpenVisits,
 } from '../controllers/admin.controller';
 import { authenticate, requireAdmin } from '../middleware/auth';
 
@@ -39,6 +41,9 @@ router.post(
 );
 
 router.get('/promoters/today-overview', authenticate, requireAdmin, getAdminTodayPromoterOverview);
+
+router.get('/visits/open', authenticate, requireAdmin, listOpenVisits);
+router.post('/visits/:visitId/force-checkout', authenticate, requireAdmin, forceCheckoutVisit);
 
 export default router;
 

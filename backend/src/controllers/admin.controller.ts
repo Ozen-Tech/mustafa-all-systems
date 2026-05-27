@@ -589,6 +589,13 @@ export async function getAdminTodayPromoterOverview(req: AuthRequest, res: Respo
       }
     }
 
+    const storeIdsToday = Array.from(new Set(visitsToday.map((v) => v.storeId)));
+    const stores = await prisma.store.findMany({
+      where: { id: { in: storeIdsToday } },
+      select: { id: true, name: true },
+    });
+    const storeNameById = new Map(stores.map((s) => [s.id, s.name] as const));
+
     // “Falta sem justificativa”: visitas de hoje com checkout completo, mas ainda com indústrias pendentes sem IndustryMiss.
     // (Com o novo bloqueio de checkout, isso tende a ficar 0, mas fica aqui para consistência e auditoria.)
     const completedVisitIds = visitsToday.filter((v) => v.checkOutAt != null).map((v) => v.id);
@@ -666,6 +673,7 @@ export async function getAdminTodayPromoterOverview(req: AuthRequest, res: Respo
       states: Array.from(byState.values()).sort((a, b) => a.state.localeCompare(b.state)),
       promoters: promoters.map((p) => {
         const visitsCount = visitsCountByPromoter.get(p.id) || 0;
+        const openVisit = openVisitByPromoter.get(p.id) || null;
         return {
           id: p.id,
           name: p.name,
@@ -676,12 +684,125 @@ export async function getAdminTodayPromoterOverview(req: AuthRequest, res: Respo
           noVisitToday: visitsCount === 0,
           unjustifiedMissesToday: unjustifiedByPromoter.get(p.id) || 0,
           lastActivityAt: lastActivityByPromoter.get(p.id)?.toISOString() ?? null,
-          openVisit: openVisitByPromoter.get(p.id) || null,
+          openVisit: openVisit
+            ? {
+                ...openVisit,
+                checkInAt: openVisit.checkInAt.toISOString(),
+                storeName: storeNameById.get(openVisit.storeId) || null,
+              }
+            : null,
         };
       }),
     });
   } catch (error) {
     console.error('Get admin today overview error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+}
+
+/**
+ * Fechar (forçar checkout) uma visita em aberto.
+ * POST /admin/visits/:visitId/force-checkout
+ *
+ * Usado para casos em que o promotor esqueceu de fazer checkout no app.
+ */
+export async function forceCheckoutVisit(req: AuthRequest, res: Response) {
+  try {
+    const { visitId } = req.params as { visitId: string };
+    if (!z.string().uuid().safeParse(visitId).success) {
+      return res.status(400).json({ message: 'visitId inválido' });
+    }
+
+    const visit = await prisma.visit.findUnique({
+      where: { id: visitId },
+      select: {
+        id: true,
+        promoterId: true,
+        storeId: true,
+        checkInAt: true,
+        checkOutAt: true,
+      },
+    });
+
+    if (!visit) {
+      return res.status(404).json({ message: 'Visita não encontrada' });
+    }
+
+    if (visit.checkOutAt) {
+      return res.status(400).json({ message: 'Visita já está fechada' });
+    }
+
+    const now = new Date();
+    const updated = await prisma.visit.update({
+      where: { id: visitId },
+      data: {
+        checkOutAt: now,
+      },
+      select: {
+        id: true,
+        promoterId: true,
+        storeId: true,
+        checkInAt: true,
+        checkOutAt: true,
+      },
+    });
+
+    console.log('[ADMIN] Force checkout visit', {
+      adminUserId: req.userId,
+      visitId,
+      promoterId: visit.promoterId,
+      storeId: visit.storeId,
+      checkInAt: visit.checkInAt.toISOString(),
+      forcedCheckOutAt: now.toISOString(),
+    });
+
+    return res.json({
+      message: 'Visita fechada com sucesso',
+      visit: {
+        ...updated,
+        checkInAt: updated.checkInAt.toISOString(),
+        checkOutAt: updated.checkOutAt?.toISOString() || null,
+      },
+    });
+  } catch (error) {
+    console.error('Force checkout visit error:', error);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+}
+
+/**
+ * Listar visitas em aberto (qualquer dia).
+ * GET /admin/visits/open?state=SP
+ */
+export async function listOpenVisits(req: AuthRequest, res: Response) {
+  try {
+    const { state } = req.query as { state?: string };
+
+    const visits = await prisma.visit.findMany({
+      where: {
+        checkOutAt: null,
+        ...(state ? { promoter: { state } } : {}),
+      },
+      select: {
+        id: true,
+        checkInAt: true,
+        promoter: { select: { id: true, name: true, email: true, state: true } },
+        store: { select: { id: true, name: true } },
+      },
+      orderBy: { checkInAt: 'asc' },
+      take: 500,
+    });
+
+    res.json({
+      visits: visits.map((v) => ({
+        id: v.id,
+        checkInAt: v.checkInAt.toISOString(),
+        promoter: v.promoter,
+        store: v.store,
+      })),
+    });
+  } catch (error) {
+    console.error('List open visits error:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
 }

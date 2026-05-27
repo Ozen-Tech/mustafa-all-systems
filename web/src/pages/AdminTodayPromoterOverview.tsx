@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { adminService } from '../services/adminService';
 import Card, { CardContent } from '../components/ui/Card';
 import Badge from '../components/ui/Badge';
@@ -10,6 +10,8 @@ import { Link } from 'react-router-dom';
 export default function AdminTodayPromoterOverview() {
   const [selectedState, setSelectedState] = useState<string>('');
   const [search, setSearch] = useState('');
+  const [openThresholdHours, setOpenThresholdHours] = useState<number>(4);
+  const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'today-overview'],
@@ -20,6 +22,20 @@ export default function AdminTodayPromoterOverview() {
   const promoters = data?.promoters || [];
 
   const activeState = selectedState || (states.length > 0 ? states[0].state : '');
+
+  const { data: openVisitsData, isLoading: openVisitsLoading } = useQuery({
+    queryKey: ['admin', 'open-visits', activeState],
+    queryFn: () => adminService.listOpenVisits(activeState || undefined),
+    enabled: Boolean(activeState),
+  });
+
+  const forceCheckout = useMutation({
+    mutationFn: (visitId: string) => adminService.forceCheckoutVisit(visitId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'today-overview'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'open-visits'] });
+    },
+  });
 
   const filteredPromoters = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -41,6 +57,34 @@ export default function AdminTodayPromoterOverview() {
       });
   }, [promoters, activeState, search]);
 
+  const openVisits = useMemo(() => {
+    const now = Date.now();
+    const raw = (openVisitsData?.visits || []).map((v) => ({
+      visitId: v.id,
+      checkInAt: v.checkInAt,
+      promoterId: v.promoter.id,
+      promoterName: v.promoter.name,
+      promoterEmail: v.promoter.email,
+      state: v.promoter.state,
+      storeId: v.store.id,
+      storeName: v.store.name,
+      openForMs: Math.max(0, now - new Date(v.checkInAt).getTime()),
+    }));
+
+    raw.sort((a, b) => b.openForMs - a.openForMs);
+
+    const minMs = openThresholdHours > 0 ? openThresholdHours * 60 * 60 * 1000 : 0;
+    return minMs ? raw.filter((x) => x.openForMs >= minMs) : raw;
+  }, [openVisitsData, openThresholdHours]);
+
+  const formatDuration = (ms: number) => {
+    const totalMin = Math.floor(ms / 60000);
+    const h = Math.floor(totalMin / 60);
+    const m = totalMin % 60;
+    if (h <= 0) return `${m}min`;
+    return `${h}h ${m}min`;
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -54,6 +98,94 @@ export default function AdminTodayPromoterOverview() {
           <Button variant="outline" size="sm">Correções promotor</Button>
         </Link>
       </div>
+
+      {/* Lojas em aberto */}
+      <Card className="border-dark-border">
+        <CardContent className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold text-text-primary">Lojas em aberto</div>
+              <div className="text-xs text-text-tertiary">
+                Visitas em aberto (qualquer dia), por UF. Útil quando o promotor esquece de fechar no app.
+              </div>
+            </div>
+            <Badge variant={openVisits.length > 0 ? 'warning' : 'success'}>
+              {openVisits.length} em aberto
+            </Badge>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 text-xs text-text-tertiary">
+            <span>Mostrar apenas abertas há:</span>
+            <div className="flex gap-2">
+              {[0, 2, 4, 8, 12].map((h) => (
+                <button
+                  key={h}
+                  type="button"
+                  onClick={() => setOpenThresholdHours(h)}
+                  className={`px-2 py-1 rounded-lg border transition-colors ${
+                    openThresholdHours === h
+                      ? 'border-primary-600 bg-primary-600/10 text-text-primary'
+                      : 'border-dark-border bg-dark-card hover:border-primary-500/40'
+                  }`}
+                >
+                  {h === 0 ? 'Tudo' : `${h}h+`}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {openVisitsLoading ? (
+            <div className="text-sm text-text-tertiary py-2">Carregando visitas em aberto...</div>
+          ) : openVisits.length === 0 ? (
+            <div className="text-sm text-text-tertiary py-2">Nenhuma visita em aberto na UF ativa.</div>
+          ) : (
+            <div className="space-y-2">
+              {openVisits.map((it) => (
+                <div
+                  key={it.visitId}
+                  className="rounded-xl border border-dark-border bg-dark-card px-4 py-3 flex flex-wrap items-center justify-between gap-3"
+                >
+                  <div className="min-w-0">
+                    <div className="font-semibold text-text-primary truncate">{it.promoterName}</div>
+                    <div className="text-xs text-text-tertiary truncate">{it.promoterEmail}</div>
+                    <div className="mt-1 text-xs text-text-tertiary flex flex-wrap gap-x-4 gap-y-1">
+                      <span>UF: {it.state || '—'}</span>
+                      <span>Check-in: {new Date(it.checkInAt).toLocaleString('pt-BR')}</span>
+                      <span>Em aberto: {formatDuration(it.openForMs)}</span>
+                      <span>Loja: {it.storeName || it.storeId.slice(0, 8) + '…'}</span>
+                      <span>VisitID: {it.visitId.slice(0, 8)}…</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={forceCheckout.isPending}
+                      onClick={() => {
+                        const ok = window.confirm(
+                          `Fechar visita em aberto agora?\n\nPromotor: ${it.promoterName}\nLoja: ${it.storeName || it.storeId}\nVisitID: ${it.visitId}`
+                        );
+                        if (!ok) return;
+                        forceCheckout.mutate(it.visitId);
+                      }}
+                    >
+                      {forceCheckout.isPending ? 'Fechando...' : 'Fechar visita'}
+                    </Button>
+                    <Link to={`/promoters/${it.promoterId}`}>
+                      <Button variant="ghost" size="sm">Detalhes</Button>
+                    </Link>
+                  </div>
+                </div>
+              ))}
+              {forceCheckout.isError && (
+                <div className="text-xs text-red-300">
+                  Não foi possível fechar a visita. Tente novamente (ou confira se ela já foi fechada no app).
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Cards por UF */}
       <div className="flex gap-3 overflow-x-auto scrollbar-dark pb-2">
@@ -149,7 +281,10 @@ export default function AdminTodayPromoterOverview() {
                   <div className="mt-2 text-xs text-text-tertiary flex flex-wrap gap-x-4 gap-y-1">
                     <span>Última atividade: {p.lastActivityAt ? new Date(p.lastActivityAt).toLocaleTimeString('pt-BR') : '—'}</span>
                     {p.openVisit && (
-                      <span>VisitID aberto: {p.openVisit.id.slice(0, 8)}…</span>
+                      <span>
+                        Aberta desde {new Date(p.openVisit.checkInAt).toLocaleTimeString('pt-BR')} •{' '}
+                        {p.openVisit.storeName ? `Loja: ${p.openVisit.storeName}` : `StoreID: ${p.openVisit.storeId.slice(0, 8)}…`}
+                      </span>
                     )}
                   </div>
                 </div>
