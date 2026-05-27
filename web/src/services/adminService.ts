@@ -153,13 +153,42 @@ export const adminService = {
       noVisitToday: boolean;
       unjustifiedMissesToday: number;
       lastActivityAt: string | null;
-      openVisit: { id: string; checkInAt: string; storeId: string } | null;
+      openVisit: { id: string; checkInAt: string; storeId: string; storeName: string | null } | null;
     }>;
   }> {
     const params = new URLSearchParams();
     if (state) params.set('state', state);
     const qs = params.toString();
     const response = await apiClient.get(`/admin/promoters/today-overview${qs ? `?${qs}` : ''}`);
+    return response.data;
+  },
+
+  async forceCheckoutVisit(visitId: string): Promise<{
+    message: string;
+    visit: {
+      id: string;
+      promoterId: string;
+      storeId: string;
+      checkInAt: string;
+      checkOutAt: string | null;
+    };
+  }> {
+    const response = await apiClient.post(`/admin/visits/${visitId}/force-checkout`);
+    return response.data;
+  },
+
+  async listOpenVisits(state?: string): Promise<{
+    visits: Array<{
+      id: string;
+      checkInAt: string;
+      promoter: { id: string; name: string; email: string; state: string | null };
+      store: { id: string; name: string };
+    }>;
+  }> {
+    const params = new URLSearchParams();
+    if (state) params.set('state', state);
+    const qs = params.toString();
+    const response = await apiClient.get(`/admin/visits/open${qs ? `?${qs}` : ''}`);
     return response.data;
   },
 };
