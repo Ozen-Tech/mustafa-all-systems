@@ -51,7 +51,6 @@ web/.env
 # AWS
 .aws/
 
-firebase.json
 .gitignore
 firestore.rules
 local_backup.dump

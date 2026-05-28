@@ -1,6 +1,14 @@
-import { AppRegistry } from 'react-native';
+import { AppRegistry, Platform } from 'react-native';
 
 console.log('📱 index.js iniciado - linha 1');
+
+if (Platform.OS === 'web' && typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch((err) => {
+      console.warn('SW registration failed:', err);
+    });
+  });
+}
 
 // Suprimir erro DETECT_SCREEN_CAPTURE (não é crítico, apenas um aviso do Android)
 if (__DEV__) {
