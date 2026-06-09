@@ -74,4 +74,18 @@ try {
   throw err; // Re-lançar para ver o erro completo
 }
 
+if (Platform.OS === 'web' && typeof document !== 'undefined') {
+  const rootTag = document.getElementById('root') || document.getElementById('main');
+  if (rootTag) {
+    try {
+      AppRegistry.runApplication('main', { rootTag });
+      console.log('✅ AppRegistry.runApplication montou o app no #root');
+    } catch (err) {
+      console.error('❌ Erro ao montar app no DOM:', err);
+    }
+  } else {
+    console.error('❌ Elemento #root não encontrado no DOM');
+  }
+}
+
 console.log('✅ index.js concluído com sucesso');

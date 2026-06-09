@@ -16,6 +16,7 @@ import { useNavigation, NavigationProp } from '@react-navigation/native';
 import { visitService } from '../services/visitService';
 import { industryService } from '../services/industryService';
 import { photoService } from '../services/photoService';
+import { pickSinglePhoto } from '../utils/imagePickerHelper';
 import { useVisitFlow } from '../features/visits';
 import { colors, theme } from '../styles/theme';
 import Button from '../components/ui/Button';
@@ -141,26 +142,10 @@ export default function CheckoutScreen({ route }: any) {
 
   async function takePhoto() {
     try {
-      if (cameraPermission === false) {
-        const { status } = await ImagePicker.requestCameraPermissionsAsync();
-        setCameraPermission(status === 'granted');
-        if (status !== 'granted') {
-          Alert.alert('Permissão necessária', 'É necessário permitir o acesso à câmera');
-          return;
-        }
-      }
-
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ['images'],
-        quality: 0.8,
-        allowsEditing: false,
-      });
-
-      if (!result.canceled && result.assets[0]) {
-        setPhotoUri(result.assets[0].uri);
+      const uri = await pickSinglePhoto({ quality: 0.8 });
+      if (uri) {
+        setPhotoUri(uri);
         setShowPreview(true);
-        
-        // Atualizar localização após tirar a foto
         console.log('📸 [Checkout] Foto capturada, atualizando localização...');
         await updateLocation();
       }

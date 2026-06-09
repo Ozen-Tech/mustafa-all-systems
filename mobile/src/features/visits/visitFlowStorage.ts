@@ -1,4 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
+import { toPersistablePhotoUri } from '../../utils/photoUri';
 import {
   LocalVisit,
   LocalPhoto,
@@ -53,7 +55,16 @@ function photosKey(visitId: string): string {
 }
 
 export async function savePhotos(visitId: string, photos: LocalPhoto[]): Promise<void> {
-  await AsyncStorage.setItem(photosKey(visitId), JSON.stringify(photos));
+  let toStore = photos;
+  if (Platform.OS === 'web') {
+    toStore = await Promise.all(
+      photos.map(async (photo) => ({
+        ...photo,
+        uri: photo.uri ? await toPersistablePhotoUri(photo.uri) : photo.uri,
+      }))
+    );
+  }
+  await AsyncStorage.setItem(photosKey(visitId), JSON.stringify(toStore));
 }
 
 export async function getPhotos(visitId: string): Promise<LocalPhoto[]> {
