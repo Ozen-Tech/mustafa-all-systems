@@ -315,6 +315,31 @@ export async function getSignedUrlForPhoto(key: string): Promise<string> {
 }
 
 /**
+ * Envia buffer para Firebase Storage (upload server-side, sem CORS no browser).
+ */
+export async function uploadPhotoBuffer(
+  key: string,
+  buffer: Buffer,
+  contentType: string
+): Promise<void> {
+  if (!storage || !hasFirebaseCredentials) {
+    throw new Error('Firebase Storage não configurado');
+  }
+
+  const bucket = getBucket();
+  if (!bucket) {
+    throw new Error('Não foi possível obter o bucket do Firebase Storage');
+  }
+
+  const file = bucket.file(key);
+  await file.save(buffer, {
+    metadata: { contentType },
+    resumable: false,
+  });
+  console.log(`✅ Foto enviada via backend: ${key}`);
+}
+
+/**
  * Gera chave única para foto
  */
 export function generatePhotoKey(visitId: string, type: string, extension: string = 'jpg'): string {
