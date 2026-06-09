@@ -1,5 +1,18 @@
 {
   "projects": {
     "default": "mustafabucket"
-  }
+  },
+  "targets": {
+    "mustafabucket": {
+      "hosting": {
+        "admin": [
+          "mustafabucket"
+        ],
+        "promotor": [
+          "promotor-mustafabucket"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }

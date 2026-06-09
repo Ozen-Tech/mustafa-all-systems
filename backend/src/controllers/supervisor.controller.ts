@@ -826,7 +826,18 @@ export async function getPendingIndustries(req: AuthRequest, res: Response) {
  */
 export async function getMyStates(req: AuthRequest, res: Response) {
   try {
+    const isAdmin = req.userRole === UserRole.ADMIN;
     const supervisorId = req.userId!;
+
+    if (isAdmin) {
+      const promoters = await prisma.user.findMany({
+        where: { role: UserRole.PROMOTER, state: { not: null } },
+        select: { state: true },
+        distinct: ['state'],
+        orderBy: { state: 'asc' },
+      });
+      return res.json({ states: promoters.map((p) => p.state!).filter(Boolean) });
+    }
 
     const stateSet = new Set<string>();
 

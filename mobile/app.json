@@ -48,7 +48,19 @@
         "android.permission.RECORD_AUDIO"
       ]
     },
-    "web": {},
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./assets/images/icon-square.png",
+      "name": "Mustafa Promotor",
+      "shortName": "Promotor",
+      "description": "PWA do promotor - check-in, fotos e fechamento de visita.",
+      "themeColor": "#0D1117",
+      "backgroundColor": "#0D1117",
+      "lang": "pt-BR",
+      "display": "standalone",
+      "orientation": "portrait"
+    },
     "plugins": [
       [
         "expo-image-picker",
