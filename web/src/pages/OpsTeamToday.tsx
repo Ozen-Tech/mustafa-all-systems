@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import Card, { CardContent } from '../components/ui/Card';
 import { supervisorService } from '../services/supervisorService';
+import { useAuth } from '../context/AuthContext';
 import TeamSummaryCards from '../components/ops/TeamSummaryCards';
 import PromotersTable from '../components/ops/PromotersTable';
 import NonSendersPanel from '../components/ops/NonSendersPanel';
@@ -23,6 +24,8 @@ function todayISOInBRT(): string {
 
 export default function OpsTeamToday() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isSupervisor = user?.role === 'SUPERVISOR';
   const [state, setState] = useState<string>('ALL');
   const [date, setDate] = useState<string>(todayISOInBRT());
 
@@ -45,7 +48,10 @@ export default function OpsTeamToday() {
         <div>
           <h1 className="text-2xl font-bold text-text-primary">EQUIPE HOJE</h1>
           <p className="text-text-secondary text-sm mt-1">
-            Operação + cobrança + qualidade de evidências (prazo até <span className="text-text-primary font-semibold">20:00 BRT</span>)
+            {isSupervisor
+              ? 'Visão operacional dos promotores da sua equipe'
+              : 'Operação + cobrança + qualidade de evidências'}{' '}
+            (prazo até <span className="text-text-primary font-semibold">20:00 BRT</span>)
           </p>
         </div>
         <div className="flex flex-wrap gap-2 items-center">

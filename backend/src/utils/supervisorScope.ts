@@ -1,5 +1,25 @@
+import { Prisma } from '@prisma/client';
 import prisma from '../prisma/client';
 import { UserRole } from '../types';
+
+/** Filtro Prisma para promotores visíveis ao supervisor (admin vê todos). */
+export function scopedPromoterWhere(opts: {
+  isAdmin: boolean;
+  supervisorId?: string;
+  state?: string;
+}): Prisma.UserWhereInput {
+  const where: Prisma.UserWhereInput = {
+    role: UserRole.PROMOTER,
+    ...(opts.state ? { state: opts.state.toUpperCase() } : {}),
+  };
+  if (!opts.isAdmin && opts.supervisorId) {
+    where.OR = [
+      { promoterSupervisors: { some: { supervisorId: opts.supervisorId } } },
+      { routeAssignments: { some: { supervisorId: opts.supervisorId, isActive: true } } },
+    ];
+  }
+  return where;
+}
 
 /**
  * Promotor visível ao supervisor (mesma regra de getScopedPromoters).

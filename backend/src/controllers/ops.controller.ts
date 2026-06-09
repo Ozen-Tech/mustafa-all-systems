@@ -3,6 +3,7 @@ import { z } from 'zod';
 import prisma from '../prisma/client';
 import { AuthRequest } from '../middleware/auth';
 import { UserRole } from '../types';
+import { isPromoterInSupervisorScope, scopedPromoterWhere } from '../utils/supervisorScope';
 
 // BRT helper (fixed offset). Keep simple and explicit: date strings are treated as BRT.
 function dayRangeBRT(dateISO: string): { start: Date; endExclusive: Date; cutoff: Date } {
@@ -65,12 +66,10 @@ export async function opsTeamToday(req: AuthRequest, res: Response) {
     const { state, date } = teamTodayQuerySchema.parse(req.query);
     const targetDate = date ?? toISODateBRT(new Date());
     const { start, endExclusive, cutoff } = dayRangeBRT(targetDate);
+    const isAdmin = req.userRole === UserRole.ADMIN;
 
     const promoters = await prisma.user.findMany({
-      where: {
-        role: UserRole.PROMOTER,
-        ...(state ? { state: state.toUpperCase() } : {}),
-      },
+      where: scopedPromoterWhere({ isAdmin, supervisorId: req.userId, state }),
       select: { id: true, name: true, email: true, state: true },
       orderBy: { name: 'asc' },
     });
@@ -372,12 +371,10 @@ export async function opsTradeMetrics(req: AuthRequest, res: Response) {
     const { state, date } = tradeMetricsQuerySchema.parse(req.query);
     const targetDate = date ?? toISODateBRT(new Date());
     const { start, endExclusive, cutoff } = dayRangeBRT(targetDate);
+    const isAdmin = req.userRole === UserRole.ADMIN;
 
     const promoters = await prisma.user.findMany({
-      where: {
-        role: UserRole.PROMOTER,
-        ...(state ? { state: state.toUpperCase() } : {}),
-      },
+      where: scopedPromoterWhere({ isAdmin, supervisorId: req.userId, state }),
       select: { id: true, name: true, email: true, state: true },
       orderBy: { name: 'asc' },
     });
@@ -629,6 +626,14 @@ export async function opsPromoterDayDetail(req: AuthRequest, res: Response) {
     });
     if (!promoter || promoter.role !== UserRole.PROMOTER) {
       return res.status(404).json({ message: 'Promotor não encontrado' });
+    }
+
+    const isAdmin = req.userRole === UserRole.ADMIN;
+    if (!isAdmin && req.userId) {
+      const inScope = await isPromoterInSupervisorScope(req.userId, promoterId);
+      if (!inScope) {
+        return res.status(403).json({ message: 'Promotor fora da sua equipe' });
+      }
     }
 
     const visits = await prisma.visit.findMany({
