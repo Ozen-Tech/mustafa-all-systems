@@ -99,6 +99,7 @@ try {
 console.log('✅ Todos os imports concluídos');
 
 function AppNavigator() {
+  const { View } = require('react-native');
   // Sempre chamar useAuth primeiro, antes de qualquer condicional
   // Isso garante que os hooks sejam sempre chamados na mesma ordem
   const authResult = useAuth && useAuth();
@@ -123,13 +124,15 @@ function AppNavigator() {
   // Sempre renderizar NavigationContainer para manter consistência dos hooks
   // Renderizar o navigator apropriado dentro dele
   return (
-    <NavigationContainer navigationInChildEnabled>
-      {user && MainNavigator ? (
-        <MainNavigator />
-      ) : (
-        <AuthNavigator />
-      )}
-    </NavigationContainer>
+    <View style={{ flex: 1, minHeight: 0, height: '100%' }}>
+      <NavigationContainer navigationInChildEnabled>
+        {user && MainNavigator ? (
+          <MainNavigator />
+        ) : (
+          <AuthNavigator />
+        )}
+      </NavigationContainer>
+    </View>
   );
 }
 
@@ -153,20 +156,22 @@ export default function App() {
   }
 
   const SafeAreaProvider = require('react-native-safe-area-context').SafeAreaProvider;
+  const { View: RNView, Platform: RNPlatform } = require('react-native');
   const GestureHandlerRootView = require('react-native-gesture-handler').GestureHandlerRootView;
   const InstallPwaBanner = require('./src/components/InstallPwaBanner').default;
+  const RootWrapper = RNPlatform.OS === 'web' ? RNView : GestureHandlerRootView;
 
   try {
     return (
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <SafeAreaProvider>
+      <RootWrapper style={{ flex: 1, minHeight: 0, height: '100%' }}>
+        <SafeAreaProvider style={{ flex: 1, minHeight: 0 }}>
           <AuthProvider>
             <StatusBar style="light" />
             <InstallPwaBanner />
             <AppNavigator />
           </AuthProvider>
         </SafeAreaProvider>
-      </GestureHandlerRootView>
+      </RootWrapper>
     );
   } catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : String(err);

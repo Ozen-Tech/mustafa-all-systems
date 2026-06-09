@@ -12,6 +12,7 @@ import {
 import { useNavigation, NavigationProp } from '@react-navigation/native';
 import { storeService, Store } from '../services/storeService';
 import { colors, theme } from '../styles/theme';
+import { flexScroll, screenContainer } from '../styles/webLayout';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Badge from '../components/ui/Badge';
@@ -94,7 +95,7 @@ export default function StoresScreen() {
 
   if (loading) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, screenContainer]}>
         <ActivityIndicator size="large" color={colors.primary[600]} />
         <Text style={styles.loadingText}>Carregando lojas...</Text>
       </View>
@@ -102,7 +103,7 @@ export default function StoresScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, screenContainer]}>
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.title}>Selecione uma Loja</Text>
@@ -133,6 +134,7 @@ export default function StoresScreen() {
 
       {/* Lista de Lojas */}
       <FlatList
+        style={flexScroll}
         data={filteredStores}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}

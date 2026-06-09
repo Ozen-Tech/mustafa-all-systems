@@ -5,6 +5,7 @@ import { visitService } from '../services/visitService';
 import { useVisitFlow } from '../features/visits';
 import { offlineSyncService } from '../services/offlineSyncService';
 import { colors, theme } from '../styles/theme';
+import { flexScroll, screenContainer } from '../styles/webLayout';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 
@@ -112,7 +113,7 @@ export default function HomeScreen() {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+    <ScrollView style={[styles.container, flexScroll]} contentContainerStyle={styles.contentContainer}>
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.greeting}>Olá! 👋</Text>

@@ -68,6 +68,35 @@ const injections = `
 `;
 
 let html = fs.readFileSync(indexPath, 'utf8');
+
+const scrollFixCss = `
+      html, body {
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        overscroll-behavior: none;
+      }
+      #root {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        height: 100%;
+        min-height: 0;
+      }
+      #root > div {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        min-height: 0;
+        height: 100%;
+      }
+`;
+
+html = html.replace(
+  /<style id="expo-reset">[\s\S]*?<\/style>/,
+  `<style id="expo-reset">${scrollFixCss}</style>`
+);
+
 html = html.replace(/<meta name="viewport"[^>]*>/, '');
 
 if (!html.includes('manifest.webmanifest')) {

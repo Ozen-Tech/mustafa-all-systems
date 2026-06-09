@@ -19,6 +19,7 @@ import { photoService } from '../services/photoService';
 import { pickSinglePhoto } from '../utils/imagePickerHelper';
 import { useVisitFlow } from '../features/visits';
 import { colors, theme } from '../styles/theme';
+import { flexScroll } from '../styles/webLayout';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import { requestForegroundPermissions, getCurrentPosition, LocationObject } from '../utils/locationHelper';
@@ -406,7 +407,7 @@ export default function CheckoutScreen({ route }: any) {
 
   return (
     <>
-      <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+      <ScrollView style={[styles.container, flexScroll]} contentContainerStyle={styles.contentContainer}>
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.title}>Checkout</Text>

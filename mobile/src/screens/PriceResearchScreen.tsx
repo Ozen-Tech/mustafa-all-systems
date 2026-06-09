@@ -10,6 +10,7 @@ import {
 import { useNavigation, NavigationProp } from '@react-navigation/native';
 import { visitService } from '../services/visitService';
 import { colors, theme } from '../styles/theme';
+import { flexScroll } from '../styles/webLayout';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Badge from '../components/ui/Badge';
@@ -122,7 +123,7 @@ export default function PriceResearchScreen({ route }: any) {
   const priceDifference = priceValue > 0 && averageCompetitorPrice > 0 ? priceValue - averageCompetitorPrice : 0;
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+    <ScrollView style={[styles.container, flexScroll]} contentContainerStyle={styles.contentContainer}>
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.title}>Pesquisa de Preços</Text>

@@ -1,5 +1,13 @@
 import { AppRegistry, Platform } from 'react-native';
 
+if (Platform.OS === 'web') {
+  try {
+    require('./src/styles/webLayout').injectWebScrollCss();
+  } catch {
+    // ignore se ainda não compilado
+  }
+}
+
 console.log('📱 index.js iniciado - linha 1');
 
 if (Platform.OS === 'web' && typeof window !== 'undefined' && 'serviceWorker' in navigator) {

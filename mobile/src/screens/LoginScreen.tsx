@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, Alert, Image } from 'react-native';
+import { View, Text, TextInput, StyleSheet, Alert, Image, ScrollView } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { colors, theme } from '../styles/theme';
+import { flexScroll } from '../styles/webLayout';
 import Button from '../components/ui/Button';
 
 export default function LoginScreen() {
@@ -49,7 +50,11 @@ export default function LoginScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <ScrollView
+      style={[styles.container, flexScroll]}
+      contentContainerStyle={styles.scrollContent}
+      keyboardShouldPersistTaps="handled"
+    >
       {/* Logo/Ícone */}
       <View style={styles.logoContainer}>
         <View style={styles.logoCircle}>
@@ -103,7 +108,7 @@ export default function LoginScreen() {
           Entrar
         </Button>
       </View>
-    </View>
+    </ScrollView>
   );
 }
 
@@ -111,6 +116,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.dark.background,
+  },
+  scrollContent: {
+    flexGrow: 1,
     padding: theme.spacing.xl,
     justifyContent: 'center',
   },
