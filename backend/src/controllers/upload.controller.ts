@@ -5,9 +5,12 @@ import {
   getPresignedUploadUrl as getFirebaseUploadUrl, 
   generatePhotoKey as generateFirebaseKey,
   getPublicUrl,
-  getSignedUrlForPhoto
+  getSignedUrlForPhoto,
+  uploadPhotoBuffer,
 } from '../services/firebase-storage.service';
 import { PhotoType } from '../types';
+
+const MAX_PHOTO_BYTES = 12 * 1024 * 1024; // 12MB
 
 const presignedUrlSchema = z.object({
   visitId: z.string().uuid(),
@@ -15,6 +18,38 @@ const presignedUrlSchema = z.object({
   contentType: z.string().default('image/jpeg'),
   extension: z.string().default('jpg'),
 });
+
+const directUploadSchema = presignedUrlSchema.extend({
+  imageBase64: z.string().min(1),
+});
+
+export async function uploadPhotoDirect(req: AuthRequest, res: Response) {
+  try {
+    const { visitId, type, contentType, extension, imageBase64 } = directUploadSchema.parse(req.body);
+
+    const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
+    const buffer = Buffer.from(base64Data, 'base64');
+
+    if (!buffer.length) {
+      return res.status(400).json({ message: 'Imagem inválida ou vazia' });
+    }
+    if (buffer.length > MAX_PHOTO_BYTES) {
+      return res.status(413).json({ message: 'Imagem muito grande (máx. 12MB)' });
+    }
+
+    const key = generateFirebaseKey(visitId, type, extension);
+    await uploadPhotoBuffer(key, buffer, contentType);
+    const url = getPublicUrl(key);
+
+    res.json({ success: true, key, url });
+  } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: 'Validation error', errors: error.errors });
+    }
+    console.error('Direct photo upload error:', error);
+    res.status(500).json({ message: 'Falha ao enviar foto' });
+  }
+}
 
 export async function getPresignedUrl(req: AuthRequest, res: Response) {
   try {

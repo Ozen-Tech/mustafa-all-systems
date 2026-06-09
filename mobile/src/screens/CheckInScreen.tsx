@@ -146,31 +146,16 @@ export default function CheckInScreen({ route }: any) {
       let photoUrl = '';
       
       try {
-        const { presignedUrl, url } = await photoService.getPresignedUrl({
-          visitId: visitId,
+        const { url: photoUrlUploaded } = await photoService.uploadPhoto({
+          visitId,
           type: 'FACADE_CHECKIN',
           contentType: 'image/jpeg',
           extension: 'jpg',
+          fileUri: photoUri,
         });
 
-        console.log('📸 [CheckIn] Presigned URL obtida:', presignedUrl ? 'Sim' : 'Não');
-        console.log('📸 [CheckIn] URL final:', url);
-
-        // 3. Upload da foto para Firebase Storage
-        if (presignedUrl && photoUri) {
-          console.log('📸 [CheckIn] Fazendo upload da foto...');
-          const uploadSuccess = await photoService.uploadToFirebase(presignedUrl, photoUri, 'image/jpeg');
-          
-          if (uploadSuccess) {
-            console.log('✅ [CheckIn] Upload da foto concluído com sucesso');
-            photoUrl = url; // URL pública do Firebase
-          } else {
-            console.error('❌ [CheckIn] Upload da foto falhou');
-            throw new Error('Falha no upload da foto');
-          }
-        } else {
-          throw new Error('Presigned URL ou photoUri não disponível');
-        }
+        console.log('✅ [CheckIn] Upload da foto concluído com sucesso');
+        photoUrl = photoUrlUploaded;
       } catch (uploadError: any) {
         console.error('❌ [CheckIn] Erro no upload da foto:', uploadError);
         // Continuar mesmo se o upload falhar - a visita já foi criada

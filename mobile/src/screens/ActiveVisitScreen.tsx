@@ -455,19 +455,15 @@ export default function ActiveVisitScreen({ route }: any) {
 
       for (const photo of photosToUpload) {
         try {
-          const { presignedUrl, url } = await photoService.getPresignedUrl({
+          if (!photo.uri) throw new Error('URI da foto não disponível');
+
+          const { url } = await photoService.uploadPhoto({
             visitId: visit.id,
             type: 'OTHER',
             contentType: 'image/jpeg',
             extension: 'jpg',
+            fileUri: photo.uri,
           });
-
-          if (!presignedUrl || !photo.uri) {
-            throw new Error('Presigned URL ou photoUri não disponível');
-          }
-
-          const uploadSuccess = await photoService.uploadToFirebase(presignedUrl, photo.uri, 'image/jpeg');
-          if (!uploadSuccess) throw new Error('Upload retornou false');
 
           uploadResults.push({ photo, url, success: true });
         } catch (error: any) {

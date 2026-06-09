@@ -34,6 +34,7 @@ export default {
     },
     UPLOAD: {
       PHOTO: `${API_URL}/upload/photo`,
+      PHOTO_DIRECT: `${API_URL}/upload/photo/direct`,
     },
   },
 };

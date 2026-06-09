@@ -189,46 +189,25 @@ export default function CheckoutScreen({ route }: any) {
   async function proceedWithCheckout(currentLocation: LocationObject) {
     setLoading(true);
     try {
+      console.log('📸 [Checkout] Enviando foto...');
       let checkoutPhotoUrl = '';
-      console.log('📸 [Checkout] Iniciando processo de checkout...');
-      console.log('📸 [Checkout] Visit ID:', visit!.id);
-      console.log('📸 [Checkout] Location:', currentLocation.coords);
-      console.log('📸 [Checkout] Photo URI:', photoUri);
-
-      // 1. Obter presigned URL para upload da foto
-      console.log('📸 [Checkout] Obtendo presigned URL...');
-      const { presignedUrl, url } = await photoService.getPresignedUrl({
-        visitId: visit!.id,
-        type: 'FACADE_CHECKOUT',
-        contentType: 'image/jpeg',
-        extension: 'jpg',
-      });
-
-      console.log('📸 [Checkout] Presigned URL obtida:', presignedUrl ? 'Sim' : 'Não');
-      console.log('📸 [Checkout] URL final:', url);
-      checkoutPhotoUrl = url;
-
-      // 2. Upload da foto para Firebase Storage
-      if (photoUri && presignedUrl) {
+      if (photoUri) {
         try {
-          console.log('📸 [Checkout] Fazendo upload da foto...');
-          const uploadSuccess = await photoService.uploadToFirebase(presignedUrl, photoUri, 'image/jpeg');
-          
-          if (!uploadSuccess) {
-            console.warn('⚠️ [Checkout] Upload da foto falhou, mas continuando com checkout...');
-          } else {
-            console.log('✅ [Checkout] Upload da foto concluído com sucesso');
-          }
+          const { url } = await photoService.uploadPhoto({
+            visitId: visit!.id,
+            type: 'FACADE_CHECKOUT',
+            contentType: 'image/jpeg',
+            extension: 'jpg',
+            fileUri: photoUri,
+          });
+          checkoutPhotoUrl = url;
+          console.log('✅ [Checkout] Upload da foto concluído com sucesso');
         } catch (uploadError: any) {
           console.error('❌ [Checkout] Erro no upload da foto:', uploadError);
-          console.error('❌ [Checkout] Mensagem:', uploadError?.message);
           console.warn('⚠️ [Checkout] Continuando checkout sem confirmação de upload...');
         }
-      } else {
-        console.warn('⚠️ [Checkout] Presigned URL ou photoUri não disponível');
       }
 
-      // 3. Fazer checkout
       console.log('📸 [Checkout] Enviando requisição de checkout...');
       const payload = {
         visitId: visit!.id,

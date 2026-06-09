@@ -1,0 +1,15 @@
+[
+  {
+    "origin": [
+      "https://promotor-mustafabucket.web.app",
+      "https://promotor-mustafabucket.firebaseapp.com",
+      "https://mustafabucket.web.app",
+      "https://mustafabucket.firebaseapp.com",
+      "http://localhost:8081",
+      "http://localhost:19006"
+    ],
+    "method": ["GET", "HEAD", "PUT", "POST", "DELETE"],
+    "responseHeader": ["Content-Type", "Content-Length", "x-goog-resumable"],
+    "maxAgeSeconds": 3600
+  }
+]

@@ -177,17 +177,13 @@ export const offlineSyncService = {
     await updatePhotoSyncStatus(visitId, photo.localId, 'uploading');
 
     try {
-      const { presignedUrl, url } = await photoService.getPresignedUrl({
+      const { url } = await photoService.uploadPhoto({
         visitId,
         type: photo.type,
         contentType: 'image/jpeg',
         extension: 'jpg',
+        fileUri: photo.uri,
       });
-
-      const uploadSuccess = await photoService.uploadToFirebase(presignedUrl, photo.uri, 'image/jpeg');
-      if (!uploadSuccess) {
-        throw new Error('Upload retornou false');
-      }
 
       await visitService.uploadPhotos({
         visitId,
