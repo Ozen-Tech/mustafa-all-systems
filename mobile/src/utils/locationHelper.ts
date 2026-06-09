@@ -186,15 +186,9 @@ export async function requestPermissionAndGetLocation(options?: {
  */
 export function showLocationUnavailableAlert(): void {
   Alert.alert(
-    'Localização Indisponível',
-    'O módulo de localização não está disponível no Expo Go. Para usar esta funcionalidade, é necessário criar um development build.\n\n' +
-    'Opções:\n' +
-    '1. Criar um development build com EAS Build\n' +
-    '2. Usar Expo Development Build localmente\n' +
-    '3. Continuar sem localização (modo de desenvolvimento)',
-    [
-      { text: 'OK', style: 'default' },
-    ]
+    'Localização indisponível',
+    'Permita o acesso à localização nas configurações do navegador ou do dispositivo. O app precisa de HTTPS e permissão de GPS para check-in e checkout.',
+    [{ text: 'OK', style: 'default' }]
   );
 }
 

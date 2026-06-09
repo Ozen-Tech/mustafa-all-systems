@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, ActivityIndicator } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, theme } from '../styles/theme';
 import HomeScreen from '../screens/HomeScreen';
 import HistoryScreen from '../screens/HistoryScreen';
@@ -248,6 +249,9 @@ const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
 function MainTabs() {
+  const insets = useSafeAreaInsets();
+  const tabBarBottom = Math.max(theme.spacing.sm, insets.bottom);
+
   return (
     <Tab.Navigator
       screenOptions={{
@@ -256,8 +260,8 @@ function MainTabs() {
           borderTopColor: colors.dark.border,
           borderTopWidth: 1,
           paddingTop: theme.spacing.sm,
-          paddingBottom: theme.spacing.sm,
-          height: 60,
+          paddingBottom: tabBarBottom,
+          height: 56 + tabBarBottom,
         },
         tabBarActiveTintColor: colors.primary[400],
         tabBarInactiveTintColor: colors.text.tertiary,

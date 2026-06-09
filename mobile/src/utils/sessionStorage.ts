@@ -1,4 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
+import { toPersistablePhotoUri } from './photoUri';
 
 export interface PendingPhoto {
   id?: string;
@@ -17,7 +19,16 @@ const PENDING_PHOTOS_PREFIX = 'pending_photos_';
 export async function savePendingPhotos(visitId: string, photos: PendingPhoto[]): Promise<void> {
   try {
     const key = `${PENDING_PHOTOS_PREFIX}${visitId}`;
-    await AsyncStorage.setItem(key, JSON.stringify(photos));
+    let toStore = photos;
+    if (Platform.OS === 'web') {
+      toStore = await Promise.all(
+        photos.map(async (photo) => ({
+          ...photo,
+          uri: await toPersistablePhotoUri(photo.uri),
+        }))
+      );
+    }
+    await AsyncStorage.setItem(key, JSON.stringify(toStore));
     console.log(`[sessionStorage] Salvas ${photos.length} fotos pendentes para visita ${visitId}`);
   } catch (error) {
     console.error('[sessionStorage] Erro ao salvar fotos pendentes:', error);

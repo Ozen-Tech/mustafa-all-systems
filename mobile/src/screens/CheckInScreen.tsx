@@ -13,6 +13,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useNavigation, NavigationProp } from '@react-navigation/native';
 import { visitService } from '../services/visitService';
 import { photoService } from '../services/photoService';
+import { pickSinglePhoto } from '../utils/imagePickerHelper';
 import { useVisitFlow } from '../features/visits';
 import { useAuth } from '../context/AuthContext';
 import { colors, theme } from '../styles/theme';
@@ -85,23 +86,9 @@ export default function CheckInScreen({ route }: any) {
 
   async function takePhoto() {
     try {
-      if (cameraPermission === false) {
-        const { status } = await ImagePicker.requestCameraPermissionsAsync();
-        setCameraPermission(status === 'granted');
-        if (status !== 'granted') {
-          Alert.alert('Permissão necessária', 'É necessário permitir o acesso à câmera');
-          return;
-        }
-      }
-
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ['images'],
-        quality: 0.8,
-        allowsEditing: false,
-      });
-
-      if (!result.canceled && result.assets[0]) {
-        setPhotoUri(result.assets[0].uri);
+      const uri = await pickSinglePhoto({ quality: 0.8 });
+      if (uri) {
+        setPhotoUri(uri);
         setShowPreview(true);
       }
     } catch (error) {

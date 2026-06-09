@@ -152,12 +152,21 @@ export default function App() {
     return null;
   }
 
+  const SafeAreaProvider = require('react-native-safe-area-context').SafeAreaProvider;
+  const GestureHandlerRootView = require('react-native-gesture-handler').GestureHandlerRootView;
+  const InstallPwaBanner = require('./src/components/InstallPwaBanner').default;
+
   try {
     return (
-      <AuthProvider>
-        <StatusBar style="light" />
-        <AppNavigator />
-      </AuthProvider>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
+          <AuthProvider>
+            <StatusBar style="light" />
+            <InstallPwaBanner />
+            <AppNavigator />
+          </AuthProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
     );
   } catch (err: unknown) {
     const errorMessage = err instanceof Error ? err.message : String(err);

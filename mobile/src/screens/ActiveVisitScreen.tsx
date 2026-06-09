@@ -11,7 +11,7 @@ import {
   Modal,
   FlatList,
 } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
+
 import { useNavigation, NavigationProp } from '@react-navigation/native';
 import { visitService } from '../services/visitService';
 import { photoService } from '../services/photoService';
@@ -21,6 +21,8 @@ import { useVisitFlow } from '../features/visits';
 import { colors, theme } from '../styles/theme';
 import Button from '../components/ui/Button';
 import { requestForegroundPermissions, getCurrentPosition } from '../utils/locationHelper';
+import { pickMultiplePhotos, pickSinglePhoto } from '../utils/imagePickerHelper';
+import { isPendingLocalPhoto } from '../utils/photoUri';
 import { savePendingPhotos, getPendingPhotos, clearPendingPhotos, PendingPhoto } from '../utils/sessionStorage';
 
 interface Visit {
@@ -259,37 +261,24 @@ export default function ActiveVisitScreen({ route }: any) {
 
   async function pickImagesForIndustry(industryId: string) {
     try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permissão necessária', 'É necessário permitir o acesso à galeria');
-        return;
-      }
+      const uris = await pickMultiplePhotos({ quality: 0.8, selectionLimit: 20 });
+      if (uris.length === 0) return;
 
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsMultipleSelection: true,
-        quality: 0.8,
-        selectionLimit: 20,
+      const newPhotos: VisitPhoto[] = uris.map((uri) => ({
+        uri,
+        type: 'OTHER' as const,
+        industryId,
+      }));
+
+      setPhotos((prev) => {
+        const updated = [...prev, ...newPhotos];
+        if (visit?.id) {
+          savePendingPhotosToStorage(visit.id, updated);
+        }
+        return updated;
       });
 
-      if (!result.canceled && result.assets.length > 0) {
-        const newPhotos: VisitPhoto[] = result.assets.map(asset => ({
-          uri: asset.uri,
-          type: 'OTHER' as const,
-          industryId,
-        }));
-
-        setPhotos((prev) => {
-          const updated = [...prev, ...newPhotos];
-          if (visit?.id) {
-            savePendingPhotosToStorage(visit.id, updated);
-          }
-          return updated;
-        });
-
-        // Garantir que a indústria fique expandida
-        setExpandedIndustries(prev => new Set(prev).add(industryId));
-      }
+      setExpandedIndustries((prev) => new Set(prev).add(industryId));
     } catch (error) {
       console.error('Erro ao selecionar imagens:', error);
       Alert.alert('Erro', 'Não foi possível selecionar as imagens');
@@ -298,34 +287,24 @@ export default function ActiveVisitScreen({ route }: any) {
 
   async function takePhotoForIndustry(industryId: string) {
     try {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permissão necessária', 'É necessário permitir o acesso à câmera');
-        return;
-      }
+      const uri = await pickSinglePhoto({ quality: 0.8 });
+      if (!uri) return;
 
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ['images'],
-        quality: 0.8,
+      const newPhoto: VisitPhoto = {
+        uri,
+        type: 'OTHER',
+        industryId,
+      };
+
+      setPhotos((prev) => {
+        const updated = [...prev, newPhoto];
+        if (visit?.id) {
+          savePendingPhotosToStorage(visit.id, updated);
+        }
+        return updated;
       });
 
-      if (!result.canceled && result.assets[0]) {
-        const newPhoto: VisitPhoto = {
-          uri: result.assets[0].uri,
-          type: 'OTHER',
-          industryId,
-        };
-
-        setPhotos((prev) => {
-          const updated = [...prev, newPhoto];
-          if (visit?.id) {
-            savePendingPhotosToStorage(visit.id, updated);
-          }
-          return updated;
-        });
-
-        setExpandedIndustries(prev => new Set(prev).add(industryId));
-      }
+      setExpandedIndustries((prev) => new Set(prev).add(industryId));
     } catch (error) {
       console.error('Erro ao capturar foto:', error);
       Alert.alert('Erro', 'Não foi possível capturar a foto');
@@ -335,31 +314,19 @@ export default function ActiveVisitScreen({ route }: any) {
   // Para lojas sem indústrias configuradas
   async function pickImagesNoIndustry() {
     try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permissão necessária', 'É necessário permitir o acesso à galeria');
-        return;
-      }
+      const uris = await pickMultiplePhotos({ quality: 0.8, selectionLimit: 20 });
+      if (uris.length === 0) return;
 
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsMultipleSelection: true,
-        quality: 0.8,
-        selectionLimit: 20,
+      const newPhotos: VisitPhoto[] = uris.map((uri) => ({
+        uri,
+        type: 'OTHER' as const,
+      }));
+
+      setPhotos((prev) => {
+        const updated = [...prev, ...newPhotos];
+        if (visit?.id) savePendingPhotosToStorage(visit.id, updated);
+        return updated;
       });
-
-      if (!result.canceled && result.assets.length > 0) {
-        const newPhotos: VisitPhoto[] = result.assets.map(asset => ({
-          uri: asset.uri,
-          type: 'OTHER' as const,
-        }));
-
-        setPhotos((prev) => {
-          const updated = [...prev, ...newPhotos];
-          if (visit?.id) savePendingPhotosToStorage(visit.id, updated);
-          return updated;
-        });
-      }
     } catch (error) {
       console.error('Erro ao selecionar imagens:', error);
       Alert.alert('Erro', 'Não foi possível selecionar as imagens');
@@ -368,29 +335,19 @@ export default function ActiveVisitScreen({ route }: any) {
 
   async function takePhotoNoIndustry() {
     try {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permissão necessária', 'É necessário permitir o acesso à câmera');
-        return;
-      }
+      const uri = await pickSinglePhoto({ quality: 0.8 });
+      if (!uri) return;
 
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ['images'],
-        quality: 0.8,
+      const newPhoto: VisitPhoto = {
+        uri,
+        type: 'OTHER',
+      };
+
+      setPhotos((prev) => {
+        const updated = [...prev, newPhoto];
+        if (visit?.id) savePendingPhotosToStorage(visit.id, updated);
+        return updated;
       });
-
-      if (!result.canceled && result.assets[0]) {
-        const newPhoto: VisitPhoto = {
-          uri: result.assets[0].uri,
-          type: 'OTHER',
-        };
-
-        setPhotos((prev) => {
-          const updated = [...prev, newPhoto];
-          if (visit?.id) savePendingPhotosToStorage(visit.id, updated);
-          return updated;
-        });
-      }
     } catch (error) {
       console.error('Erro ao capturar foto:', error);
       Alert.alert('Erro', 'Não foi possível capturar a foto');
@@ -485,11 +442,7 @@ export default function ActiveVisitScreen({ route }: any) {
 
       const location = await getCurrentPosition();
 
-      const photosToUpload = photos.filter((photo) => {
-        const hasUri = photo.uri && photo.uri.startsWith('file://');
-        const alreadyUploaded = photo.url && !photo.uri;
-        return hasUri && !alreadyUploaded;
-      });
+      const photosToUpload = photos.filter((photo) => isPendingLocalPhoto(photo));
 
       if (photosToUpload.length === 0) {
         Alert.alert('Aviso', 'Não há fotos novas para enviar');
