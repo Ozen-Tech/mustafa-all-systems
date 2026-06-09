@@ -315,27 +315,29 @@ export async function getSignedUrlForPhoto(key: string): Promise<string> {
 }
 
 /**
- * Envia buffer para Firebase Storage (upload server-side, sem CORS no browser).
+ * Envia buffer para Firebase Storage via presigned URL (PUT server-side, sem CORS).
+ * Reutiliza o mesmo fluxo que funciona no app nativo.
  */
 export async function uploadPhotoBuffer(
   key: string,
   buffer: Buffer,
   contentType: string
 ): Promise<void> {
-  if (!storage || !hasFirebaseCredentials) {
-    throw new Error('Firebase Storage não configurado');
-  }
+  const presignedUrl = await getPresignedUploadUrl(key, { contentType });
 
-  const bucket = getBucket();
-  if (!bucket) {
-    throw new Error('Não foi possível obter o bucket do Firebase Storage');
-  }
-
-  const file = bucket.file(key);
-  await file.save(buffer, {
-    metadata: { contentType },
-    resumable: false,
+  const response = await fetch(presignedUrl, {
+    method: 'PUT',
+    headers: { 'Content-Type': contentType },
+    body: buffer,
   });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    throw new Error(
+      `Upload GCS falhou (${response.status}): ${body.slice(0, 300) || response.statusText}`
+    );
+  }
+
   console.log(`✅ Foto enviada via backend: ${key}`);
 }
 

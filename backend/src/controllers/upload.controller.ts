@@ -46,8 +46,11 @@ export async function uploadPhotoDirect(req: AuthRequest, res: Response) {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ message: 'Validation error', errors: error.errors });
     }
-    console.error('Direct photo upload error:', error);
-    res.status(500).json({ message: 'Falha ao enviar foto' });
+    console.error('Direct photo upload error:', error?.message || error);
+    res.status(500).json({
+      message: 'Falha ao enviar foto',
+      detail: error?.message || 'Erro desconhecido',
+    });
   }
 }
 
