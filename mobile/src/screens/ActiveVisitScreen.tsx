@@ -19,6 +19,7 @@ import { industryService } from '../services/industryService';
 import { offlineSyncService } from '../services/offlineSyncService';
 import { useVisitFlow } from '../features/visits';
 import { colors, theme } from '../styles/theme';
+import { flexScroll, screenContainer } from '../styles/webLayout';
 import Button from '../components/ui/Button';
 import { requestForegroundPermissions, getCurrentPosition } from '../utils/locationHelper';
 import { pickMultiplePhotos, pickSinglePhoto } from '../utils/imagePickerHelper';
@@ -729,7 +730,7 @@ export default function ActiveVisitScreen({ route }: any) {
             Selecione as indústrias que você atende nesta loja (obrigatório no primeiro check-in).
           </Text>
         </View>
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16 }}>
+        <ScrollView style={[screenContainer, flexScroll]} contentContainerStyle={{ padding: 16 }}>
           {industries.map((industry) => {
             const isSelected = onboardingSelectedIds.has(industry.id);
             return (
@@ -791,7 +792,7 @@ export default function ActiveVisitScreen({ route }: any) {
   // ---- Render principal ----
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={[styles.container, flexScroll]}>
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.title}>Visita em Andamento</Text>

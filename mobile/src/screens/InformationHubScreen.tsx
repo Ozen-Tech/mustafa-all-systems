@@ -13,6 +13,7 @@ import {
 import { informationService, Information } from '../services/informationService';
 import { industryService } from '../services/industryService';
 import { colors, theme } from '../styles/theme';
+import { flexScroll } from '../styles/webLayout';
 
 export default function InformationHubScreen() {
   const [selectedIndustryId, setSelectedIndustryId] = useState<string | undefined>();
@@ -84,7 +85,7 @@ export default function InformationHubScreen() {
   }
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={[styles.container, flexScroll]}>
       <View style={styles.header}>
         <Text style={styles.title}>Central de Informações</Text>
         <Text style={styles.subtitle}>Acesse informações sobre estoque, produtos e mais</Text>

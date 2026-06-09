@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, ScrollView, StyleSheet } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { colors, theme } from '../styles/theme';
+import { flexScroll } from '../styles/webLayout';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 
@@ -9,7 +10,7 @@ export default function ProfileScreen() {
   const { user, logout } = useAuth();
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+    <ScrollView style={[styles.container, flexScroll]} contentContainerStyle={styles.contentContainer}>
       <View style={styles.header}>
         <Text style={styles.title}>Perfil</Text>
         <Text style={styles.subtitle}>Informações da sua conta</Text>

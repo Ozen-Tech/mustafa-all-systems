@@ -11,6 +11,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { visitService } from '../services/visitService';
 import { colors, theme } from '../styles/theme';
+import { flexScroll, screenContainer } from '../styles/webLayout';
 import Card from '../components/ui/Card';
 import Badge from '../components/ui/Badge';
 
@@ -81,7 +82,7 @@ export default function HistoryScreen() {
 
   if (loading && !refreshing) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, screenContainer]}>
         <ActivityIndicator size="large" color={colors.primary[600]} />
         <Text style={styles.loadingText}>Carregando histórico...</Text>
       </View>
@@ -89,7 +90,7 @@ export default function HistoryScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, screenContainer]}>
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.title}>Histórico de Visitas</Text>
@@ -144,7 +145,7 @@ export default function HistoryScreen() {
 
       {/* Lista de Visitas */}
       <ScrollView
-        style={styles.scrollView}
+        style={[styles.scrollView, flexScroll]}
         contentContainerStyle={styles.scrollContent}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary[600]} />

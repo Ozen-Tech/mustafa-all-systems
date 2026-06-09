@@ -4,6 +4,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, theme } from '../styles/theme';
+import { navigationSceneStyle } from '../styles/webLayout';
 import HomeScreen from '../screens/HomeScreen';
 import HistoryScreen from '../screens/HistoryScreen';
 import ProfileScreen from '../screens/ProfileScreen';
@@ -254,6 +255,7 @@ function MainTabs() {
 
   return (
     <Tab.Navigator
+      sceneContainerStyle={navigationSceneStyle}
       screenOptions={{
         tabBarStyle: {
           backgroundColor: colors.dark.backgroundSecondary,
@@ -336,6 +338,8 @@ export default function MainNavigator() {
           fontSize: theme.typography.fontSize.lg,
         },
         cardStyle: {
+          flex: 1,
+          minHeight: 0,
           backgroundColor: colors.dark.background,
         },
       }}
