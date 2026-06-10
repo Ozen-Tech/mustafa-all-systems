@@ -14,6 +14,7 @@ import { flexScroll } from '../styles/webLayout';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Badge from '../components/ui/Badge';
+import { showAlert } from '../utils/alertHelper';
 
 interface Visit {
   id: string;
@@ -100,7 +101,7 @@ export default function PriceResearchScreen({ route }: any) {
         competitorPrices: competitors,
       });
 
-      Alert.alert('Sucesso', 'Pesquisa de preço registrada com sucesso!', [
+      showAlert('Sucesso', 'Pesquisa de preço registrada com sucesso!', [
         {
           text: 'OK',
           onPress: () => {

@@ -22,6 +22,7 @@ import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import Badge from '../components/ui/Badge';
 import { requestForegroundPermissions, getCurrentPosition, LocationObject } from '../utils/locationHelper';
+import { showAlert } from '../utils/alertHelper';
 
 interface Store {
   id: string;
@@ -188,7 +189,7 @@ export default function CheckInScreen({ route }: any) {
       const result = checkInResult;
       console.log('✅ [CheckIn] Check-in realizado com sucesso:', result);
 
-      Alert.alert('✅ Sucesso', 'Check-in realizado com sucesso!', [
+      showAlert('✅ Sucesso', 'Check-in realizado com sucesso!', [
         {
           text: 'OK',
           onPress: () => {

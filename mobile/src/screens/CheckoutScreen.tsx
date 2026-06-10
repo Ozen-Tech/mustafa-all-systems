@@ -23,6 +23,7 @@ import { flexScroll } from '../styles/webLayout';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import { requestForegroundPermissions, getCurrentPosition, LocationObject } from '../utils/locationHelper';
+import { showAlert } from '../utils/alertHelper';
 
 interface Visit {
   id: string;
@@ -172,7 +173,7 @@ export default function CheckoutScreen({ route }: any) {
       ? `\n\n${pendingPhotosCount} foto(s) e ${pendingSurveysCount} pesquisa(s) serão sincronizadas quando houver internet.`
       : '';
 
-    Alert.alert(
+    showAlert(
       'Sucesso',
       `Checkout realizado com sucesso!\n\nHoras trabalhadas: ${hoursWorked}h${pendingMsg}`,
       [

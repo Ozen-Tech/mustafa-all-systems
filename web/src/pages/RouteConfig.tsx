@@ -81,14 +81,16 @@ export default function RouteConfig() {
   });
 
   useEffect(() => {
-    if (!industryModal || !promoterAssignmentsData) return;
-    const ids = new Set(
-      promoterAssignmentsData
-        .filter((a: any) => a.storeId === industryModal.storeId)
-        .map((a: any) => a.industry.id),
+    if (!industryModal || !promoterAssignmentsData || !storeIndustriesData) return;
+    const validStoreIndustryIds = new Set(
+      (storeIndustriesData.industries || []).map((i: { id: string }) => i.id)
     );
-    setIndustryModalSelectedIds(ids);
-  }, [industryModal?.storeId, industryModal?.promoterId, promoterAssignmentsData]);
+    const ids = promoterAssignmentsData
+      .filter((a: { storeId: string | null }) => a.storeId === industryModal.storeId)
+      .map((a: { industry: { id: string } }) => a.industry?.id)
+      .filter((id: string | undefined): id is string => !!id && validStoreIndustryIds.has(id));
+    setIndustryModalSelectedIds(new Set(ids));
+  }, [industryModal, promoterAssignmentsData, storeIndustriesData]);
 
   const saveStoreIndustriesMutation = useMutation({
     mutationFn: ({ promoterId, storeId, industryIds }: { promoterId: string; storeId: string; industryIds: string[] }) =>
@@ -96,6 +98,12 @@ export default function RouteConfig() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['promoter-industry-assignments'] });
       setIndustryModal(null);
+    },
+    onError: (error: any) => {
+      const message =
+        error?.response?.data?.message ||
+        'Não foi possível salvar as indústrias. Verifique se a loja tem indústrias cadastradas.';
+      window.alert(message);
     },
   });
 
@@ -541,8 +549,20 @@ export default function RouteConfig() {
               <p className="text-sm text-text-secondary mb-3">
                 Marque as indústrias que este promotor deve cobrir nesta loja. O app do promotor usa esta lista (ele não escolhe mais no primeiro check-in).
               </p>
-              {!storeIndustriesData?.industries?.length ? (
+              {!storeIndustriesData ? (
                 <div className="py-6 text-center text-text-tertiary">Carregando...</div>
+              ) : !(storeIndustriesData.industries || []).length ? (
+                <div className="py-6 text-center text-text-secondary text-sm">
+                  Esta loja ainda não tem indústrias cadastradas.
+                  {isAdmin ? (
+                    <>
+                      {' '}
+                      Configure em <strong>Indústrias/Loja</strong> antes de definir a rota do promotor.
+                    </>
+                  ) : (
+                    <> Peça ao administrador para vincular indústrias à loja.</>
+                  )}
+                </div>
               ) : (
                 <div className="space-y-2">
                   {(storeIndustriesData.industries || []).map((ind: any) => {
@@ -589,13 +609,22 @@ export default function RouteConfig() {
                   variant="primary"
                   className="flex-1"
                   onClick={() => {
+                    const validIds = new Set(
+                      (storeIndustriesData?.industries || []).map((i: { id: string }) => i.id)
+                    );
+                    const industryIds = Array.from(industryModalSelectedIds).filter((id) =>
+                      validIds.has(id)
+                    );
                     saveStoreIndustriesMutation.mutate({
                       promoterId: industryModal.promoterId,
                       storeId: industryModal.storeId,
-                      industryIds: Array.from(industryModalSelectedIds),
+                      industryIds,
                     });
                   }}
-                  disabled={saveStoreIndustriesMutation.isPending}
+                  disabled={
+                    saveStoreIndustriesMutation.isPending ||
+                    !(storeIndustriesData?.industries || []).length
+                  }
                   isLoading={saveStoreIndustriesMutation.isPending}
                 >
                   Salvar
