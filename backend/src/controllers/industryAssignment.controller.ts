@@ -293,18 +293,30 @@ export async function setPromoterStoreIndustries(req: AuthRequest, res: Response
     }
 
     const validIds = new Set(store.storeIndustries.map(si => si.industryId));
-    if (industryIds.length > 0) {
-      const invalid = industryIds.filter(id => !validIds.has(id));
-      if (invalid.length > 0) {
-        return res.status(400).json({ message: 'Uma ou mais indústrias não pertencem a esta loja' });
-      }
+    const uniqueRequested = [...new Set(industryIds)];
+
+    if (validIds.size === 0 && uniqueRequested.length > 0) {
+      return res.status(400).json({
+        message:
+          'Esta loja não tem indústrias cadastradas. Configure em Indústrias/Loja antes de definir a rota do promotor.',
+      });
+    }
+
+    const filteredIds = uniqueRequested.filter((id) => validIds.has(id));
+    const skippedIds = uniqueRequested.filter((id) => !validIds.has(id));
+
+    if (skippedIds.length > 0) {
+      console.warn(
+        `[setPromoterStoreIndustries] Ignorando ${skippedIds.length} indústria(s) fora da loja ${storeId}:`,
+        skippedIds
+      );
     }
 
     await prisma.$transaction([
       prisma.industryAssignment.deleteMany({
         where: { promoterId, storeId },
       }),
-      ...industryIds.map(industryId =>
+      ...filteredIds.map((industryId) =>
         prisma.industryAssignment.create({
           data: { promoterId, industryId, storeId, isActive: true },
         })
@@ -317,8 +329,12 @@ export async function setPromoterStoreIndustries(req: AuthRequest, res: Response
     });
 
     res.json({
-      message: 'Indústrias do promotor nesta loja atualizadas',
-      industries: assignments.map(a => a.industry),
+      message:
+        skippedIds.length > 0
+          ? 'Indústrias atualizadas (algumas opções antigas foram removidas por não pertencerem mais à loja)'
+          : 'Indústrias do promotor nesta loja atualizadas',
+      industries: assignments.map((a) => a.industry),
+      skippedIndustryIds: skippedIds.length > 0 ? skippedIds : undefined,
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
