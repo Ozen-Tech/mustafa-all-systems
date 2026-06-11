@@ -1,4 +1,8 @@
 import { Platform, ViewStyle } from 'react-native';
+import type { EdgeInsets } from 'react-native-safe-area-context';
+import { theme } from './theme';
+
+const NATIVE_TAB_BAR_MIN_BOTTOM = theme.spacing.sm;
 
 /** Container de tela — flex com minHeight 0 para scroll aninhado na web. */
 export const screenContainer: ViewStyle = Platform.select({
@@ -22,6 +26,17 @@ export const navigationSceneStyle: ViewStyle = Platform.select({
   web: { flex: 1, minHeight: 0, height: '100%' },
   default: { flex: 1 },
 }) as ViewStyle;
+
+/** Insets da tab bar: mínimo no native para não colar nos botões/gestos do sistema. */
+export function getTabBarSafeAreaInsets(insets: EdgeInsets): EdgeInsets {
+  if (Platform.OS === 'web') {
+    return insets;
+  }
+  return {
+    ...insets,
+    bottom: Math.max(insets.bottom, NATIVE_TAB_BAR_MIN_BOTTOM),
+  };
+}
 
 export const WEB_SCROLL_CSS = `
   html, body {

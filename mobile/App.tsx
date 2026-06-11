@@ -156,6 +156,7 @@ export default function App() {
   }
 
   const SafeAreaProvider = require('react-native-safe-area-context').SafeAreaProvider;
+  const initialWindowMetrics = require('react-native-safe-area-context').initialWindowMetrics;
   const { View: RNView, Platform: RNPlatform } = require('react-native');
   const GestureHandlerRootView = require('react-native-gesture-handler').GestureHandlerRootView;
   const InstallPwaBanner = require('./src/components/InstallPwaBanner').default;
@@ -164,7 +165,7 @@ export default function App() {
   try {
     return (
       <RootWrapper style={{ flex: 1, minHeight: 0, height: '100%' }}>
-        <SafeAreaProvider style={{ flex: 1, minHeight: 0 }}>
+        <SafeAreaProvider style={{ flex: 1, minHeight: 0 }} initialMetrics={initialWindowMetrics}>
           <AuthProvider>
             <StatusBar style="light" />
             <InstallPwaBanner />

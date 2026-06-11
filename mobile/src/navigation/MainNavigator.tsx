@@ -4,7 +4,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, theme } from '../styles/theme';
-import { navigationSceneStyle } from '../styles/webLayout';
+import { navigationSceneStyle, getTabBarSafeAreaInsets } from '../styles/webLayout';
 import HomeScreen from '../screens/HomeScreen';
 import HistoryScreen from '../screens/HistoryScreen';
 import ProfileScreen from '../screens/ProfileScreen';
@@ -251,10 +251,10 @@ const Stack = createStackNavigator();
 
 function MainTabs() {
   const insets = useSafeAreaInsets();
-  const tabBarBottom = Math.max(theme.spacing.sm, insets.bottom);
 
   return (
     <Tab.Navigator
+      safeAreaInsets={getTabBarSafeAreaInsets(insets)}
       sceneContainerStyle={navigationSceneStyle}
       screenOptions={{
         tabBarStyle: {
@@ -262,8 +262,6 @@ function MainTabs() {
           borderTopColor: colors.dark.border,
           borderTopWidth: 1,
           paddingTop: theme.spacing.sm,
-          paddingBottom: tabBarBottom,
-          height: 56 + tabBarBottom,
         },
         tabBarActiveTintColor: colors.primary[400],
         tabBarInactiveTintColor: colors.text.tertiary,
