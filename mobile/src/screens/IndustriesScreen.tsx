@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,7 @@ import {
   Alert,
   TextInput,
 } from 'react-native';
-import { useNavigation, NavigationProp } from '@react-navigation/native';
+import { useNavigation, NavigationProp, useFocusEffect } from '@react-navigation/native';
 import { storeService, Store } from '../services/storeService';
 import { colors, theme } from '../styles/theme';
 import { flexScroll, screenContainer } from '../styles/webLayout';
@@ -29,9 +29,11 @@ export default function StoresScreen() {
   const [checkingIn, setCheckingIn] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
-  useEffect(() => {
-    loadStores();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      loadStores();
+    }, [])
+  );
 
   useEffect(() => {
     if (searchTerm.trim() === '') {

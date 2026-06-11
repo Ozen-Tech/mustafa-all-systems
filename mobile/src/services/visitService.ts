@@ -1,25 +1,4 @@
-import axios from 'axios';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import apiConfig from '../config/api';
-
-const apiClient = axios.create({
-  baseURL: apiConfig.BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
-
-// Interceptor para adicionar token
-apiClient.interceptors.request.use(
-  async (config) => {
-    const token = await AsyncStorage.getItem('accessToken');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
+import { apiClient } from './apiClient';
 
 export interface CheckInRequest {
   storeId: string;
@@ -67,12 +46,12 @@ export interface PriceResearchRequest {
 
 export const visitService = {
   async checkIn(data: CheckInRequest) {
-    const response = await apiClient.post(apiConfig.ENDPOINTS.PROMOTER.CHECKIN, data);
+    const response = await apiClient.post('/promoters/checkin', data);
     return response.data;
   },
 
   async checkOut(data: CheckOutRequest) {
-    const response = await apiClient.post(apiConfig.ENDPOINTS.PROMOTER.CHECKOUT, data);
+    const response = await apiClient.post('/promoters/checkout', data);
     return response.data;
   },
 
@@ -82,30 +61,27 @@ export const visitService = {
   },
 
   async uploadPhotos(data: UploadPhotosRequest) {
-    const response = await apiClient.post(apiConfig.ENDPOINTS.PROMOTER.PHOTOS, data);
+    const response = await apiClient.post('/promoters/photos', data);
     return response.data;
   },
 
   async getCurrentVisit() {
-    const response = await apiClient.get(apiConfig.ENDPOINTS.PROMOTER.CURRENT_VISIT);
+    const response = await apiClient.get('/promoters/current-visit');
     return response.data;
   },
 
   async submitPriceResearch(data: PriceResearchRequest) {
-    const response = await apiClient.post(apiConfig.ENDPOINTS.PROMOTER.PRICE_RESEARCH, data);
+    const response = await apiClient.post('/promoters/price-research', data);
     return response.data;
   },
 
   async getVisits(page = 1, limit = 50) {
-    const response = await apiClient.get(
-      `${apiConfig.BASE_URL}/promoters/visits?page=${page}&limit=${limit}`
-    );
+    const response = await apiClient.get(`/promoters/visits?page=${page}&limit=${limit}`);
     return response.data;
   },
 
   async getDailySummary() {
-    const response = await apiClient.get(`${apiConfig.BASE_URL}/promoters/daily-summary`);
+    const response = await apiClient.get('/promoters/daily-summary');
     return response.data;
   },
 };
-

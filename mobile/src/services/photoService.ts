@@ -1,27 +1,7 @@
-import axios from 'axios';
 import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import apiConfig from '../config/api';
+import { apiClient } from './apiClient';
 import { isLocalPhotoUri } from '../utils/photoUri';
-
-const apiClient = axios.create({
-  baseURL: apiConfig.BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
-
-apiClient.interceptors.request.use(
-  async (config) => {
-    const token = await AsyncStorage.getItem('accessToken');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
 
 export interface PresignedUrlRequest {
   visitId: string;
@@ -52,7 +32,7 @@ function shouldUseBackendUpload(fileUri: string): boolean {
 
 export const photoService = {
   async getPresignedUrl(data: PresignedUrlRequest) {
-    const response = await apiClient.post(apiConfig.ENDPOINTS.UPLOAD.PHOTO, data);
+    const response = await apiClient.post('/upload/photo', data);
     return response.data;
   },
 
@@ -64,7 +44,7 @@ export const photoService = {
 
     if (shouldUseBackendUpload(data.fileUri)) {
       const imageBase64 = await uriToBase64(data.fileUri);
-      const response = await apiClient.post(apiConfig.ENDPOINTS.UPLOAD.PHOTO_DIRECT, {
+      const response = await apiClient.post('/upload/photo/direct', {
         visitId: data.visitId,
         type: data.type,
         contentType,
