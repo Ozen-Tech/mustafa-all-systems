@@ -4,10 +4,17 @@ import { useNavigation, NavigationProp } from '@react-navigation/native';
 import { visitService } from '../services/visitService';
 import { useVisitFlow } from '../features/visits';
 import { offlineSyncService } from '../services/offlineSyncService';
+import { useAuth } from '../context/AuthContext';
 import { colors, theme } from '../styles/theme';
-import { flexScroll, screenContainer } from '../styles/webLayout';
+import { flexScroll } from '../styles/webLayout';
+import { layout, screenStyles } from '../styles/layout';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
+import ScreenHeader from '../components/ui/ScreenHeader';
+import Section from '../components/ui/Section';
+import MetricCard from '../components/ui/MetricCard';
+import LoadingView from '../components/ui/LoadingView';
+import Badge from '../components/ui/Badge';
 
 type HomeNavigation = NavigationProp<Record<string, object | undefined>>;
 
@@ -24,6 +31,7 @@ interface DailySummary {
 
 export default function HomeScreen() {
   const navigation = useNavigation<HomeNavigation>();
+  const { user } = useAuth();
   const {
     visit: localVisit,
     isActiveVisit,
@@ -104,183 +112,143 @@ export default function HomeScreen() {
   }
 
   if (visitFlowLoading || loading || hasActiveVisit === null) {
-    return (
-      <View style={styles.container}>
-        <ActivityIndicator size="large" color={colors.primary[600]} />
-        <Text style={styles.loadingText}>Carregando...</Text>
-      </View>
-    );
+    return <LoadingView message="Preparando seu painel..." />;
   }
 
-  return (
-    <ScrollView style={[styles.container, flexScroll]} contentContainerStyle={styles.contentContainer}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.greeting}>Olá! 👋</Text>
-        <Text style={styles.title}>Bem-vindo ao Promo Gestão</Text>
-      </View>
+  const firstName = user?.name?.split(' ')[0] || 'Promotor';
+  const todayLabel = new Date().toLocaleDateString('pt-BR', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  });
 
-      {/* Status Card */}
+  return (
+    <ScrollView style={[screenStyles.root, flexScroll]} contentContainerStyle={styles.content}>
+      <ScreenHeader
+        eyebrow={todayLabel}
+        title={`Olá, ${firstName}`}
+        subtitle="Acompanhe sua visita e o desempenho do dia"
+      />
+
       <Card style={styles.statusCard} variant={hasActiveVisit ? 'primary' : 'default'} shadow>
-        <View style={styles.statusContent}>
-          <View
-            style={[
-              styles.statusIcon,
-              hasActiveVisit ? styles.statusIconActive : undefined,
-            ]}
-          >
-            <Text style={styles.statusIconText}>
-              {hasActiveVisit ? '📍' : '✨'}
-            </Text>
-          </View>
-          <View style={styles.statusText}>
+        <View style={styles.statusRow}>
+          <View style={[styles.statusDot, hasActiveVisit && styles.statusDotActive]} />
+          <View style={styles.statusCopy}>
             <Text style={styles.statusTitle}>
-              {hasActiveVisit ? 'Visita em Andamento' : 'Nenhuma Visita Ativa'}
+              {hasActiveVisit ? 'Visita em andamento' : 'Pronto para começar'}
             </Text>
             <Text style={styles.statusSubtitle}>
               {hasActiveVisit
-                ? 'Continue sua visita atual ou finalize para iniciar uma nova'
-                : 'Inicie uma nova visita para começar a trabalhar'}
+                ? 'Continue de onde parou ou finalize para iniciar outra loja'
+                : 'Selecione uma loja da sua rota para iniciar o check-in'}
             </Text>
           </View>
         </View>
       </Card>
 
-      {/* Action Button - só mostra Continuar se o backend confirmar visita ativa */}
-      <View style={styles.actionContainer}>
-        {hasActiveVisit === true ? (
+      <Section title="Ação principal">
+        {hasActiveVisit ? (
           <>
-            {localVisit && (
-              <Card style={styles.activeVisitInfo} shadow>
-                <Text style={styles.activeVisitStoreName}>{localVisit.storeName}</Text>
-                <Text style={styles.activeVisitStatus}>
+            {localVisit ? (
+              <Card style={styles.visitCard} shadow>
+                <View style={styles.visitCardHeader}>
+                  <Text style={styles.visitStore}>{localVisit.storeName}</Text>
+                  <Badge variant="accent" size="sm">
+                    Ativa
+                  </Badge>
+                </View>
+                <Text style={styles.visitStatus}>
                   {localVisit.status === 'checkedIn' || localVisit.status === 'working'
                     ? 'Trabalhando na loja'
                     : localVisit.status === 'storeCompleted'
-                    ? 'Loja concluída - faça checkout'
-                    : 'Visita em andamento'}
+                      ? 'Aguardando checkout'
+                      : 'Visita em progresso'}
                 </Text>
                 {(pendingPhotosCount > 0 || pendingSurveysCount > 0) && (
-                  <Text style={styles.pendingSyncText}>
-                    {pendingPhotosCount} foto(s) e {pendingSurveysCount} pesquisa(s) pendentes de sync
+                  <Text style={styles.pendingSync}>
+                    {pendingPhotosCount} foto(s) · {pendingSurveysCount} pesquisa(s) pendentes
                   </Text>
                 )}
               </Card>
-            )}
-            <Button
-              variant="accent"
-              size="lg"
-              onPress={handleContinueVisit}
-              style={styles.actionButton}
-            >
-              Continuar Visita
+            ) : null}
+            <Button variant="accent" size="lg" onPress={handleContinueVisit} style={styles.fullWidth}>
+              Continuar visita
             </Button>
           </>
         ) : (
-          <Button
-            variant="primary"
-            size="lg"
-            onPress={handleStartVisit}
-            style={styles.actionButton}
-          >
-            Iniciar Nova Visita
+          <Button variant="primary" size="lg" onPress={handleStartVisit} style={styles.fullWidth}>
+            Iniciar nova visita
           </Button>
         )}
-      </View>
+      </Section>
 
-      {/* Daily Summary Card */}
-      {!summaryLoading && dailySummary && (
-        <Card style={styles.summaryCard} shadow>
-          <Text style={styles.summaryTitle}>Resumo do Dia</Text>
-          <View style={styles.summaryGrid}>
-            <View style={styles.summaryItem}>
-              <Text style={styles.summaryValue}>{dailySummary.totalVisits}</Text>
-              <Text style={styles.summaryLabel}>Visitas</Text>
+      <Section title="Resumo do dia">
+        {summaryLoading ? (
+          <Card style={styles.loadingCard} shadow>
+            <ActivityIndicator size="small" color={colors.primary[500]} />
+            <Text style={styles.loadingText}>Atualizando métricas...</Text>
+          </Card>
+        ) : dailySummary ? (
+          <Card shadow>
+            <View style={styles.metricsGrid}>
+              <MetricCard label="Visitas" value={String(dailySummary.totalVisits)} accent="primary" />
+              <MetricCard
+                label="Horas"
+                value={`${dailySummary.totalHours.toFixed(1)}h`}
+                accent="default"
+              />
+              <MetricCard label="Fotos" value={String(dailySummary.totalPhotos)} accent="accent" />
+              <MetricCard
+                label="Meta fotos"
+                value={`${dailySummary.photoCompliance.toFixed(0)}%`}
+                accent="success"
+              />
             </View>
-            <View style={styles.summaryItem}>
-              <Text style={styles.summaryValue}>{dailySummary.totalHours.toFixed(1)}h</Text>
-              <Text style={styles.summaryLabel}>Horas</Text>
-            </View>
-            <View style={styles.summaryItem}>
-              <Text style={styles.summaryValue}>{dailySummary.totalPhotos}</Text>
-              <Text style={styles.summaryLabel}>Fotos</Text>
-            </View>
-            <View style={styles.summaryItem}>
-              <Text style={[styles.summaryValue, styles.summaryCompliance]}>
-                {dailySummary.photoCompliance.toFixed(0)}%
-              </Text>
-              <Text style={styles.summaryLabel}>Meta</Text>
-            </View>
-          </View>
-          {dailySummary.inProgressVisits > 0 && (
-            <View style={styles.inProgressBadge}>
-              <Text style={styles.inProgressText}>
-                {dailySummary.inProgressVisits} visita(s) em andamento
-              </Text>
-            </View>
-          )}
-        </Card>
-      )}
-
-      {summaryLoading && (
-        <Card style={styles.summaryCard} shadow>
-          <ActivityIndicator size="small" color={colors.primary[600]} />
-          <Text style={styles.loadingText}>Carregando resumo...</Text>
-        </Card>
-      )}
+            {dailySummary.inProgressVisits > 0 ? (
+              <View style={styles.inlineBadge}>
+                <Text style={styles.inlineBadgeText}>
+                  {dailySummary.inProgressVisits} visita(s) em andamento
+                </Text>
+              </View>
+            ) : null}
+          </Card>
+        ) : (
+          <Card shadow>
+            <Text style={styles.emptySummary}>Sem dados do dia ainda. Inicie uma visita para começar.</Text>
+          </Card>
+        )}
+      </Section>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.dark.background,
-  },
-  contentContainer: {
-    padding: theme.spacing.lg,
-  },
-  header: {
-    marginBottom: theme.spacing.xl,
-  },
-  greeting: {
-    fontSize: theme.typography.fontSize['2xl'],
-    fontWeight: theme.typography.fontWeight.normal,
-    color: colors.text.secondary,
-    marginBottom: theme.spacing.xs,
-  },
-  title: {
-    fontSize: theme.typography.fontSize['3xl'],
-    fontWeight: theme.typography.fontWeight.bold,
-    color: colors.text.primary,
+  content: {
+    paddingHorizontal: layout.screenPaddingHorizontal,
+    paddingTop: theme.spacing.lg,
+    paddingBottom: layout.screenPaddingBottom,
+    gap: layout.sectionGap,
   },
   statusCard: {
-    marginBottom: theme.spacing.xl,
+    padding: theme.spacing.lg,
   },
-  statusContent: {
+  statusRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    gap: theme.spacing.md,
   },
-  statusIcon: {
-    width: 60,
-    height: 60,
+  statusDot: {
+    width: 10,
+    height: 10,
     borderRadius: theme.borderRadius.full,
-    backgroundColor: colors.dark.cardElevated,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: theme.spacing.md,
-    borderWidth: 1,
-    borderColor: colors.dark.border,
+    marginTop: 6,
+    backgroundColor: colors.text.tertiary,
   },
-  statusIconActive: {
-    backgroundColor: 'rgba(124, 58, 237, 0.2)',
-    borderColor: colors.primary[600],
+  statusDotActive: {
+    backgroundColor: colors.primary[400],
     ...theme.shadows.primary,
   },
-  statusIconText: {
-    fontSize: 28,
-  },
-  statusText: {
+  statusCopy: {
     flex: 1,
   },
   statusTitle: {
@@ -294,87 +262,67 @@ const styles = StyleSheet.create({
     color: colors.text.secondary,
     lineHeight: 20,
   },
-  actionContainer: {
-    marginBottom: theme.spacing.xl,
-    gap: theme.spacing.md,
+  visitCard: {
+    marginBottom: theme.spacing.md,
   },
-  actionButton: {
-    width: '100%',
-  },
-  activeVisitInfo: {
-    padding: theme.spacing.md,
+  visitCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: theme.spacing.sm,
     marginBottom: theme.spacing.sm,
   },
-  activeVisitStoreName: {
+  visitStore: {
+    flex: 1,
     fontSize: theme.typography.fontSize.lg,
     fontWeight: theme.typography.fontWeight.bold,
     color: colors.text.primary,
-    marginBottom: theme.spacing.xs,
   },
-  activeVisitStatus: {
+  visitStatus: {
     fontSize: theme.typography.fontSize.sm,
     color: colors.primary[400],
     fontWeight: theme.typography.fontWeight.medium,
   },
-  pendingSyncText: {
+  pendingSync: {
+    marginTop: theme.spacing.sm,
     fontSize: theme.typography.fontSize.xs,
-    color: colors.warning || '#f59e0b',
-    marginTop: theme.spacing.xs,
+    color: colors.warning,
     fontWeight: theme.typography.fontWeight.medium,
   },
-  summaryCard: {
-    marginTop: theme.spacing.lg,
-    padding: theme.spacing.lg,
+  fullWidth: {
+    width: '100%',
   },
-  summaryTitle: {
-    fontSize: theme.typography.fontSize.lg,
-    fontWeight: theme.typography.fontWeight.bold,
-    color: colors.text.primary,
-    marginBottom: theme.spacing.md,
-  },
-  summaryGrid: {
+  metricsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: theme.spacing.md,
   },
-  summaryItem: {
-    flex: 1,
-    minWidth: '45%',
-    alignItems: 'center',
-    padding: theme.spacing.md,
-    backgroundColor: colors.dark.cardElevated,
-    borderRadius: theme.borderRadius.lg,
-  },
-  summaryValue: {
-    fontSize: theme.typography.fontSize['2xl'],
-    fontWeight: theme.typography.fontWeight.bold,
-    color: colors.primary[400],
-    marginBottom: theme.spacing.xs,
-  },
-  summaryCompliance: {
-    color: colors.primary[500],
-  },
-  summaryLabel: {
-    fontSize: theme.typography.fontSize.sm,
-    color: colors.text.secondary,
-    fontWeight: theme.typography.fontWeight.medium,
-  },
-  inProgressBadge: {
+  inlineBadge: {
     marginTop: theme.spacing.md,
-    padding: theme.spacing.sm,
-    backgroundColor: colors.primary[600] + '20',
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md,
     borderRadius: theme.borderRadius.md,
+    backgroundColor: 'rgba(124, 58, 237, 0.12)',
     alignItems: 'center',
   },
-  inProgressText: {
+  inlineBadgeText: {
     fontSize: theme.typography.fontSize.sm,
-    color: colors.primary[400],
+    color: colors.primary[300],
     fontWeight: theme.typography.fontWeight.medium,
+  },
+  loadingCard: {
+    alignItems: 'center',
+    paddingVertical: theme.spacing.xl,
   },
   loadingText: {
-    marginTop: theme.spacing.md,
-    fontSize: theme.typography.fontSize.base,
+    marginTop: theme.spacing.sm,
+    fontSize: theme.typography.fontSize.sm,
     color: colors.text.secondary,
+  },
+  emptySummary: {
+    fontSize: theme.typography.fontSize.sm,
+    color: colors.text.secondary,
+    lineHeight: 20,
   },
 });
 

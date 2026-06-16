@@ -20,6 +20,10 @@ export interface IndustryAssignment {
 export interface CoverageItem {
   industry: Industry;
   covered: boolean;
+  hasPhoto?: boolean;
+  justified?: boolean;
+  missReason?: string | null;
+  missNote?: string | null;
   photoCount: number;
 }
 

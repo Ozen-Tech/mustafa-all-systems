@@ -902,6 +902,12 @@ export async function getVisitCoverage(req: AuthRequest, res: Response) {
     });
     const coveredIds = new Set(photosWithIndustry.map(p => p.industryId));
 
+    const misses = await prisma.industryMiss.findMany({
+      where: { visitId },
+      select: { industryId: true, reason: true, note: true },
+    });
+    const justifiedIds = new Set(misses.map((m) => m.industryId));
+
     // Required: IndustryAssignment (promoter + store) se existir; senão StoreIndustry
     let requiredList: { industryId: string; industry: any }[];
     const assignments = await prisma.industryAssignment.findMany({
@@ -919,11 +925,20 @@ export async function getVisitCoverage(req: AuthRequest, res: Response) {
       requiredList = [];
     }
 
-    const coverage = requiredList.map(({ industryId, industry }) => ({
-      industry,
-      covered: coveredIds.has(industryId),
-      photoCount: photosWithIndustry.filter(p => p.industryId === industryId).length,
-    }));
+    const coverage = requiredList.map(({ industryId, industry }) => {
+      const miss = misses.find((m) => m.industryId === industryId);
+      const hasPhoto = coveredIds.has(industryId);
+      const justified = justifiedIds.has(industryId);
+      return {
+        industry,
+        covered: hasPhoto || justified,
+        hasPhoto,
+        justified,
+        missReason: miss?.reason ?? null,
+        missNote: miss?.note ?? null,
+        photoCount: photosWithIndustry.filter(p => p.industryId === industryId).length,
+      };
+    });
 
     const pending = coverage.filter(c => !c.covered);
     const covered = coverage.filter(c => c.covered);

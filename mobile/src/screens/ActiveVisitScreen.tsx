@@ -25,6 +25,9 @@ import { requestForegroundPermissions, getCurrentPosition } from '../utils/locat
 import { pickMultiplePhotos, pickSinglePhoto } from '../utils/imagePickerHelper';
 import { isPendingLocalPhoto } from '../utils/photoUri';
 import { savePendingPhotos, getPendingPhotos, clearPendingPhotos, PendingPhoto } from '../utils/sessionStorage';
+import IndustryNoPhotoToggle from '../components/IndustryNoPhotoToggle';
+import { NO_PHOTO_INDUSTRY_NOTE } from '../constants/industryJustification';
+import { showAlert } from '../utils/alertHelper';
 
 interface Visit {
   id: string;
@@ -87,6 +90,8 @@ export default function ActiveVisitScreen({ route }: any) {
   const [industriesLoaded, setIndustriesLoaded] = useState(false);
   const [onboardingSelectedIds, setOnboardingSelectedIds] = useState<Set<string>>(new Set());
   const [onboardingSubmitting, setOnboardingSubmitting] = useState(false);
+  const [waivedIndustryIds, setWaivedIndustryIds] = useState<Set<string>>(new Set());
+  const [waivingIndustryId, setWaivingIndustryId] = useState<string | null>(null);
 
   useEffect(() => {
     loadCurrentVisit();
@@ -110,10 +115,19 @@ export default function ActiveVisitScreen({ route }: any) {
 
     setIndustriesLoaded(false);
     try {
-      const data = await industryService.getVisitIndustries(visit.id);
+      const [data, coverage] = await Promise.all([
+        industryService.getVisitIndustries(visit.id),
+        industryService.getVisitCoverage(visit.id).catch(() => null),
+      ]);
       setIndustries(data.industries);
       setNeedsOnboarding(data.needsOnboarding);
       setNeedsSupervisorAssignment(!!data.needsSupervisorAssignment);
+      if (coverage?.coverage) {
+        const waived = coverage.coverage
+          .filter((item) => item.justified && !item.hasPhoto)
+          .map((item) => item.industry.id);
+        setWaivedIndustryIds(new Set(waived));
+      }
       if (!data.needsOnboarding && !data.needsSupervisorAssignment && data.industries.length > 0) {
         setExpandedIndustries(new Set(data.industries.map((i: Industry) => i.id)));
       } else {
@@ -403,6 +417,35 @@ export default function ActiveVisitScreen({ route }: any) {
     return photos.filter(p => p.industryId === industryId);
   }
 
+  async function toggleIndustryWithoutPhoto(industryId: string) {
+    if (!visit?.id || waivedIndustryIds.has(industryId)) return;
+
+    const uploadedCount = getPhotosForIndustry(industryId).filter((p) => p.url).length;
+    if (uploadedCount > 0) {
+      showAlert('Aviso', 'Esta indústria já possui foto enviada.');
+      return;
+    }
+
+    setWaivingIndustryId(industryId);
+    try {
+      await visitService.justifyMissingIndustries(visit.id, [
+        {
+          industryId,
+          reason: 'OTHER',
+          note: NO_PHOTO_INDUSTRY_NOTE,
+        },
+      ]);
+      setWaivedIndustryIds((prev) => new Set(prev).add(industryId));
+    } catch (error: any) {
+      showAlert(
+        'Erro',
+        error?.response?.data?.message || 'Não foi possível registrar que não há foto desta indústria.'
+      );
+    } finally {
+      setWaivingIndustryId(null);
+    }
+  }
+
   function getPhotosWithoutIndustry(): VisitPhoto[] {
     return photos.filter(p => !p.industryId);
   }
@@ -476,7 +519,10 @@ export default function ActiveVisitScreen({ route }: any) {
       const failedCount = uploadResults.filter(r => !r.success).length;
 
       if (successResults.length === 0) {
-        Alert.alert('Erro', 'Nenhuma foto foi enviada com sucesso');
+        showAlert(
+          'Erro',
+          'Nenhuma foto foi enviada. Verifique sua conexão e tente novamente.'
+        );
         setUploading(false);
         return;
       }
@@ -517,12 +563,17 @@ export default function ActiveVisitScreen({ route }: any) {
       }
 
       if (failedCount > 0) {
-        Alert.alert('Sucesso parcial', `${successResults.length} foto(s) enviadas. ${failedCount} falharam.`);
+        showAlert('Sucesso parcial', `${successResults.length} foto(s) enviadas. ${failedCount} falharam.`);
       } else {
-        Alert.alert('Sucesso', `${successResults.length} foto(s) enviadas com sucesso!`);
+        showAlert('Sucesso', `${successResults.length} foto(s) enviadas com sucesso!`);
       }
     } catch (error: any) {
-      Alert.alert('Erro', error.response?.data?.message || 'Erro ao enviar fotos');
+      const message =
+        error?.response?.data?.message ||
+        error?.response?.data?.detail ||
+        error?.message ||
+        'Erro ao enviar fotos';
+      showAlert('Erro', message);
     } finally {
       setUploading(false);
     }
@@ -616,6 +667,7 @@ export default function ActiveVisitScreen({ route }: any) {
               <Text style={styles.industryStats}>
                 {uploadedCount} enviada{uploadedCount !== 1 ? 's' : ''}
                 {pendingCount > 0 ? ` · ${pendingCount} pendente${pendingCount !== 1 ? 's' : ''}` : ''}
+                {waivedIndustryIds.has(industry.id) && uploadedCount === 0 ? ' · Sem foto (justificado)' : ''}
               </Text>
             </View>
           </View>
@@ -639,6 +691,14 @@ export default function ActiveVisitScreen({ route }: any) {
                 <Text style={styles.actionButtonText}>📷 Câmera</Text>
               </TouchableOpacity>
             </View>
+            {uploadedCount === 0 ? (
+              <IndustryNoPhotoToggle
+                checked={waivedIndustryIds.has(industry.id)}
+                loading={waivingIndustryId === industry.id}
+                disabled={waivedIndustryIds.has(industry.id)}
+                onToggle={() => toggleIndustryWithoutPhoto(industry.id)}
+              />
+            ) : null}
           </View>
         )}
       </View>
