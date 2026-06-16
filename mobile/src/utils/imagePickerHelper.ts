@@ -1,7 +1,8 @@
-import { Alert } from 'react-native';
+import { Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { showAlert } from './alertHelper';
 
-const DEFAULT_QUALITY = 0.8;
+const DEFAULT_QUALITY = Platform.OS === 'web' ? 0.55 : 0.8;
 
 async function launchCamera(quality: number): Promise<string | null> {
   const permission = await ImagePicker.requestCameraPermissionsAsync();
@@ -22,7 +23,7 @@ async function launchCamera(quality: number): Promise<string | null> {
 async function launchGallerySingle(quality: number): Promise<string | null> {
   const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (permission.status !== 'granted') {
-    Alert.alert('Permissão necessária', 'É necessário permitir acesso à galeria ou câmera.');
+    showAlert('Permissão necessária', 'É necessário permitir acesso à galeria ou câmera.');
     return null;
   }
 
@@ -62,7 +63,7 @@ export async function pickMultiplePhotos(options?: {
 
   const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (permission.status !== 'granted') {
-    Alert.alert('Permissão necessária', 'É necessário permitir acesso à galeria.');
+    showAlert('Permissão necessária', 'É necessário permitir acesso à galeria.');
     return [];
   }
 

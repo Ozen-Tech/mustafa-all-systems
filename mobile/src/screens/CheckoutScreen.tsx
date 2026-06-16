@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  Alert,
   ActivityIndicator,
   ScrollView,
   Image,
@@ -22,6 +21,8 @@ import { colors, theme } from '../styles/theme';
 import { flexScroll } from '../styles/webLayout';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
+import IndustryNoPhotoToggle from '../components/IndustryNoPhotoToggle';
+import { INDUSTRY_MISS_REASONS, NO_PHOTO_INDUSTRY_NOTE } from '../constants/industryJustification';
 import { requestForegroundPermissions, getCurrentPosition, LocationObject } from '../utils/locationHelper';
 import { showAlert } from '../utils/alertHelper';
 
@@ -63,6 +64,35 @@ export default function CheckoutScreen({ route }: any) {
     longitude: number;
     photoUrl: string;
   } | null>(null);
+  const [pendingCheckoutLocation, setPendingCheckoutLocation] = useState<LocationObject | null>(null);
+
+  const reasonOptions =
+    justifyReasonOptions.length > 0
+      ? justifyReasonOptions
+      : INDUSTRY_MISS_REASONS.map((r) => ({ code: r.code, label: r.label }));
+
+  function getReasonLabel(code?: string) {
+    if (!code) return '';
+    return reasonOptions.find((o) => o.code === code)?.label || code;
+  }
+
+  function markIndustryNoPhoto(industryId: string) {
+    setJustifySelections((prev) => ({
+      ...prev,
+      [industryId]: { reason: 'OTHER', note: NO_PHOTO_INDUSTRY_NOTE },
+    }));
+  }
+
+  function openJustifyModal(
+    industries: Array<{ id: string; name: string; abbreviation?: string | null; code?: string }>,
+    checkoutLocation: LocationObject
+  ) {
+    setJustifyPendingIndustries(industries);
+    setJustifyReasonOptions([]);
+    setJustifySelections({});
+    setPendingCheckoutLocation(checkoutLocation);
+    setJustifyModalOpen(true);
+  }
 
   useEffect(() => {
     requestLocationPermission();
@@ -82,7 +112,7 @@ export default function CheckoutScreen({ route }: any) {
         setLocation(loc);
         console.log('📍 [Checkout] Localização obtida:', loc.coords);
       } else {
-        Alert.alert(
+        showAlert(
           'Permissão necessária',
           'É necessário permitir o acesso à localização para fazer checkout.',
           [
@@ -93,7 +123,7 @@ export default function CheckoutScreen({ route }: any) {
       }
     } catch (error: any) {
       console.error('❌ [Checkout] Erro ao solicitar permissão de localização:', error);
-      Alert.alert('Erro', error?.message || 'Não foi possível solicitar permissão de localização');
+      showAlert('Erro', error?.message || 'Não foi possível solicitar permissão de localização');
     } finally {
       setLocationLoading(false);
     }
@@ -153,7 +183,7 @@ export default function CheckoutScreen({ route }: any) {
       }
     } catch (error) {
       console.error('❌ [Checkout] Erro ao capturar foto:', error);
-      Alert.alert('Erro', 'Não foi possível capturar a foto');
+      showAlert('Erro', 'Não foi possível capturar a foto');
     }
   }
 
@@ -191,22 +221,36 @@ export default function CheckoutScreen({ route }: any) {
     setLoading(true);
     try {
       console.log('📸 [Checkout] Enviando foto...');
+      if (!photoUri) {
+        showAlert('Erro', 'Tire uma foto da fachada primeiro');
+        return;
+      }
+
       let checkoutPhotoUrl = '';
-      if (photoUri) {
-        try {
-          const { url } = await photoService.uploadPhoto({
-            visitId: visit!.id,
-            type: 'FACADE_CHECKOUT',
-            contentType: 'image/jpeg',
-            extension: 'jpg',
-            fileUri: photoUri,
-          });
-          checkoutPhotoUrl = url;
-          console.log('✅ [Checkout] Upload da foto concluído com sucesso');
-        } catch (uploadError: any) {
-          console.error('❌ [Checkout] Erro no upload da foto:', uploadError);
-          console.warn('⚠️ [Checkout] Continuando checkout sem confirmação de upload...');
-        }
+      try {
+        const { url } = await photoService.uploadPhoto({
+          visitId: visit!.id,
+          type: 'FACADE_CHECKOUT',
+          contentType: 'image/jpeg',
+          extension: 'jpg',
+          fileUri: photoUri,
+        });
+        checkoutPhotoUrl = url;
+        console.log('✅ [Checkout] Upload da foto concluído com sucesso');
+      } catch (uploadError: any) {
+        console.error('❌ [Checkout] Erro no upload da foto:', uploadError);
+        const message =
+          uploadError?.response?.data?.message ||
+          uploadError?.response?.data?.detail ||
+          uploadError?.message ||
+          'Não foi possível enviar a foto do checkout. Verifique sua conexão e tente novamente.';
+        showAlert('Erro no upload', message);
+        return;
+      }
+
+      if (!checkoutPhotoUrl) {
+        showAlert('Erro', 'Não foi possível enviar a foto do checkout. Tente novamente.');
+        return;
       }
 
       console.log('📸 [Checkout] Enviando requisição de checkout...');
@@ -216,35 +260,17 @@ export default function CheckoutScreen({ route }: any) {
         longitude: currentLocation.coords.longitude,
         photoUrl: checkoutPhotoUrl,
       };
+      setPendingCheckoutPayload(payload);
 
       await completeCheckout(payload);
     } catch (error: any) {
       console.error('[Checkout] Erro no checkout:', error);
       const data = error?.response?.data;
       if (data?.code === 'MISSING_INDUSTRY_JUSTIFICATION' && Array.isArray(data?.pendingIndustries)) {
-        // Guardar payload exato para finalizar sem reupload após justificar
-        const safePhotoUrl = (() => {
-          try {
-            const parsed = JSON.parse(error?.config?.data || '{}');
-            return typeof parsed.photoUrl === 'string' ? parsed.photoUrl : '';
-          } catch {
-            return '';
-          }
-        })();
-        setPendingCheckoutPayload({
-          visitId: visit!.id,
-          latitude: currentLocation.coords.latitude,
-          longitude: currentLocation.coords.longitude,
-          photoUrl: safePhotoUrl,
-        });
-
-        setJustifyPendingIndustries(data.pendingIndustries);
-        setJustifyReasonOptions(data.reasonOptions || []);
-        setJustifySelections({});
-        setJustifyModalOpen(true);
+        openJustifyModal(data.pendingIndustries, currentLocation);
         return;
       }
-      Alert.alert('Erro', data?.message || 'Não foi possível fazer checkout');
+      showAlert('Erro', data?.message || 'Não foi possível fazer checkout');
     } finally {
       setLoading(false);
     }
@@ -252,32 +278,34 @@ export default function CheckoutScreen({ route }: any) {
 
   async function handleCheckout() {
     if (!visit) {
-      Alert.alert('Erro', 'Visita não encontrada');
+      showAlert('Erro', 'Visita não encontrada');
       return;
     }
 
     if (!photoUri) {
-      Alert.alert('Erro', 'Tire uma foto da fachada primeiro');
+      showAlert('Erro', 'Tire uma foto da fachada primeiro');
       return;
     }
 
-    // Tentar obter localização se não estiver disponível
     let currentLocation = location;
     if (!currentLocation) {
       console.log('📍 [Checkout] Localização não disponível, tentando obter...');
       const updatedLocation = await updateLocation();
       if (!updatedLocation) {
-        Alert.alert(
+        showAlert(
           'Localização necessária',
           'Não foi possível obter a localização. Por favor, verifique as permissões e tente novamente.',
           [
             { text: 'Cancelar', style: 'cancel' },
-            { text: 'Tentar novamente', onPress: async () => {
-              const retryLocation = await updateLocation();
-              if (retryLocation) {
-                handleCheckout();
-              }
-            }},
+            {
+              text: 'Tentar novamente',
+              onPress: async () => {
+                const retryLocation = await updateLocation();
+                if (retryLocation) {
+                  handleCheckout();
+                }
+              },
+            },
           ]
         );
         return;
@@ -286,47 +314,21 @@ export default function CheckoutScreen({ route }: any) {
     }
 
     if (!currentLocation) {
-      Alert.alert('Erro', 'Não foi possível obter a localização');
+      showAlert('Erro', 'Não foi possível obter a localização');
       return;
     }
 
-    // Verificar cobertura de indústrias antes do checkout
     try {
-      console.log('📦 [Checkout] Verificando cobertura de indústrias...');
       const coverage = await industryService.getVisitCoverage(visit.id);
-      
       if (!coverage.isComplete && coverage.pending.length > 0) {
-        const pendingNames = coverage.pending.map((p: any) => p.industry.name).join(', ');
-        const percentComplete = coverage.percentComplete;
-        
-        Alert.alert(
-          '⚠️ Indústrias Pendentes',
-          `Esta loja requer fotos de ${coverage.totalRequired} indústrias.\n\n` +
-          `Você cobriu ${coverage.totalCovered} de ${coverage.totalRequired} (${percentComplete}%).\n\n` +
-          `Faltam: ${pendingNames}`,
-          [
-            { 
-              text: 'Voltar e completar', 
-              style: 'cancel',
-              onPress: () => navigation.goBack(),
-            },
-            { 
-              text: 'Checkout mesmo assim', 
-              style: 'destructive',
-              onPress: () => proceedWithCheckout(currentLocation!),
-            },
-          ]
+        console.log(
+          `📦 [Checkout] ${coverage.pending.length} indústria(s) sem foto; backend validará justificativas.`
         );
-        return;
       }
-      
-      console.log('✅ [Checkout] Cobertura completa, prosseguindo...');
     } catch (error) {
-      // Se falhar a verificação de cobertura, continuar com checkout
       console.warn('⚠️ [Checkout] Erro ao verificar cobertura, prosseguindo:', error);
     }
 
-    // Prosseguir com checkout
     proceedWithCheckout(currentLocation);
   }
 
@@ -529,7 +531,7 @@ export default function CheckoutScreen({ route }: any) {
           size="lg"
           onPress={handleCheckout}
           isLoading={loading}
-          disabled={!photoUri || !location || loading}
+          disabled={!photoUri || loading}
           style={styles.actionButton}
         >
           Finalizar Checkout
@@ -548,42 +550,55 @@ export default function CheckoutScreen({ route }: any) {
             <ScrollView style={{ maxHeight: 360 }} contentContainerStyle={{ paddingVertical: 8 }}>
               {justifyPendingIndustries.map((ind) => {
                 const sel = justifySelections[ind.id] || {};
+                const isNoPhoto =
+                  sel.reason === 'OTHER' && sel.note === NO_PHOTO_INDUSTRY_NOTE;
                 return (
                   <View key={ind.id} style={styles.justifyRow}>
                     <Text style={styles.justifyIndustryName}>
                       {(ind.abbreviation || ind.code) ? `[${ind.abbreviation || ind.code}] ` : ''}{ind.name}
                     </Text>
-                    <TouchableOpacity
-                      style={styles.justifyPickButton}
-                      onPress={() => {
-                        const buttons = (justifyReasonOptions.length > 0 ? justifyReasonOptions : [
-                          { code: 'STORE_CLOSED', label: 'Loja fechada' },
-                          { code: 'NO_STOCK', label: 'Sem estoque' },
-                          { code: 'NO_AUTHORIZATION', label: 'Sem autorização' },
-                          { code: 'NO_MATERIAL', label: 'Sem material' },
-                          { code: 'PROMOTER_ERROR', label: 'Erro do promotor' },
-                          { code: 'OTHER', label: 'Outro' },
-                        ]).map((opt) => ({
-                          text: opt.label,
-                          onPress: () => {
-                            setJustifySelections((prev) => ({ ...prev, [ind.id]: { ...prev[ind.id], reason: opt.code } }));
-                          },
-                        }));
-                        Alert.alert('Motivo', 'Selecione um motivo', [
-                          ...buttons,
-                          { text: 'Cancelar', style: 'cancel' },
-                        ]);
-                      }}
-                    >
-                      <Text style={styles.justifyPickButtonText}>
-                        {sel.reason ? `Motivo: ${sel.reason}` : 'Selecionar motivo'}
+                    <IndustryNoPhotoToggle
+                      checked={isNoPhoto}
+                      onToggle={() => markIndustryNoPhoto(ind.id)}
+                    />
+                    <Text style={styles.justifyReasonLabel}>Motivo</Text>
+                    <View style={styles.reasonChips}>
+                      {reasonOptions.map((opt) => {
+                        const selected = sel.reason === opt.code && !isNoPhoto;
+                        return (
+                          <TouchableOpacity
+                            key={opt.code}
+                            style={[styles.reasonChip, selected && styles.reasonChipSelected]}
+                            onPress={() =>
+                              setJustifySelections((prev) => ({
+                                ...prev,
+                                [ind.id]: { reason: opt.code, note: prev[ind.id]?.note },
+                              }))
+                            }
+                          >
+                            <Text style={[styles.reasonChipText, selected && styles.reasonChipTextSelected]}>
+                              {opt.label}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                    {sel.reason ? (
+                      <Text style={styles.justifySelectedReason}>
+                        Selecionado: {isNoPhoto ? 'Sem foto desta indústria' : getReasonLabel(sel.reason)}
                       </Text>
-                    </TouchableOpacity>
+                    ) : null}
                     <TextInput
                       placeholder="Observação (opcional)"
                       placeholderTextColor={colors.text.tertiary}
-                      value={sel.note || ''}
-                      onChangeText={(text) => setJustifySelections((prev) => ({ ...prev, [ind.id]: { ...prev[ind.id], note: text } }))}
+                      value={isNoPhoto ? NO_PHOTO_INDUSTRY_NOTE : sel.note || ''}
+                      editable={!isNoPhoto}
+                      onChangeText={(text) =>
+                        setJustifySelections((prev) => ({
+                          ...prev,
+                          [ind.id]: { ...prev[ind.id], note: text },
+                        }))
+                      }
                       style={styles.justifyNote}
                       multiline
                     />
@@ -603,7 +618,7 @@ export default function CheckoutScreen({ route }: any) {
                   if (!visit) return;
                   const missing = justifyPendingIndustries.filter((ind) => !justifySelections[ind.id]?.reason);
                   if (missing.length > 0) {
-                    Alert.alert('Atenção', 'Selecione um motivo para todas as indústrias pendentes.');
+                    showAlert('Atenção', 'Selecione um motivo ou marque "Sem foto" para cada indústria pendente.');
                     return;
                   }
                   const items = justifyPendingIndustries.map((ind) => ({
@@ -616,14 +631,15 @@ export default function CheckoutScreen({ route }: any) {
                     await visitService.justifyMissingIndustries(visit.id, items);
                     setJustifyModalOpen(false);
 
-                    // Finalizar checkout com o payload já preparado (sem reupload)
-                    if (pendingCheckoutPayload) {
+                    if (pendingCheckoutPayload?.photoUrl) {
                       await completeCheckout(pendingCheckoutPayload);
+                    } else if (pendingCheckoutLocation) {
+                      await proceedWithCheckout(pendingCheckoutLocation);
                     } else {
-                      Alert.alert('Ok', 'Justificativas registradas. Tente finalizar o checkout novamente.');
+                      showAlert('Ok', 'Justificativas registradas. Toque em Finalizar Checkout novamente.');
                     }
                   } catch (e: any) {
-                    Alert.alert('Erro', e?.response?.data?.message || 'Não foi possível enviar justificativas.');
+                    showAlert('Erro', e?.response?.data?.message || 'Não foi possível enviar justificativas.');
                   } finally {
                     setLoading(false);
                   }
@@ -932,17 +948,43 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: 8,
   },
-  justifyPickButton: {
-    borderWidth: 1,
-    borderColor: colors.primary[600],
-    borderRadius: theme.borderRadius.md,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+  justifyReasonLabel: {
+    color: colors.text.secondary,
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 6,
+    marginTop: 4,
+  },
+  reasonChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
     marginBottom: 8,
   },
-  justifyPickButtonText: {
-    color: colors.primary[400],
+  reasonChip: {
+    borderWidth: 1,
+    borderColor: colors.dark.border,
+    borderRadius: theme.borderRadius.full,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    backgroundColor: colors.dark.background,
+  },
+  reasonChipSelected: {
+    borderColor: colors.primary[500],
+    backgroundColor: 'rgba(124, 58, 237, 0.2)',
+  },
+  reasonChipText: {
+    color: colors.text.secondary,
+    fontSize: 12,
     fontWeight: '600',
+  },
+  reasonChipTextSelected: {
+    color: colors.primary[300],
+  },
+  justifySelectedReason: {
+    color: colors.primary[400],
+    fontSize: 12,
+    marginBottom: 8,
   },
   justifyNote: {
     borderWidth: 1,

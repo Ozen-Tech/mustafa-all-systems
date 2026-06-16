@@ -4,7 +4,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, theme } from '../styles/theme';
-import { navigationSceneStyle } from '../styles/webLayout';
+import { navigationSceneStyle, getTabBarSafeAreaInsets } from '../styles/webLayout';
 import HomeScreen from '../screens/HomeScreen';
 import HistoryScreen from '../screens/HistoryScreen';
 import ProfileScreen from '../screens/ProfileScreen';
@@ -251,36 +251,28 @@ const Stack = createStackNavigator();
 
 function MainTabs() {
   const insets = useSafeAreaInsets();
-  const tabBarBottom = Math.max(theme.spacing.sm, insets.bottom);
 
   return (
     <Tab.Navigator
+      safeAreaInsets={getTabBarSafeAreaInsets(insets)}
       sceneContainerStyle={navigationSceneStyle}
       screenOptions={{
+        headerShown: false,
         tabBarStyle: {
           backgroundColor: colors.dark.backgroundSecondary,
           borderTopColor: colors.dark.border,
           borderTopWidth: 1,
-          paddingTop: theme.spacing.sm,
-          paddingBottom: tabBarBottom,
-          height: 56 + tabBarBottom,
+          paddingTop: theme.spacing.xs,
+          elevation: 0,
         },
-        tabBarActiveTintColor: colors.primary[400],
+        tabBarActiveTintColor: colors.primary[300],
         tabBarInactiveTintColor: colors.text.tertiary,
         tabBarLabelStyle: {
           fontSize: theme.typography.fontSize.xs,
-          fontWeight: theme.typography.fontWeight.medium,
+          fontWeight: theme.typography.fontWeight.semibold,
+          marginTop: 2,
         },
-        headerStyle: {
-          backgroundColor: colors.dark.background,
-          borderBottomColor: colors.dark.border,
-          borderBottomWidth: 1,
-        },
-        headerTintColor: colors.text.primary,
-        headerTitleStyle: {
-          fontWeight: theme.typography.fontWeight.bold,
-          fontSize: theme.typography.fontSize.lg,
-        },
+        tabBarHideOnKeyboard: true,
       }}
     >
       <Tab.Screen

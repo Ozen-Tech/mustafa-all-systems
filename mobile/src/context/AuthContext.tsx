@@ -1,7 +1,18 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
+import { AppState } from 'react-native';
 import { User } from '../types';
 import { authService } from '../services/authService';
+import {
+  clearAuthSession,
+  getRefreshToken,
+  getStoredUserJson,
+  setAuthSession,
+} from '../services/tokenStorage';
+import {
+  refreshAccessToken,
+  restoreSessionOnStartup,
+  setSessionExpiredHandler,
+} from '../services/apiClient';
 
 interface AuthContextType {
   user: User | null;
@@ -16,40 +27,72 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadUser();
+  const logout = useCallback(async () => {
+    await clearAuthSession();
+    setUser(null);
   }, []);
 
-  async function loadUser() {
-    try {
-      const token = await AsyncStorage.getItem('accessToken');
-      if (token) {
-        // TODO: Validate token and load user
-        const userData = await AsyncStorage.getItem('user');
-        if (userData) {
-          setUser(JSON.parse(userData));
+  const logoutRef = useRef(logout);
+  logoutRef.current = logout;
+
+  useEffect(() => {
+    async function loadUser() {
+      try {
+        const userJson = await getStoredUserJson();
+        if (!userJson) {
+          return;
         }
+
+        const sessionOk = await restoreSessionOnStartup();
+        const latestUserJson = (await getStoredUserJson()) || userJson;
+
+        if (sessionOk) {
+          setUser(JSON.parse(latestUserJson));
+          return;
+        }
+
+        await logoutRef.current();
+      } catch (error) {
+        console.error('Error loading user:', error);
+        await logoutRef.current();
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error('Error loading user:', error);
-    } finally {
-      setLoading(false);
     }
-  }
+
+    void loadUser();
+  }, []);
+
+  useEffect(() => {
+    setSessionExpiredHandler(() => {
+      void logoutRef.current();
+    });
+
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        void (async () => {
+          const refreshToken = await getRefreshToken();
+          if (refreshToken) {
+            await refreshAccessToken();
+          }
+        })();
+      }
+    });
+
+    return () => {
+      setSessionExpiredHandler(null);
+      subscription.remove();
+    };
+  }, []);
 
   async function login(email: string, password: string) {
     const response = await authService.login(email, password);
-    await AsyncStorage.setItem('accessToken', response.accessToken);
-    await AsyncStorage.setItem('refreshToken', response.refreshToken);
-    await AsyncStorage.setItem('user', JSON.stringify(response.user));
+    await setAuthSession(
+      response.accessToken,
+      response.refreshToken,
+      JSON.stringify(response.user)
+    );
     setUser(response.user);
-  }
-
-  async function logout() {
-    await AsyncStorage.removeItem('accessToken');
-    await AsyncStorage.removeItem('refreshToken');
-    await AsyncStorage.removeItem('user');
-    setUser(null);
   }
 
   return (
@@ -66,4 +109,3 @@ export function useAuth() {
   }
   return context;
 }
-

@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   RefreshControl,
-  TouchableOpacity,
   ActivityIndicator,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
@@ -14,6 +13,11 @@ import { colors, theme } from '../styles/theme';
 import { flexScroll, screenContainer } from '../styles/webLayout';
 import Card from '../components/ui/Card';
 import Badge from '../components/ui/Badge';
+import ScreenHeader from '../components/ui/ScreenHeader';
+import FilterChips from '../components/ui/FilterChips';
+import EmptyState from '../components/ui/EmptyState';
+import LoadingView from '../components/ui/LoadingView';
+import { screenStyles } from '../styles/layout';
 
 interface Visit {
   id: string;
@@ -81,66 +85,23 @@ export default function HistoryScreen() {
   });
 
   if (loading && !refreshing) {
-    return (
-      <View style={[styles.container, screenContainer]}>
-        <ActivityIndicator size="large" color={colors.primary[600]} />
-        <Text style={styles.loadingText}>Carregando histórico...</Text>
-      </View>
-    );
+    return <LoadingView message="Carregando histórico..." />;
   }
 
-  return (
-    <View style={[styles.container, screenContainer]}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.title}>Histórico de Visitas</Text>
-        <Text style={styles.subtitle}>
-          {filteredVisits.length} visita{filteredVisits.length !== 1 ? 's' : ''} encontrada
-          {filteredVisits.length !== 1 ? 's' : ''}
-        </Text>
-      </View>
+  const filterOptions = [
+    { id: 'all' as const, label: 'Todas' },
+    { id: 'completed' as const, label: 'Concluídas' },
+    { id: 'pending' as const, label: 'Pendentes' },
+  ];
 
-      {/* Filtros */}
-      <View style={styles.filters}>
-        <TouchableOpacity
-          style={[styles.filterButton, filter === 'all' && styles.filterButtonActive]}
-          onPress={() => setFilter('all')}
-        >
-          <Text
-            style={[
-              styles.filterButtonText,
-              filter === 'all' && styles.filterButtonTextActive,
-            ]}
-          >
-            Todas
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.filterButton, filter === 'completed' && styles.filterButtonActive]}
-          onPress={() => setFilter('completed')}
-        >
-          <Text
-            style={[
-              styles.filterButtonText,
-              filter === 'completed' && styles.filterButtonTextActive,
-            ]}
-          >
-            Concluídas
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.filterButton, filter === 'pending' && styles.filterButtonActive]}
-          onPress={() => setFilter('pending')}
-        >
-          <Text
-            style={[
-              styles.filterButtonText,
-              filter === 'pending' && styles.filterButtonTextActive,
-            ]}
-          >
-            Pendentes
-          </Text>
-        </TouchableOpacity>
+  return (
+    <View style={[screenStyles.root, screenContainer]}>
+      <View style={screenStyles.headerBand}>
+        <ScreenHeader
+          title="Histórico"
+          subtitle={`${filteredVisits.length} visita${filteredVisits.length !== 1 ? 's' : ''} encontrada${filteredVisits.length !== 1 ? 's' : ''}`}
+        />
+        <FilterChips options={filterOptions} value={filter} onChange={setFilter} />
       </View>
 
       {/* Lista de Visitas */}
@@ -152,17 +113,17 @@ export default function HistoryScreen() {
         }
       >
         {filteredVisits.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyIcon}>📋</Text>
-            <Text style={styles.emptyText}>Nenhuma visita encontrada</Text>
-            <Text style={styles.emptySubtext}>
-              {filter === 'all'
+          <EmptyState
+            icon="📋"
+            title="Nenhuma visita encontrada"
+            description={
+              filter === 'all'
                 ? 'Suas visitas aparecerão aqui'
                 : filter === 'completed'
-                ? 'Nenhuma visita concluída'
-                : 'Nenhuma visita pendente'}
-            </Text>
-          </View>
+                  ? 'Nenhuma visita concluída neste filtro'
+                  : 'Nenhuma visita pendente neste filtro'
+            }
+          />
         ) : (
           filteredVisits.map((visit) => (
             <Card key={visit.id} style={styles.visitCard} shadow>
@@ -210,10 +171,7 @@ export default function HistoryScreen() {
                 )}
 
                 <View style={styles.visitFooter}>
-                  <View style={styles.visitPhotoCount}>
-                    <Text style={styles.visitPhotoIcon}>📷</Text>
-                    <Text style={styles.visitPhotoText}>{visit.photoCount || 0} fotos</Text>
-                  </View>
+                  <Text style={styles.visitPhotoText}>{visit.photoCount || 0} fotos registradas</Text>
                 </View>
               </View>
             </Card>

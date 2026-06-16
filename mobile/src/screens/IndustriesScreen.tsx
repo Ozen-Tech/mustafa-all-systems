@@ -1,21 +1,23 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   FlatList,
-  TouchableOpacity,
-  ActivityIndicator,
   Alert,
-  TextInput,
 } from 'react-native';
-import { useNavigation, NavigationProp } from '@react-navigation/native';
+import { useNavigation, NavigationProp, useFocusEffect } from '@react-navigation/native';
 import { storeService, Store } from '../services/storeService';
 import { colors, theme } from '../styles/theme';
 import { flexScroll, screenContainer } from '../styles/webLayout';
+import { screenStyles } from '../styles/layout';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Badge from '../components/ui/Badge';
+import ScreenHeader from '../components/ui/ScreenHeader';
+import Input from '../components/ui/Input';
+import EmptyState from '../components/ui/EmptyState';
+import LoadingView from '../components/ui/LoadingView';
 import { ensureLocationPermission, getCurrentPosition } from '../utils/locationHelper';
 
 type StoresNavigation = NavigationProp<Record<string, object | undefined>>;
@@ -29,9 +31,11 @@ export default function StoresScreen() {
   const [checkingIn, setCheckingIn] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
-  useEffect(() => {
-    loadStores();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      loadStores();
+    }, [])
+  );
 
   useEffect(() => {
     if (searchTerm.trim() === '') {
@@ -94,42 +98,21 @@ export default function StoresScreen() {
   }
 
   if (loading) {
-    return (
-      <View style={[styles.container, screenContainer]}>
-        <ActivityIndicator size="large" color={colors.primary[600]} />
-        <Text style={styles.loadingText}>Carregando lojas...</Text>
-      </View>
-    );
+    return <LoadingView message="Carregando lojas..." />;
   }
 
   return (
-    <View style={[styles.container, screenContainer]}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.title}>Selecione uma Loja</Text>
-        <Text style={styles.subtitle}>
-          {filteredStores.length} loja{filteredStores.length !== 1 ? 's' : ''} disponível
-          {filteredStores.length !== 1 ? 'eis' : ''}
-        </Text>
-      </View>
-
-      {/* Busca */}
-      <View style={styles.searchContainer}>
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Buscar lojas..."
-          placeholderTextColor={colors.gray[400]}
+    <View style={[screenStyles.root, screenContainer]}>
+      <View style={screenStyles.headerBand}>
+        <ScreenHeader
+          title="Suas lojas"
+          subtitle={`${filteredStores.length} loja${filteredStores.length !== 1 ? 's' : ''} na rota de hoje`}
+        />
+        <Input
+          placeholder="Buscar por nome ou endereço"
           value={searchTerm}
           onChangeText={setSearchTerm}
         />
-        {searchTerm.length > 0 && (
-          <TouchableOpacity
-            onPress={() => setSearchTerm('')}
-            style={styles.clearButton}
-          >
-            <Text style={styles.clearButtonText}>✕</Text>
-          </TouchableOpacity>
-        )}
       </View>
 
       {/* Lista de Lojas */}
@@ -152,41 +135,45 @@ export default function StoresScreen() {
             >
               <View style={styles.storeHeader}>
                 <View style={[styles.storeIcon, alreadyVisitedToday && styles.storeIconDone]}>
-                  <Text style={styles.storeIconText}>🏪</Text>
+                  <Text style={styles.storeIconText}>
+                    {item.name.slice(0, 1).toUpperCase()}
+                  </Text>
                 </View>
                 <View style={styles.storeInfo}>
-                  <Text style={styles.storeName}>{item.name}</Text>
+                  <View style={styles.storeTitleRow}>
+                    <Text style={styles.storeName}>{item.name}</Text>
+                    {alreadyVisitedToday ? (
+                      <Badge variant="gray" size="sm">
+                        Concluída
+                      </Badge>
+                    ) : null}
+                  </View>
                   <Text style={styles.storeAddress}>{item.address}</Text>
-                  {alreadyVisitedToday && (
-                    <Text style={styles.alreadyVisitedLabel}>Já visitada hoje</Text>
-                  )}
                 </View>
               </View>
               <Button
-                variant="primary"
+                variant={alreadyVisitedToday ? 'outline' : 'primary'}
                 size="md"
                 onPress={() => handleCheckIn(item)}
                 isLoading={checkingIn === item.id}
                 disabled={checkingIn !== null || alreadyVisitedToday}
                 style={styles.checkInButton}
               >
-                {alreadyVisitedToday ? 'Já visitada hoje' : 'Fazer Check-in'}
+                {alreadyVisitedToday ? 'Visita feita hoje' : 'Iniciar check-in'}
               </Button>
             </Card>
           );
         }}
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyIcon}>🔍</Text>
-            <Text style={styles.emptyText}>
-              {searchTerm ? 'Nenhuma loja encontrada' : 'Nenhuma loja disponível'}
-            </Text>
-            <Text style={styles.emptySubtext}>
-              {searchTerm
-                ? 'Tente buscar com outros termos'
-                : 'As lojas atribuídas aparecerão aqui'}
-            </Text>
-          </View>
+          <EmptyState
+            icon="🔍"
+            title={searchTerm ? 'Nenhuma loja encontrada' : 'Nenhuma loja na rota'}
+            description={
+              searchTerm
+                ? 'Tente outro termo de busca'
+                : 'As lojas atribuídas ao seu perfil aparecerão aqui'
+            }
+          />
         }
       />
     </View>
@@ -275,7 +262,9 @@ const styles = StyleSheet.create({
     borderColor: colors.primary[600],
   },
   storeIconText: {
-    fontSize: 24,
+    fontSize: theme.typography.fontSize.lg,
+    fontWeight: theme.typography.fontWeight.bold,
+    color: colors.primary[300],
   },
   storeIconDone: {
     backgroundColor: colors.gray[700],
@@ -284,11 +273,18 @@ const styles = StyleSheet.create({
   storeInfo: {
     flex: 1,
   },
+  storeTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: theme.spacing.sm,
+    marginBottom: theme.spacing.xs,
+  },
   storeName: {
+    flex: 1,
     fontSize: theme.typography.fontSize.lg,
     fontWeight: theme.typography.fontWeight.bold,
     color: colors.text.primary,
-    marginBottom: theme.spacing.xs,
   },
   storeAddress: {
     fontSize: theme.typography.fontSize.sm,
