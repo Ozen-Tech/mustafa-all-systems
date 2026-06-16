@@ -21,6 +21,8 @@ import IndustryCoverage from './pages/IndustryCoverage';
 import StoreIndustriesConfig from './pages/StoreIndustriesConfig';
 import IndustryOwnerDashboard from './pages/IndustryOwnerDashboard';
 import Admin from './pages/Admin';
+import StockImport from './pages/StockImport';
+import StockDashboard from './pages/StockDashboard';
 import PromoterOpsSupport from './pages/PromoterOpsSupport';
 import AdminTodayPromoterOverview from './pages/AdminTodayPromoterOverview';
 import AppStoreReleaseOps from './pages/AppStoreReleaseOps';
@@ -253,6 +255,24 @@ function AppRoutes() {
             <SupervisorOrAdminRoute>
               <Reports />
             </SupervisorOrAdminRoute>
+          }
+        />
+
+        {/* Estoque e Vendas */}
+        <RouterRoute
+          path="stock"
+          element={
+            <SupervisorOrAdminRoute>
+              <StockDashboard />
+            </SupervisorOrAdminRoute>
+          }
+        />
+        <RouterRoute
+          path="stock/import"
+          element={
+            <AdminRoute>
+              <StockImport />
+            </AdminRoute>
           }
         />
 

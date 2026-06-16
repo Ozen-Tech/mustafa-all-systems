@@ -33,6 +33,23 @@ enum IndustryMissReason {
   OTHER
 }
 
+enum StockImportType {
+  STOCK
+  SALES
+  BOTH
+}
+
+enum StockImportStatus {
+  PROCESSING
+  DONE
+  FAILED
+}
+
+enum StockLocationType {
+  LOJA
+  CD
+}
+
 model User {
   id        String   @id @default(uuid())
   email     String   @unique
@@ -59,6 +76,7 @@ model User {
   supervisedRoutes      RouteAssignment[]    @relation("SupervisedRoutes")
   redoGrantsAsPromoter  PromoterStoreRedoGrant[] @relation("RedoGrantPromoter")
   redoGrantsGranted     PromoterStoreRedoGrant[] @relation("RedoGrantGrantedBy")
+  stockImports          StockImport[]
 
   @@index([state])
 }
@@ -83,6 +101,7 @@ model Store {
   id        String   @id @default(uuid())
   name      String
   code      String?  @unique
+  filialCode String? @unique // Código da filial nos relatórios do Mateus (ex: "506")
   address   String
   state     String?
   latitude  Float    @default(0)
@@ -92,6 +111,7 @@ model Store {
 
   @@index([state])
   @@index([code])
+  @@index([filialCode])
 
   // Relations
   visits                Visit[]
@@ -103,6 +123,8 @@ model Store {
   informationDistributions InformationDistribution[]
   storeIndustries       StoreIndustry[]
   promoterStoreRedoGrants PromoterStoreRedoGrant[]
+  storeStockItems       StoreStockItem[]
+  salesRecords          SalesRecord[]
 }
 
 model Visit {
@@ -460,5 +482,89 @@ model PromoterSupervisor {
   @@unique([promoterId, supervisorId])
   @@index([promoterId])
   @@index([supervisorId])
+}
+
+// Log de importações dos relatórios semanais do Mateus.
+model StockImport {
+  id            String            @id @default(uuid())
+  fileName      String
+  weekLabel     String?
+  type          StockImportType   @default(STOCK)
+  status        StockImportStatus @default(PROCESSING)
+  stockRowCount Int               @default(0)
+  salesRowCount Int               @default(0)
+  industries    String[]          @default([])
+  meta          Json?
+  errorMessage  String?
+  uploadedById  String?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  uploadedBy   User?            @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  stockItems   StoreStockItem[]
+  salesRecords SalesRecord[]
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+// Estoque por produto/filial (LOJA ou CD), snapshot mais recente por indústria.
+model StoreStockItem {
+  id           String             @id @default(uuid())
+  importId     String
+  industryName String
+  supplierName String?
+  filialCode   String
+  filialName   String
+  filialRaw    String
+  storeId      String?
+  state        String?
+  locationType StockLocationType?
+  productCode  String
+  productName  String
+  qty          Float              @default(0)
+  valueRs      Float?
+  idade        Float?
+  dde          Float?
+  status       String?
+  lowTurn      Boolean            @default(false)
+  capturedAt   DateTime           @default(now())
+
+  import StockImport @relation(fields: [importId], references: [id], onDelete: Cascade)
+  store  Store?      @relation(fields: [storeId], references: [id], onDelete: SetNull)
+
+  @@index([industryName])
+  @@index([filialCode])
+  @@index([storeId])
+  @@index([productCode])
+  @@index([locationType])
+  @@index([importId])
+  @@index([storeId, industryName])
+}
+
+// Vendas agregadas por indústria + filial (período atual vs anterior do relatório).
+model SalesRecord {
+  id            String   @id @default(uuid())
+  importId      String
+  industryName  String
+  filialCode    String
+  filialName    String
+  storeId       String?
+  state         String?
+  bandeira      String?
+  qtyCurrent    Float    @default(0)
+  qtyPrevious   Float    @default(0)
+  valueCurrent  Float    @default(0)
+  valuePrevious Float    @default(0)
+  productCount  Int      @default(0)
+  capturedAt    DateTime @default(now())
+
+  import StockImport @relation(fields: [importId], references: [id], onDelete: Cascade)
+  store  Store?      @relation(fields: [storeId], references: [id], onDelete: SetNull)
+
+  @@index([industryName])
+  @@index([filialCode])
+  @@index([storeId])
+  @@index([importId])
 }
 

@@ -16,7 +16,9 @@
     "test:firebase:direct": "tsx src/scripts/test-firebase-direct.ts"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.2.1",
     "@prisma/client": "^5.7.1",
+    "axios": "^1.6.2",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
@@ -27,14 +29,14 @@
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.1",
+    "node-stream-zip": "^1.15.0",
     "pdf-lib": "^1.17.1",
     "pdfkit": "^0.14.0",
     "pptxgenjs": "^3.12.0",
+    "saxes": "^5.0.1",
     "uuid": "^9.0.1",
-    "zod": "^3.22.4",
-    "axios": "^1.6.2",
-    "@google/generative-ai": "^0.2.1",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "zod": "^3.22.4"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
@@ -43,8 +45,8 @@
     "@types/jsonwebtoken": "^9.0.5",
     "@types/multer": "^1.4.11",
     "@types/node": "^20.10.5",
-    "@types/uuid": "^9.0.7",
     "@types/pdfkit": "^0.13.0",
+    "@types/uuid": "^9.0.7",
     "prisma": "^5.7.1",
     "tsx": "^4.7.0",
     "typescript": "^5.3.3"

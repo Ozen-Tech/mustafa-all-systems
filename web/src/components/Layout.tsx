@@ -216,9 +216,13 @@ export default function Layout() {
       : []),
     ...(isSupervisorOrAdmin
       ? [
+          { name: 'Estoque e Vendas', path: '/stock', icon: StoresIcon },
           { name: 'Gerenciar Lojas', path: '/stores', icon: StoresIcon },
           { name: 'Configurar Rotas', path: '/routes/config', icon: RouteIcon },
         ]
+      : []),
+    ...(isAdmin
+      ? [{ name: 'Importar Estoque', path: '/stock/import', icon: AdminIndustriesIcon }]
       : []),
     ...(isAdmin
       ? [{ name: 'Indústrias/Loja', path: '/stores/industries', icon: AdminIndustriesIcon }]
