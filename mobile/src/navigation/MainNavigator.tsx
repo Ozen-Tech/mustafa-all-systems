@@ -246,6 +246,34 @@ function PriceResearchScreenWrapper(props: any) {
   return <Screen {...props} />;
 }
 
+function StoreStockScreenWrapper(props: any) {
+  const [Screen, setScreen] = React.useState<React.ComponentType<any> | null>(null);
+  const [isLoading, setIsLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      try {
+        const module = require('../screens/StoreStockScreen');
+        if (module && module.default) {
+          setScreen(() => module.default);
+        }
+      } catch (err: any) {
+        console.error('Erro ao carregar StoreStockScreen:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (isLoading || !Screen) {
+    return <LoadingScreen />;
+  }
+
+  return <Screen {...props} />;
+}
+
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
@@ -361,6 +389,11 @@ export default function MainNavigator() {
         name="Checkout"
         component={CheckoutScreenWrapper}
         options={{ title: 'Checkout' }}
+      />
+      <Stack.Screen
+        name="StoreStock"
+        component={StoreStockScreenWrapper}
+        options={{ title: 'Estoque da Loja' }}
       />
     </Stack.Navigator>
   );

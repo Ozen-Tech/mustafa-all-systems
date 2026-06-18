@@ -857,6 +857,19 @@ export default function ActiveVisitScreen({ route }: any) {
         <Text style={styles.time}>
           Check-in: {new Date(visit.checkInAt).toLocaleTimeString()}
         </Text>
+        {visit.store?.id && (
+          <TouchableOpacity
+            style={styles.stockShortcut}
+            onPress={() =>
+              navigation.navigate('StoreStock', {
+                storeId: visit.store?.id,
+                storeName: visit.store?.name,
+              })
+            }
+          >
+            <Text style={styles.stockShortcutText}>📦 Ver estoque desta loja</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Seção de Fotos */}
@@ -1022,6 +1035,19 @@ const styles = StyleSheet.create({
   time: {
     fontSize: 12,
     color: colors.text.tertiary,
+  },
+  stockShortcut: {
+    marginTop: 12,
+    alignSelf: 'flex-start',
+    backgroundColor: colors.primary[600],
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  stockShortcutText: {
+    color: colors.text.primary,
+    fontWeight: '700',
+    fontSize: 13,
   },
   section: {
     backgroundColor: colors.dark.card,

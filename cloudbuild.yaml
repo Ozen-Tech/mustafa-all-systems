@@ -57,6 +57,11 @@ steps:
       - '${_DEPLOY_REGION}'
       - '--platform'
       - 'managed'
+      # Importação de estoque/vendas processa o arquivo inline; dá folga de tempo/memória.
+      - '--timeout'
+      - '600'
+      - '--memory'
+      - '1Gi'
     id: 'deploy'
     waitFor: ['migrate']
 
