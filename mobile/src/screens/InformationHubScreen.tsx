@@ -20,13 +20,6 @@ const typeLabel: Record<string, string> = {
   produto: 'Produto',
   geral: 'Geral',
 };
-import { showAlert } from '../utils/alertHelper';
-
-const typeLabel: Record<string, string> = {
-  estoque: 'Estoque/Vendas',
-  produto: 'Produto',
-  geral: 'Geral',
-};
 
 export default function InformationHubScreen() {
   const [selectedIndustryId, setSelectedIndustryId] = useState<string | undefined>();
