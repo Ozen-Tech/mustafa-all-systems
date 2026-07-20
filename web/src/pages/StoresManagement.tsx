@@ -30,7 +30,7 @@ export default function StoresManagement() {
   const [filterState, setFilterState] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
-  const { data: storesData, isLoading } = useQuery({
+  const { data: storesData, isLoading, isError, error } = useQuery({
     queryKey: ['stores'],
     queryFn: () => supervisorService.getAllStores(),
   });
@@ -164,6 +164,18 @@ export default function StoresManagement() {
           Cadastre lojas rapidamente. Estado e indústrias são mantidos entre cadastros.
         </p>
       </div>
+
+      {isError && (
+        <Card className="border-error-500/50">
+          <CardContent>
+            <p className="text-error-500 font-medium">Erro ao carregar lojas</p>
+            <p className="text-text-secondary text-sm mt-1">
+              {(error as any)?.response?.data?.message ||
+                'O servidor retornou erro. Se acabou de fazer deploy, a migration do banco pode estar pendente.'}
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Formulário Rápido */}
       <Card className={editingId ? 'border-primary-600' : ''}>

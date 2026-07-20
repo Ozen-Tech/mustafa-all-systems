@@ -192,6 +192,7 @@ export const offlineSyncService = {
           type: photo.type,
           latitude: photo.latitude ?? undefined,
           longitude: photo.longitude ?? undefined,
+          industryId: photo.industryId ?? undefined,
         }],
       });
 

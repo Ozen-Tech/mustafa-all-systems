@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Alert,
   ActivityIndicator,
   Image,
   Modal,
@@ -88,6 +87,7 @@ export default function ActiveVisitScreen({ route }: any) {
   const [needsOnboarding, setNeedsOnboarding] = useState<boolean | null>(null);
   const [needsSupervisorAssignment, setNeedsSupervisorAssignment] = useState<boolean | null>(null);
   const [industriesLoaded, setIndustriesLoaded] = useState(false);
+  const [industriesLoadError, setIndustriesLoadError] = useState(false);
   const [onboardingSelectedIds, setOnboardingSelectedIds] = useState<Set<string>>(new Set());
   const [onboardingSubmitting, setOnboardingSubmitting] = useState(false);
   const [waivedIndustryIds, setWaivedIndustryIds] = useState<Set<string>>(new Set());
@@ -114,6 +114,7 @@ export default function ActiveVisitScreen({ route }: any) {
     if (!visit?.id || !visit?.store?.id) return;
 
     setIndustriesLoaded(false);
+    setIndustriesLoadError(false);
     try {
       const [data, coverage] = await Promise.all([
         industryService.getVisitIndustries(visit.id),
@@ -138,6 +139,7 @@ export default function ActiveVisitScreen({ route }: any) {
       setNeedsSupervisorAssignment(false);
       setNeedsOnboarding(false);
       setIndustries([]);
+      setIndustriesLoadError(true);
     } finally {
       setIndustriesLoaded(true);
     }
@@ -165,7 +167,7 @@ export default function ActiveVisitScreen({ route }: any) {
       setExpandedIndustries(new Set(res.industries.map((i: Industry) => i.id)));
     } catch (error) {
       console.error('Error saving store industries:', error);
-      Alert.alert('Erro', 'Não foi possível salvar. Tente novamente.');
+      showAlert('Erro', 'Não foi possível salvar. Tente novamente.');
     } finally {
       setOnboardingSubmitting(false);
     }
@@ -296,7 +298,7 @@ export default function ActiveVisitScreen({ route }: any) {
       setExpandedIndustries((prev) => new Set(prev).add(industryId));
     } catch (error) {
       console.error('Erro ao selecionar imagens:', error);
-      Alert.alert('Erro', 'Não foi possível selecionar as imagens');
+      showAlert('Erro', 'Não foi possível selecionar as imagens');
     }
   }
 
@@ -322,7 +324,7 @@ export default function ActiveVisitScreen({ route }: any) {
       setExpandedIndustries((prev) => new Set(prev).add(industryId));
     } catch (error) {
       console.error('Erro ao capturar foto:', error);
-      Alert.alert('Erro', 'Não foi possível capturar a foto');
+      showAlert('Erro', 'Não foi possível capturar a foto');
     }
   }
 
@@ -344,7 +346,7 @@ export default function ActiveVisitScreen({ route }: any) {
       });
     } catch (error) {
       console.error('Erro ao selecionar imagens:', error);
-      Alert.alert('Erro', 'Não foi possível selecionar as imagens');
+      showAlert('Erro', 'Não foi possível selecionar as imagens');
     }
   }
 
@@ -365,12 +367,12 @@ export default function ActiveVisitScreen({ route }: any) {
       });
     } catch (error) {
       console.error('Erro ao capturar foto:', error);
-      Alert.alert('Erro', 'Não foi possível capturar a foto');
+      showAlert('Erro', 'Não foi possível capturar a foto');
     }
   }
 
   function removePhoto(index: number) {
-    Alert.alert(
+    showAlert(
       'Remover foto',
       'Deseja remover esta foto?',
       [
@@ -464,7 +466,7 @@ export default function ActiveVisitScreen({ route }: any) {
 
   async function uploadPhotos() {
     if (!visit || photos.length === 0) {
-      Alert.alert('Erro', 'Não há fotos para enviar');
+      showAlert('Erro', 'Não há fotos para enviar');
       return;
     }
 
@@ -473,11 +475,11 @@ export default function ActiveVisitScreen({ route }: any) {
       const permission = await requestForegroundPermissions();
 
       if (permission.status !== 'granted') {
-        Alert.alert(
+        showAlert(
           'Permissão necessária',
           'É necessário permitir o acesso à localização para enviar fotos.',
           [
-            { text: 'Cancelar', style: 'cancel', onPress: () => setUploading(false) },
+            { text: 'Cancelar', style: 'cancel' },
             { text: 'Tentar novamente', onPress: uploadPhotos },
           ]
         );
@@ -489,12 +491,11 @@ export default function ActiveVisitScreen({ route }: any) {
       const photosToUpload = photos.filter((photo) => isPendingLocalPhoto(photo));
 
       if (photosToUpload.length === 0) {
-        Alert.alert('Aviso', 'Não há fotos novas para enviar');
-        setUploading(false);
+        showAlert('Aviso', 'Não há fotos novas para enviar');
         return;
       }
 
-      const uploadResults: { photo: VisitPhoto; url: string; success: boolean }[] = [];
+      const uploadResults: { photo: VisitPhoto; url: string; success: boolean; error?: string }[] = [];
 
       for (const photo of photosToUpload) {
         try {
@@ -511,7 +512,7 @@ export default function ActiveVisitScreen({ route }: any) {
           uploadResults.push({ photo, url, success: true });
         } catch (error: any) {
           console.error('❌ [ActiveVisit] Erro no upload:', error?.message);
-          uploadResults.push({ photo, url: '', success: false });
+          uploadResults.push({ photo, url: '', success: false, error: error?.response?.data?.detail || error?.response?.data?.message || error?.message });
         }
       }
 
@@ -519,11 +520,11 @@ export default function ActiveVisitScreen({ route }: any) {
       const failedCount = uploadResults.filter(r => !r.success).length;
 
       if (successResults.length === 0) {
+        const firstError = uploadResults.find(r => r.error)?.error;
         showAlert(
           'Erro',
-          'Nenhuma foto foi enviada. Verifique sua conexão e tente novamente.'
+          firstError || 'Nenhuma foto foi enviada. Verifique sua conexão e tente novamente.'
         );
-        setUploading(false);
         return;
       }
 
@@ -557,8 +558,16 @@ export default function ActiveVisitScreen({ route }: any) {
         );
       } catch (error: any) {
         console.error('❌ [ActiveVisit] Erro ao registrar fotos no backend:', error);
-        Alert.alert('Aviso', `${successResults.length} foto(s) enviadas, mas houve erro ao registrar`);
-        setUploading(false);
+        const detail =
+          error?.response?.data?.message ||
+          error?.response?.data?.detail ||
+          error?.message;
+        showAlert(
+          'Erro ao registrar',
+          detail
+            ? `${successResults.length} foto(s) enviadas ao storage, mas falhou ao registrar no sistema: ${detail}`
+            : `${successResults.length} foto(s) enviadas, mas houve erro ao registrar`
+        );
         return;
       }
 
@@ -756,6 +765,29 @@ export default function ActiveVisitScreen({ route }: any) {
     );
   }
 
+  if (industriesLoadError) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center', padding: 24 }]}>
+        <Text style={[styles.title, { textAlign: 'center' }]}>Não foi possível carregar as indústrias</Text>
+        <Text style={[styles.subtitle, { textAlign: 'center', marginTop: 12 }]}>
+          Sem a lista de indústrias, as fotos não podem ser vinculadas corretamente. Verifique sua conexão e tente novamente.
+        </Text>
+        <TouchableOpacity
+          style={[styles.navButton, styles.primaryButton, { marginTop: 24, alignSelf: 'stretch' }]}
+          onPress={() => loadIndustries()}
+        >
+          <Text style={styles.navButtonText}>Tentar novamente</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.navButton, { marginTop: 12, backgroundColor: colors.dark.cardElevated }]}
+          onPress={() => navigation.goBack()}
+        >
+          <Text style={styles.navButtonText}>Voltar</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   // ---- Aguardando supervisor definir indústrias na rota (web) ----
 
   if (needsSupervisorAssignment === true) {
@@ -947,9 +979,9 @@ export default function ActiveVisitScreen({ route }: any) {
                 setSyncing(true);
                 try {
                   await offlineSyncService.syncAll();
-                  Alert.alert('Sincronizado', 'Dados sincronizados com sucesso!');
+                  showAlert('Sincronizado', 'Dados sincronizados com sucesso!');
                 } catch {
-                  Alert.alert('Erro', 'Falha ao sincronizar. Tente novamente mais tarde.');
+                  showAlert('Erro', 'Falha ao sincronizar. Tente novamente mais tarde.');
                 } finally {
                   setSyncing(false);
                 }
