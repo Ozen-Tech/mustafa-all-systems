@@ -10,6 +10,9 @@ import { UserRole } from '../types';
 import {
   parseMateusWorkbook,
   normalizeFilialCode,
+  normalizeSalesMonth,
+  latestSalesMonth,
+  SALES_MONTH_ORDER,
   StockRow,
   SalesRow,
 } from '../services/pivotCacheParser';
@@ -68,21 +71,28 @@ interface SalesAgg {
   filialName: string;
   state: string | null;
   bandeira: string | null;
+  month: string | null;
+  productCode: string;
+  productName: string;
+  category: string | null;
   qtyCurrent: number;
   qtyPrevious: number;
+  qtyTrend: number;
   valueCurrent: number;
   valuePrevious: number;
+  valueTrend: number;
   productCount: number;
 }
 
 /**
  * Processa o arquivo: faz parse do cache da pivot, casa filiais com lojas e
  * substitui (por indústria) os dados de estoque e vendas.
+ * Vendas ficam por indústria + filial + produto + mês (não soma o ano inteiro).
  */
 export async function processImport(importId: string, filePath: string): Promise<void> {
   // Estoque: dedup por (industria, filial, produto, tipo) mantendo o último.
   const stockMap = new Map<string, StockRow>();
-  // Vendas: agrega por (industria, filial).
+  // Vendas: agrega por (industria, filial, produto, mês).
   const salesMap = new Map<string, SalesAgg>();
 
   const result = await parseMateusWorkbook(filePath, {
@@ -95,8 +105,11 @@ export async function processImport(importId: string, filePath: string): Promise
     },
     onSalesBatch: async (rows) => {
       for (const r of rows) {
-        if (!r.industryName) continue;
-        const key = `${r.industryName}||${r.filialCode}`;
+        if (!r.industryName || !r.productCode) continue;
+        // Descarta meses futuros sem movimento (ex.: ago–dez com 0).
+        if (!(r.qtyCurrent || r.qtyPrevious || r.valueCurrent || r.valuePrevious)) continue;
+        const month = normalizeSalesMonth(r.month);
+        const key = `${r.industryName}||${r.filialCode}||${r.productCode}||${month || ''}`;
         let agg = salesMap.get(key);
         if (!agg) {
           agg = {
@@ -105,19 +118,30 @@ export async function processImport(importId: string, filePath: string): Promise
             filialName: r.filialName,
             state: r.state,
             bandeira: r.bandeira,
+            month,
+            productCode: r.productCode,
+            productName: r.productName,
+            category: r.category,
             qtyCurrent: 0,
             qtyPrevious: 0,
+            qtyTrend: 0,
             valueCurrent: 0,
             valuePrevious: 0,
+            valueTrend: 0,
             productCount: 0,
           };
           salesMap.set(key, agg);
         }
         agg.qtyCurrent += r.qtyCurrent ?? 0;
         agg.qtyPrevious += r.qtyPrevious ?? 0;
+        agg.qtyTrend += r.qtyTrend ?? (r.qtyCurrent ?? 0) * 2;
         agg.valueCurrent += r.valueCurrent ?? 0;
         agg.valuePrevious += r.valuePrevious ?? 0;
-        agg.productCount += 1;
+        agg.valueTrend += r.valueTrend ?? (r.valueCurrent ?? 0) * 2;
+        agg.productCount = 1;
+        if (r.productName) agg.productName = r.productName;
+        if (r.category) agg.category = r.category;
+        if (r.state) agg.state = r.state;
       }
     },
   });
@@ -153,10 +177,16 @@ export async function processImport(importId: string, filePath: string): Promise
     storeId: filialMap.get(normalizeFilialCode(a.filialCode)) ?? null,
     state: a.state,
     bandeira: a.bandeira,
+    month: a.month,
+    productCode: a.productCode,
+    productName: a.productName,
+    category: a.category,
     qtyCurrent: a.qtyCurrent,
     qtyPrevious: a.qtyPrevious,
+    qtyTrend: a.qtyTrend,
     valueCurrent: a.valueCurrent,
     valuePrevious: a.valuePrevious,
+    valueTrend: a.valueTrend,
     productCount: a.productCount,
   }));
 
@@ -190,6 +220,7 @@ export async function processImport(importId: string, filePath: string): Promise
       meta: {
         matchedStock: stockData.filter((d) => d.storeId).length,
         matchedSales: salesData.filter((d) => d.storeId).length,
+        months: Array.from(new Set(salesData.map((d) => d.month).filter(Boolean))),
       },
     },
   });
@@ -387,53 +418,250 @@ export async function getStockByStore(req: AuthRequest, res: Response) {
   });
 }
 
+type SalesGroupBy = 'industry' | 'store' | 'product';
+
+function growthPct(cur: number, prev: number): number | null {
+  if (prev > 0) return ((cur - prev) / prev) * 100;
+  return null;
+}
+
+function buildSalesWhere(query: {
+  industryName?: string;
+  storeId?: string;
+  state?: string;
+  month?: string;
+  product?: string;
+  filialCode?: string;
+}) {
+  const where: any = {};
+  if (query.industryName) where.industryName = { equals: query.industryName, mode: 'insensitive' };
+  if (query.storeId) where.storeId = query.storeId;
+  if (query.state) where.state = { equals: query.state, mode: 'insensitive' };
+  if (query.filialCode) {
+    const norm = normalizeFilialCode(query.filialCode);
+    where.OR = [{ filialCode: query.filialCode }, { filialCode: norm }, { filialCode: norm.padStart(4, '0') }];
+  }
+  if (query.month) where.month = { equals: normalizeSalesMonth(query.month) || query.month, mode: 'insensitive' };
+  if (query.product?.trim()) {
+    const q = query.product.trim();
+    where.AND = [
+      ...(where.AND || []),
+      {
+        OR: [
+          { productCode: { contains: q, mode: 'insensitive' } },
+          { productName: { contains: q, mode: 'insensitive' } },
+        ],
+      },
+    ];
+  }
+  return where;
+}
+
 export async function getSales(req: AuthRequest, res: Response) {
   const industryName = (req.query.industryName as string | undefined)?.trim();
   const storeId = (req.query.storeId as string | undefined)?.trim();
-  const where: any = {};
-  if (industryName) where.industryName = { equals: industryName, mode: 'insensitive' };
-  if (storeId) where.storeId = storeId;
+  const state = (req.query.state as string | undefined)?.trim();
+  const product = (req.query.product as string | undefined)?.trim();
+  const filialCode = (req.query.filialCode as string | undefined)?.trim();
+  let month = (req.query.month as string | undefined)?.trim();
+  const groupBy = ((req.query.groupBy as string | undefined) || 'industry') as SalesGroupBy;
+  const allMonths = req.query.allMonths === '1' || req.query.allMonths === 'true';
 
-  const records = await prisma.salesRecord.findMany({
-    where,
-    orderBy: { valueCurrent: 'desc' },
-    take: 1000,
-  });
+  // Opções de filtro (antes de aplicar mês padrão).
+  const baseForOptions = buildSalesWhere({ industryName, storeId, state, product, filialCode });
+  const [monthRows, stateRows, industryRows, storeRows] = await Promise.all([
+    prisma.salesRecord.groupBy({
+      by: ['month'],
+      where: { ...baseForOptions, month: { not: null } },
+      _sum: { valueCurrent: true },
+    }),
+    prisma.salesRecord.groupBy({
+      by: ['state'],
+      where: { ...baseForOptions, state: { not: null } },
+      _count: { _all: true },
+    }),
+    prisma.salesRecord.groupBy({
+      by: ['industryName'],
+      where: baseForOptions,
+      _sum: { valueCurrent: true },
+      orderBy: { industryName: 'asc' },
+    }),
+    prisma.salesRecord.groupBy({
+      by: ['storeId', 'filialCode', 'filialName', 'state'],
+      where: { ...baseForOptions, storeId: { not: null } },
+      _sum: { valueCurrent: true },
+      orderBy: { filialName: 'asc' },
+      take: 500,
+    }),
+  ]);
 
-  const byIndustry = await prisma.salesRecord.groupBy({
-    by: ['industryName'],
-    where,
-    _sum: { qtyCurrent: true, qtyPrevious: true, valueCurrent: true, valuePrevious: true },
-  });
+  const monthsWithValue = monthRows
+    .filter((m) => (m._sum.valueCurrent ?? 0) > 0 && m.month)
+    .map((m) => m.month as string);
+  const monthsSorted = [...SALES_MONTH_ORDER.filter((m) => monthsWithValue.includes(m)), ...monthsWithValue.filter((m) => !SALES_MONTH_ORDER.includes(m as any))];
+
+  if (!allMonths && !month) {
+    month = latestSalesMonth(monthsWithValue) || undefined;
+  }
+
+  const where = buildSalesWhere({ industryName, storeId, state, product, filialCode, month });
+
+  type Agg = {
+    key: string;
+    label: string;
+    sublabel?: string | null;
+    industryName?: string;
+    filialCode?: string;
+    filialName?: string;
+    storeId?: string | null;
+    state?: string | null;
+    productCode?: string | null;
+    productName?: string | null;
+    qtyCurrent: number;
+    qtyPrevious: number;
+    qtyTrend: number;
+    valueCurrent: number;
+    valuePrevious: number;
+    valueTrend: number;
+  };
+
+  const map = new Map<string, Agg>();
+  const batchSize = 5000;
+  let cursor: string | undefined;
+  for (;;) {
+    const batch = await prisma.salesRecord.findMany({
+      where,
+      take: batchSize,
+      ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+      orderBy: { id: 'asc' },
+      select: {
+        id: true,
+        industryName: true,
+        filialCode: true,
+        filialName: true,
+        storeId: true,
+        state: true,
+        productCode: true,
+        productName: true,
+        qtyCurrent: true,
+        qtyPrevious: true,
+        qtyTrend: true,
+        valueCurrent: true,
+        valuePrevious: true,
+        valueTrend: true,
+      },
+    });
+    if (batch.length === 0) break;
+    for (const r of batch) {
+      let key: string;
+      let label: string;
+      let sublabel: string | null = null;
+      if (groupBy === 'store') {
+        key = r.storeId || r.filialCode;
+        label = `[${r.filialCode}] ${r.filialName}`;
+        sublabel = r.state;
+      } else if (groupBy === 'product') {
+        key = `${r.industryName}||${r.productCode || r.productName || 'sem-produto'}`;
+        label = r.productName || r.productCode || 'Sem produto';
+        sublabel = r.industryName;
+      } else {
+        key = r.industryName || 'Sem indústria';
+        label = key;
+      }
+      const cur = map.get(key) || {
+        key,
+        label,
+        sublabel,
+        industryName: r.industryName,
+        filialCode: r.filialCode,
+        filialName: r.filialName,
+        storeId: r.storeId,
+        state: r.state,
+        productCode: r.productCode,
+        productName: r.productName,
+        qtyCurrent: 0,
+        qtyPrevious: 0,
+        qtyTrend: 0,
+        valueCurrent: 0,
+        valuePrevious: 0,
+        valueTrend: 0,
+      };
+      cur.qtyCurrent += r.qtyCurrent;
+      cur.qtyPrevious += r.qtyPrevious;
+      cur.qtyTrend += r.qtyTrend || r.qtyCurrent * 2;
+      cur.valueCurrent += r.valueCurrent;
+      cur.valuePrevious += r.valuePrevious;
+      cur.valueTrend += r.valueTrend || r.valueCurrent * 2;
+      map.set(key, cur);
+    }
+    cursor = batch[batch.length - 1].id;
+    if (batch.length < batchSize) break;
+  }
+
+  const rows = Array.from(map.values())
+    .map((v) => ({
+      ...v,
+      qtyGrowthPct: growthPct(v.qtyCurrent, v.qtyPrevious),
+      growthPct: growthPct(v.valueCurrent, v.valuePrevious),
+    }))
+    .sort((a, b) => b.valueCurrent - a.valueCurrent)
+    .slice(0, groupBy === 'product' ? 300 : 200);
+
+  const totals = rows.reduce(
+    (acc, r) => {
+      acc.qtyCurrent += r.qtyCurrent;
+      acc.qtyPrevious += r.qtyPrevious;
+      acc.valueCurrent += r.valueCurrent;
+      acc.valuePrevious += r.valuePrevious;
+      return acc;
+    },
+    { qtyCurrent: 0, qtyPrevious: 0, valueCurrent: 0, valuePrevious: 0 }
+  );
 
   res.json({
-    byIndustry: byIndustry
-      .map((r) => {
-        const qtyCur = r._sum.qtyCurrent ?? 0;
-        const qtyPrev = r._sum.qtyPrevious ?? 0;
-        const cur = r._sum.valueCurrent ?? 0;
-        const prev = r._sum.valuePrevious ?? 0;
-        return {
-          industryName: r.industryName,
-          qtyCurrent: qtyCur,
-          qtyPrevious: qtyPrev,
-          // Projeção estilo planilha Mateus (TEND QTD ≈ 2x parcial do mês)
-          qtyTrend: qtyCur * 2,
-          qtyGrowthPct: qtyPrev > 0 ? ((qtyCur - qtyPrev) / qtyPrev) * 100 : null,
-          valueCurrent: cur,
-          valuePrevious: prev,
-          valueTrend: cur * 2,
-          growthPct: prev > 0 ? ((cur - prev) / prev) * 100 : null,
-        };
-      })
-      .sort((a, b) => b.valueCurrent - a.valueCurrent),
-    records,
+    month: month || null,
+    groupBy,
+    totals: {
+      ...totals,
+      qtyGrowthPct: growthPct(totals.qtyCurrent, totals.qtyPrevious),
+      growthPct: growthPct(totals.valueCurrent, totals.valuePrevious),
+    },
+    // Compatível com a UI anterior (byIndustry) quando groupBy=industry
+    byIndustry: groupBy === 'industry' ? rows.map((r) => ({
+      industryName: r.label,
+      qtyCurrent: r.qtyCurrent,
+      qtyPrevious: r.qtyPrevious,
+      qtyTrend: r.qtyTrend,
+      qtyGrowthPct: r.qtyGrowthPct,
+      valueCurrent: r.valueCurrent,
+      valuePrevious: r.valuePrevious,
+      valueTrend: r.valueTrend,
+      growthPct: r.growthPct,
+    })) : undefined,
+    rows,
+    filters: {
+      months: monthsSorted,
+      states: stateRows
+        .map((s) => s.state)
+        .filter(Boolean)
+        .sort() as string[],
+      industries: industryRows.map((i) => i.industryName).filter(Boolean),
+      stores: storeRows.map((s) => ({
+        storeId: s.storeId,
+        filialCode: s.filialCode,
+        filialName: s.filialName,
+        state: s.state,
+      })),
+    },
   });
 }
 
 /** Vendas agregadas de uma loja (PWA promotor). */
 export async function getStoreSales(req: AuthRequest, res: Response) {
   const { storeId } = req.params;
+  let month = (req.query.month as string | undefined)?.trim();
+  const industryName = (req.query.industryName as string | undefined)?.trim();
+
   const store = await prisma.store.findUnique({
     where: { id: storeId },
     select: { id: true, name: true, code: true, filialCode: true },
@@ -444,38 +672,57 @@ export async function getStoreSales(req: AuthRequest, res: Response) {
   const norm = normalizeFilialCode(store.filialCode || store.code || '');
   if (norm) orConditions.push({ filialCode: { in: [norm, norm.padStart(4, '0')] } });
 
+  const baseWhere: any = { OR: orConditions };
+  if (industryName) baseWhere.industryName = { equals: industryName, mode: 'insensitive' };
+
+  const monthRows = await prisma.salesRecord.groupBy({
+    by: ['month'],
+    where: { ...baseWhere, month: { not: null } },
+    _sum: { valueCurrent: true },
+  });
+  const monthsWithValue = monthRows
+    .filter((m) => (m._sum.valueCurrent ?? 0) > 0 && m.month)
+    .map((m) => m.month as string);
+  if (!month) month = latestSalesMonth(monthsWithValue) || undefined;
+
+  const where: any = { ...baseWhere };
+  if (month) where.month = { equals: normalizeSalesMonth(month) || month, mode: 'insensitive' };
+
   const records = await prisma.salesRecord.findMany({
-    where: { OR: orConditions },
+    where,
     orderBy: { valueCurrent: 'desc' },
-    take: 500,
+    take: 2000,
   });
 
   const byIndustryMap = new Map<
     string,
-    { qtyCurrent: number; qtyPrevious: number; valueCurrent: number; valuePrevious: number }
+    { qtyCurrent: number; qtyPrevious: number; qtyTrend: number; valueCurrent: number; valuePrevious: number; valueTrend: number }
   >();
   for (const r of records) {
     const key = r.industryName || 'Sem indústria';
     const cur = byIndustryMap.get(key) || {
       qtyCurrent: 0,
       qtyPrevious: 0,
+      qtyTrend: 0,
       valueCurrent: 0,
       valuePrevious: 0,
+      valueTrend: 0,
     };
     cur.qtyCurrent += r.qtyCurrent;
     cur.qtyPrevious += r.qtyPrevious;
+    cur.qtyTrend += r.qtyTrend || r.qtyCurrent * 2;
     cur.valueCurrent += r.valueCurrent;
     cur.valuePrevious += r.valuePrevious;
+    cur.valueTrend += r.valueTrend || r.valueCurrent * 2;
     byIndustryMap.set(key, cur);
   }
 
   const byIndustry = Array.from(byIndustryMap.entries())
-    .map(([industryName, v]) => ({
-      industryName,
+    .map(([name, v]) => ({
+      industryName: name,
       ...v,
-      qtyTrend: v.qtyCurrent * 2,
-      qtyGrowthPct: v.qtyPrevious > 0 ? ((v.qtyCurrent - v.qtyPrevious) / v.qtyPrevious) * 100 : null,
-      growthPct: v.valuePrevious > 0 ? ((v.valueCurrent - v.valuePrevious) / v.valuePrevious) * 100 : null,
+      qtyGrowthPct: growthPct(v.qtyCurrent, v.qtyPrevious),
+      growthPct: growthPct(v.valueCurrent, v.valuePrevious),
     }))
     .sort((a, b) => b.valueCurrent - a.valueCurrent);
 
@@ -491,12 +738,11 @@ export async function getStoreSales(req: AuthRequest, res: Response) {
 
   res.json({
     store,
+    month: month || null,
+    months: monthsWithValue,
     totals: {
       ...totals,
-      growthPct:
-        totals.valuePrevious > 0
-          ? ((totals.valueCurrent - totals.valuePrevious) / totals.valuePrevious) * 100
-          : null,
+      growthPct: growthPct(totals.valueCurrent, totals.valuePrevious),
     },
     byIndustry,
   });

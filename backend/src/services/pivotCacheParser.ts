@@ -52,9 +52,58 @@ export interface SalesRow {
   month: string | null;
   qtyCurrent: number | null;
   qtyPrevious: number | null;
+  qtyTrend: number | null;
   valueCurrent: number | null;
   valuePrevious: number | null;
+  valueTrend: number | null;
   industryName: string | null;
+}
+
+/** Ordem civil dos meses (planilha Mateus). */
+export const SALES_MONTH_ORDER = [
+  'JANEIRO',
+  'FEVEREIRO',
+  'MARÇO',
+  'ABRIL',
+  'MAIO',
+  'JUNHO',
+  'JULHO',
+  'AGOSTO',
+  'SETEMBRO',
+  'OUTUBRO',
+  'NOVEMBRO',
+  'DEZEMBRO',
+] as const;
+
+export function normalizeSalesMonth(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const m = raw.toString().trim().toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+  const map: Record<string, string> = {
+    JANEIRO: 'JANEIRO',
+    FEVEREIRO: 'FEVEREIRO',
+    MARCO: 'MARÇO',
+    ABRIL: 'ABRIL',
+    MAIO: 'MAIO',
+    JUNHO: 'JUNHO',
+    JULHO: 'JULHO',
+    AGOSTO: 'AGOSTO',
+    SETEMBRO: 'SETEMBRO',
+    OUTUBRO: 'OUTUBRO',
+    NOVEMBRO: 'NOVEMBRO',
+    DEZEMBRO: 'DEZEMBRO',
+  };
+  return map[m] ?? raw.toString().trim().toUpperCase();
+}
+
+export function latestSalesMonth(months: string[]): string | null {
+  const present = new Set(months.map((m) => normalizeSalesMonth(m) || m));
+  for (let i = SALES_MONTH_ORDER.length - 1; i >= 0; i--) {
+    const name = SALES_MONTH_ORDER[i];
+    if (present.has(name)) return name;
+  }
+  return months[0] ?? null;
 }
 
 export interface ParseResult {
@@ -397,6 +446,14 @@ export async function parseMateusWorkbook(
         if (!filial.code || !product.code) return;
         const ind = get('IND');
         if (ind) industries.add(ind);
+        const qtyCur = qty.current ? toNumber(get(qty.current)) : null;
+        const valCur = value.current ? toNumber(get(value.current)) : null;
+        const tendQtyField =
+          fieldNames.find((n) => /^TEND\s*QTD/i.test(n)) ||
+          fieldNames.find((n) => /^TEND$/i.test(n));
+        const tendValField = fieldNames.find((n) => /^TEND[EÊ]NCIA$/i.test(n));
+        const qtyTrendRaw = tendQtyField ? toNumber(get(tendQtyField)) : null;
+        const valueTrendRaw = tendValField ? toNumber(get(tendValField)) : null;
         const row: SalesRow = {
           filialRaw,
           filialCode: filial.code,
@@ -408,11 +465,13 @@ export async function parseMateusWorkbook(
           productCode: product.code,
           productName: product.name,
           category: get('CATEGORIA'),
-          month: get('MES'),
-          qtyCurrent: qty.current ? toNumber(get(qty.current)) : null,
+          month: normalizeSalesMonth(get('MES')),
+          qtyCurrent: qtyCur,
           qtyPrevious: qty.previous ? toNumber(get(qty.previous)) : null,
-          valueCurrent: value.current ? toNumber(get(value.current)) : null,
+          qtyTrend: qtyTrendRaw ?? (qtyCur != null ? qtyCur * 2 : null),
+          valueCurrent: valCur,
           valuePrevious: value.previous ? toNumber(get(value.previous)) : null,
+          valueTrend: valueTrendRaw ?? (valCur != null ? valCur * 2 : null),
           industryName: ind,
         };
         batch.push(row);

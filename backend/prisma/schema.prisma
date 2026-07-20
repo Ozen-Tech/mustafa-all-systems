@@ -542,7 +542,8 @@ model StoreStockItem {
   @@index([storeId, industryName])
 }
 
-// Vendas agregadas por indústria + filial (período atual vs anterior do relatório).
+// Vendas por indústria + filial + produto + mês (período atual vs anterior do relatório).
+// Importante: NÃO somar todos os meses — a visão padrão é o mês mais recente com dados.
 model SalesRecord {
   id            String   @id @default(uuid())
   importId      String
@@ -552,10 +553,16 @@ model SalesRecord {
   storeId       String?
   state         String?
   bandeira      String?
+  month         String?
+  productCode   String?
+  productName   String?
+  category      String?
   qtyCurrent    Float    @default(0)
   qtyPrevious   Float    @default(0)
+  qtyTrend      Float    @default(0)
   valueCurrent  Float    @default(0)
   valuePrevious Float    @default(0)
+  valueTrend    Float    @default(0)
   productCount  Int      @default(0)
   capturedAt    DateTime @default(now())
 
@@ -566,5 +573,9 @@ model SalesRecord {
   @@index([filialCode])
   @@index([storeId])
   @@index([importId])
+  @@index([month])
+  @@index([state])
+  @@index([productCode])
+  @@index([industryName, month])
 }
 

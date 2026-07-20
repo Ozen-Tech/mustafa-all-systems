@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
+import { latestSalesMonth } from '../services/pivotCacheParser';
 import prisma from '../prisma/client';
 import { AuthRequest } from '../middleware/auth';
 import multer from 'multer';
@@ -297,8 +298,19 @@ export async function publishStockSummary(req: AuthRequest, res: Response) {
       return res.status(404).json({ message: 'Nenhuma importação concluída encontrada' });
     }
 
+    const monthRows = await prisma.salesRecord.groupBy({
+      by: ['month'],
+      where: { month: { not: null } },
+      _sum: { valueCurrent: true },
+    });
+    const monthsWithValue = monthRows
+      .filter((m) => (m._sum.valueCurrent ?? 0) > 0 && m.month)
+      .map((m) => m.month as string);
+    const month = latestSalesMonth(monthsWithValue);
+
     const byIndustry = await prisma.salesRecord.groupBy({
       by: ['industryName'],
+      where: month ? { month } : {},
       _sum: { qtyCurrent: true, qtyPrevious: true, valueCurrent: true, valuePrevious: true },
     });
 
@@ -318,6 +330,7 @@ export async function publishStockSummary(req: AuthRequest, res: Response) {
       .slice(0, 15);
 
     const week = lastImport.weekLabel || new Date(lastImport.createdAt).toLocaleDateString('pt-BR');
+    const periodLabel = month ? `${month}` : week;
     const lines = ranked.map((r, i) => {
       const g =
         r.growthPct === null
@@ -326,7 +339,7 @@ export async function publishStockSummary(req: AuthRequest, res: Response) {
       return `${i + 1}. ${r.industryName} — R$ ${Math.round(r.valueCurrent).toLocaleString('pt-BR')} (${g})`;
     });
 
-    const title = `Relatório de Vendas Mateus — ${week}`;
+    const title = `Relatório de Vendas Mateus — ${periodLabel}`;
     const content = [
       `Resumo automático da importação "${lastImport.fileName}".`,
       `Estoque: ${lastImport.stockRowCount.toLocaleString('pt-BR')} linhas · Vendas: ${lastImport.salesRowCount.toLocaleString('pt-BR')} linhas.`,
