@@ -5,58 +5,26 @@ import { useAuth } from '../context/AuthContext';
 
 const RouterOutlet = Outlet as ComponentType;
 
+const iconClass = (active: boolean) =>
+  `w-5 h-5 ${active ? 'text-primary-400' : 'text-text-tertiary'}`;
+
 // Ícones SVG com cores da marca
 const DashboardIcon = ({ active }: { active: boolean }) => (
-  <svg
-    className={`w-5 h-5 ${active ? 'text-primary-400' : 'text-text-tertiary'}`}
-    fill="none"
-    stroke="currentColor"
-    viewBox="0 0 24 24"
-  >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
-    />
+  <svg className={iconClass(active)} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
   </svg>
 );
 
 const ReportsIcon = ({ active }: { active: boolean }) => (
-  <svg
-    className={`w-5 h-5 ${active ? 'text-violet-600' : 'text-gray-500'}`}
-    fill="none"
-    stroke="currentColor"
-    viewBox="0 0 24 24"
-  >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-    />
+  <svg className={iconClass(active)} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
   </svg>
 );
 
 const SettingsIcon = ({ active }: { active: boolean }) => (
-  <svg
-    className={`w-5 h-5 ${active ? 'text-violet-600' : 'text-gray-500'}`}
-    fill="none"
-    stroke="currentColor"
-    viewBox="0 0 24 24"
-  >
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-    />
-    <path
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={2}
-      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-    />
+  <svg className={iconClass(active)} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
   </svg>
 );
 
@@ -116,34 +84,20 @@ export default function Layout() {
   }, []);
 
   const RouteIcon = ({ active }: { active: boolean }) => (
-    <svg
-      className={`w-5 h-5 ${active ? 'text-violet-600' : 'text-gray-500'}`}
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"
-      />
+    <svg className={iconClass(active)} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
     </svg>
   );
 
   const StoresIcon = ({ active }: { active: boolean }) => (
-    <svg
-      className={`w-5 h-5 ${active ? 'text-violet-600' : 'text-gray-500'}`}
-      fill="none"
-      stroke="currentColor"
-      viewBox="0 0 24 24"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={2}
-        d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
-      />
+    <svg className={iconClass(active)} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+    </svg>
+  );
+
+  const InfoIcon = ({ active }: { active: boolean }) => (
+    <svg className={iconClass(active)} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
     </svg>
   );
 
@@ -216,16 +170,17 @@ export default function Layout() {
       : []),
     ...(isSupervisorOrAdmin
       ? [
-          { name: 'Estoque e Vendas', path: '/stock', icon: StoresIcon },
+          { name: 'Analisar Estoque/Vendas', path: '/stock', icon: StoresIcon },
           { name: 'Gerenciar Lojas', path: '/stores', icon: StoresIcon },
           { name: 'Configurar Rotas', path: '/routes/config', icon: RouteIcon },
         ]
       : []),
     ...(isAdmin
-      ? [{ name: 'Importar Estoque', path: '/stock/import', icon: AdminIndustriesIcon }]
-      : []),
-    ...(isAdmin
-      ? [{ name: 'Indústrias/Loja', path: '/stores/industries', icon: AdminIndustriesIcon }]
+      ? [
+          { name: 'Importar Relatório Mateus', path: '/stock/import', icon: AdminIndustriesIcon },
+          { name: 'Informações Promotores', path: '/information', icon: InfoIcon },
+          { name: 'Indústrias/Loja', path: '/stores/industries', icon: AdminIndustriesIcon },
+        ]
       : []),
     { name: 'Configurações', path: '/settings', icon: SettingsIcon },
     ...(isAdmin
@@ -311,10 +266,10 @@ export default function Layout() {
                 <Link
                   key={item.path}
                   to={item.path}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 ${
+                  className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition-all duration-200 ${
                     active
-                      ? 'bg-primary-600/20 text-primary-400 font-medium shadow-primary border-l-4 border-primary-600 glow-primary'
-                      : 'text-text-secondary hover:bg-primary-600/10 hover:text-primary-400'
+                      ? 'bg-primary-600/15 text-primary-300 font-medium border border-primary-600/30 shadow-primary'
+                      : 'text-text-tertiary hover:bg-dark-card hover:text-text-primary border border-transparent'
                   }`}
                   title={!isSidebarExpanded ? item.name : ''}
                 >
@@ -390,7 +345,7 @@ export default function Layout() {
         </header>
 
         {/* Page Content */}
-        <main className="p-6 bg-dark-background min-h-screen">
+        <main className="p-4 sm:p-6 bg-dark-background min-h-[calc(100vh-4.5rem)]">
           <RouterOutlet />
         </main>
       </div>

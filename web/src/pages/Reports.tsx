@@ -7,6 +7,7 @@ import Button from '../components/ui/Button';
 import Badge from '../components/ui/Badge';
 import Input from '../components/ui/Input';
 import { generatePhotoBooking } from '../utils/photoBooking';
+import { toast } from '../components/ui/Toaster';
 
 export default function Reports() {
   const [dateRange, setDateRange] = useState({
@@ -76,7 +77,7 @@ export default function Reports() {
       setExportJobId(result.jobId);
       setExportStatus(result);
     } catch (error: any) {
-      alert('Erro ao exportar relatório: ' + (error.response?.data?.message || error.message));
+      toast.error('Erro ao exportar relatório: ' + (error.response?.data?.message || error.message));
       setExporting(false);
     }
   }
@@ -95,24 +96,24 @@ export default function Reports() {
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     } catch (error: any) {
-      alert('Erro ao baixar relatório: ' + (error.response?.data?.message || error.message));
+      toast.error('Erro ao baixar relatório: ' + (error.response?.data?.message || error.message));
     }
   }
 
   async function handleGenerateBooking() {
     if (!selectedPromoterId) {
-      alert('Selecione um promotor para gerar o booking');
+      toast.info('Selecione um promotor para gerar o booking');
       return;
     }
 
     const promoter = promotersData?.promoters?.find((p: any) => p.id === selectedPromoterId);
     if (!promoter) {
-      alert('Promotor não encontrado');
+      toast.error('Promotor não encontrado');
       return;
     }
 
     if (!promoterVisits?.visits || promoterVisits.visits.length === 0) {
-      alert('Nenhuma visita encontrada para este promotor no período selecionado');
+      toast.info('Nenhuma visita encontrada para este promotor no período selecionado');
       return;
     }
 
@@ -121,7 +122,7 @@ export default function Reports() {
       await generatePhotoBooking(promoter, promoterVisits.visits, dateRange);
     } catch (error: any) {
       console.error('Erro ao gerar booking:', error);
-      alert('Erro ao gerar booking: ' + (error.message || 'Erro desconhecido'));
+      toast.error('Erro ao gerar booking: ' + (error.message || 'Erro desconhecido'));
     } finally {
       setGeneratingBooking(false);
     }

@@ -17,19 +17,19 @@ export default function Button({
   ...props
 }: ButtonProps) {
   const baseStyles =
-    'inline-flex items-center justify-center font-semibold rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed';
+    'inline-flex items-center justify-center font-semibold rounded-xl transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-dark-background disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]';
   
   const variants = {
     primary:
-      'bg-gradient-to-r from-primary-600 to-primary-700 text-text-primary hover:from-primary-700 hover:to-primary-800 focus:ring-primary-500 shadow-primary hover:shadow-primary-glow glow-primary-hover',
+      'bg-gradient-to-r from-primary-600 to-primary-700 text-text-primary hover:from-primary-700 hover:to-primary-800 focus-visible:ring-primary-500 shadow-primary hover:shadow-primary-glow',
     accent:
-      'bg-gradient-to-r from-accent-500 to-accent-600 text-text-primary hover:from-accent-600 hover:to-accent-700 focus:ring-accent-500 shadow-lg shadow-accent-500/30',
+      'bg-gradient-to-r from-accent-500 to-accent-600 text-dark-background hover:from-accent-600 hover:to-accent-700 focus-visible:ring-accent-500 shadow-accent',
     outline:
-      'border-2 border-primary-600 text-primary-400 hover:bg-primary-600/10 focus:ring-primary-500 hover:glow-primary',
+      'border border-dark-borderLight bg-dark-cardElevated/40 text-text-secondary hover:border-primary-500/50 hover:text-text-primary hover:bg-primary-600/10 focus-visible:ring-primary-500',
     ghost:
-      'text-primary-400 hover:bg-primary-600/10 focus:ring-primary-500',
+      'text-text-tertiary hover:text-text-primary hover:bg-dark-cardElevated focus-visible:ring-primary-500',
     danger:
-      'bg-error-500 text-text-primary hover:bg-error-600 focus:ring-error-500 shadow-error hover:glow-error',
+      'bg-error-600 text-text-primary hover:bg-error-500 focus-visible:ring-error-500 shadow-error',
   };
   
   const sizes = {

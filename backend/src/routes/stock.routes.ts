@@ -5,6 +5,7 @@ import {
   listStockImports,
   getStockImport,
   getStoreStock,
+  getStoreSales,
   getStockOverview,
   getStockByStore,
   getSales,
@@ -29,7 +30,8 @@ router.get('/overview', authenticate, requireSupervisor, getStockOverview);
 router.get('/by-store', authenticate, requireSupervisor, getStockByStore);
 router.get('/sales', authenticate, requireSupervisor, getSales);
 
-// Estoque de uma loja (promotor no PWA e web)
+// Estoque / vendas de uma loja (promotor no PWA e web)
 router.get('/stores/:storeId/items', authenticate, getStoreStock);
+router.get('/stores/:storeId/sales', authenticate, getStoreSales);
 
 export default router;

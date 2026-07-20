@@ -21,7 +21,7 @@ export default function Badge({
     success: 'bg-success-500/20 text-success-500 border border-success-500',
     warning: 'bg-warning-500/20 text-warning-500 border border-warning-500',
     error: 'bg-error-500/20 text-error-500 border border-error-500',
-    gray: 'bg-gray-700/40 text-text-secondary border border-gray-600',
+    gray: 'bg-dark-cardElevated text-text-tertiary border border-dark-border',
   };
   
   const sizes = {

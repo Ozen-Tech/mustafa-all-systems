@@ -1,6 +1,9 @@
 import type { ComponentType } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ConfirmProvider } from './hooks/useConfirm';
+import AppToaster from './components/ui/Toaster';
+import PageLoading from './components/ui/PageLoading';
 
 // Type assertion for React 18 + react-router-dom JSX compatibility
 const RouterRoutes = Routes as ComponentType<{ children?: React.ReactNode }>;
@@ -23,6 +26,7 @@ import IndustryOwnerDashboard from './pages/IndustryOwnerDashboard';
 import Admin from './pages/Admin';
 import StockImport from './pages/StockImport';
 import StockDashboard from './pages/StockDashboard';
+import InformationHub from './pages/InformationHub';
 import PromoterOpsSupport from './pages/PromoterOpsSupport';
 import AdminTodayPromoterOverview from './pages/AdminTodayPromoterOverview';
 import AppStoreReleaseOps from './pages/AppStoreReleaseOps';
@@ -33,7 +37,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
 
   if (loading) {
-    return <div>Carregando...</div>; // TODO: Add proper loading component
+    return <PageLoading />;
   }
 
   if (!user) {
@@ -47,7 +51,7 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
 
   if (loading) {
-    return <div>Carregando...</div>;
+    return <PageLoading />;
   }
 
   if (!user) {
@@ -65,7 +69,7 @@ function SupervisorOrAdminRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
 
   if (loading) {
-    return <div>Carregando...</div>;
+    return <PageLoading />;
   }
 
   if (!user) {
@@ -83,7 +87,7 @@ function IndustryOwnerRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
 
   if (loading) {
-    return <div>Carregando...</div>;
+    return <PageLoading />;
   }
 
   if (!user) {
@@ -275,6 +279,14 @@ function AppRoutes() {
             </AdminRoute>
           }
         />
+        <RouterRoute
+          path="information"
+          element={
+            <AdminRoute>
+              <InformationHub />
+            </AdminRoute>
+          }
+        />
 
         {/* Dashboard do Dono de Indústria */}
         <RouterRoute
@@ -296,7 +308,10 @@ function AppRoutes() {
 export default function App() {
   return (
     <AuthProvider>
-      <AppRoutes />
+      <ConfirmProvider>
+        <AppToaster />
+        <AppRoutes />
+      </ConfirmProvider>
     </AuthProvider>
   );
 }

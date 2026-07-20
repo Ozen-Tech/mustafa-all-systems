@@ -7,13 +7,26 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   TextInput,
-  Alert,
 } from 'react-native';
 // import { useQuery } from '@tanstack/react-query'; // Removido - usar useState/useEffect
 import { informationService, Information } from '../services/informationService';
 import { industryService } from '../services/industryService';
 import { colors, theme } from '../styles/theme';
 import { flexScroll } from '../styles/webLayout';
+import { showAlert } from '../utils/alertHelper';
+
+const typeLabel: Record<string, string> = {
+  estoque: 'Estoque/Vendas',
+  produto: 'Produto',
+  geral: 'Geral',
+};
+import { showAlert } from '../utils/alertHelper';
+
+const typeLabel: Record<string, string> = {
+  estoque: 'Estoque/Vendas',
+  produto: 'Produto',
+  geral: 'Geral',
+};
 
 export default function InformationHubScreen() {
   const [selectedIndustryId, setSelectedIndustryId] = useState<string | undefined>();
@@ -49,7 +62,7 @@ export default function InformationHubScreen() {
       setInformations(data);
     } catch (error) {
       console.error('Error loading informations:', error);
-      Alert.alert('Erro', 'Não foi possível carregar as informações');
+      showAlert('Erro', 'Não foi possível carregar as informações');
     } finally {
       setIsLoading(false);
     }
@@ -57,12 +70,12 @@ export default function InformationHubScreen() {
 
   async function handleAskQuestion() {
     if (!question.trim()) {
-      Alert.alert('Erro', 'Digite uma pergunta');
+      showAlert('Erro', 'Digite uma pergunta');
       return;
     }
 
     if (!informations || informations.length === 0) {
-      Alert.alert('Aviso', 'Não há informações disponíveis para responder sua pergunta');
+      showAlert('Aviso', 'Não há informações disponíveis para responder sua pergunta');
       return;
     }
 
@@ -78,7 +91,7 @@ export default function InformationHubScreen() {
       }
     } catch (error) {
       console.error('Error asking question:', error);
-      Alert.alert('Erro', 'Não foi possível processar sua pergunta');
+      showAlert('Erro', 'Não foi possível processar sua pergunta');
     } finally {
       setAskingQuestion(false);
     }
@@ -88,7 +101,9 @@ export default function InformationHubScreen() {
     <ScrollView style={[styles.container, flexScroll]}>
       <View style={styles.header}>
         <Text style={styles.title}>Central de Informações</Text>
-        <Text style={styles.subtitle}>Acesse informações sobre estoque, produtos e mais</Text>
+        <Text style={styles.subtitle}>
+          Relatórios Mateus, avisos de estoque/vendas e destaques da operação
+        </Text>
       </View>
 
       {/* Filtro por Indústria */}
@@ -150,7 +165,7 @@ export default function InformationHubScreen() {
 
       {/* Lista de Informações */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Informações Disponíveis</Text>
+        <Text style={styles.sectionTitle}>Relatórios e avisos</Text>
         {isLoading ? (
           <ActivityIndicator size="large" color={colors.primary[400]} />
         ) : informations && informations.length > 0 ? (
@@ -158,15 +173,17 @@ export default function InformationHubScreen() {
             <View key={info.id} style={styles.infoCard}>
               <View style={styles.infoHeader}>
                 <Text style={styles.infoTitle}>{info.title}</Text>
-                <View style={[styles.infoBadge, styles[`infoBadge${info.type}`]]}>
-                  <Text style={styles.infoBadgeText}>{info.type}</Text>
+                <View style={[styles.infoBadge, styles[`infoBadge${info.type}` as keyof typeof styles] as any]}>
+                  <Text style={styles.infoBadgeText}>{typeLabel[info.type] || info.type}</Text>
                 </View>
               </View>
               {info.industry && (
                 <Text style={styles.infoIndustry}>{info.industry.name}</Text>
               )}
-              {info.geminiSummary && (
-                <Text style={styles.infoSummary}>{info.geminiSummary}</Text>
+              {(info.geminiSummary || info.content) && (
+                <Text style={styles.infoSummary}>
+                  {info.geminiSummary || info.content}
+                </Text>
               )}
               <Text style={styles.infoDate}>
                 {new Date(info.createdAt).toLocaleDateString('pt-BR')}
@@ -174,7 +191,9 @@ export default function InformationHubScreen() {
             </View>
           ))
         ) : (
-          <Text style={styles.emptyText}>Nenhuma informação disponível</Text>
+          <Text style={styles.emptyText}>
+            Nenhum relatório publicado ainda. Quando o admin importar o Mateus e publicar o resumo, ele aparece aqui.
+          </Text>
         )}
       </View>
     </ScrollView>

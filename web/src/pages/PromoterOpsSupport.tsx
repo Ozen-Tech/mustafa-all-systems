@@ -6,6 +6,8 @@ import Card, { CardContent, CardHeader } from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Badge from '../components/ui/Badge';
+import { useConfirm } from '../hooks/useConfirm';
+import { toast } from '../components/ui/Toaster';
 
 interface RouteStoreEntry {
   store: { id: string; name: string; address?: string };
@@ -27,6 +29,7 @@ export default function PromoterOpsSupport() {
   const [promoterId, setPromoterId] = useState('');
   const [storeId, setStoreId] = useState('');
   const [storeSearch, setStoreSearch] = useState('');
+  const confirm = useConfirm();
 
   const { data: promotersData, isLoading: loadingPromoters } = useQuery({
     queryKey: ['promoters'],
@@ -74,23 +77,23 @@ export default function PromoterOpsSupport() {
   const selectedStoreName =
     routeStores.find((s) => s.id === storeId)?.name || allStores.find((s) => s.id === storeId)?.name;
 
-  const handleGrant = () => {
+  const handleGrant = async () => {
     if (!promoterId || !storeId) return;
-    if (
-      !confirm(
-        `Permitir que ${selectedPromoterName || 'o promotor'} faça uma nova visita em "${selectedStoreName || 'esta loja'}" hoje (mesmo já tendo finalizado uma visita no dia)?`,
-      )
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: 'Permitir nova visita?',
+      description: `Permitir que ${selectedPromoterName || 'o promotor'} faça uma nova visita em "${selectedStoreName || 'esta loja'}" hoje (mesmo já tendo finalizado uma visita no dia)?`,
+      variant: 'warning',
+      confirmLabel: 'Permitir',
+    });
+    if (!ok) return;
     redoMutation.mutate(
       { pid: promoterId, sid: storeId },
       {
         onSuccess: (data) => {
-          alert(data?.message || 'Concessão criada.');
+          toast.success(data?.message || 'Concessão criada.');
         },
         onError: () => {
-          alert('Não foi possível criar a concessão.');
+          toast.error('Não foi possível criar a concessão.');
         },
       },
     );

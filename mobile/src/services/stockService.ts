@@ -23,6 +23,28 @@ export interface StoreStockResponse {
   items: StoreStockItem[];
 }
 
+export interface StoreSalesIndustry {
+  industryName: string;
+  qtyCurrent: number;
+  qtyPrevious: number;
+  qtyTrend: number;
+  qtyGrowthPct: number | null;
+  valueCurrent: number;
+  valuePrevious: number;
+  growthPct: number | null;
+}
+
+export interface StoreSalesResponse {
+  store: { id: string; name: string };
+  totals: {
+    qtyCurrent: number;
+    valueCurrent: number;
+    valuePrevious: number;
+    growthPct: number | null;
+  };
+  byIndustry: StoreSalesIndustry[];
+}
+
 export const stockService = {
   async getStoreItems(
     storeId: string,
@@ -31,6 +53,11 @@ export const stockService = {
     const response = await apiClient.get<StoreStockResponse>(`/stock/stores/${storeId}/items`, {
       params,
     });
+    return response.data;
+  },
+
+  async getStoreSales(storeId: string): Promise<StoreSalesResponse> {
+    const response = await apiClient.get<StoreSalesResponse>(`/stock/stores/${storeId}/sales`);
     return response.data;
   },
 };

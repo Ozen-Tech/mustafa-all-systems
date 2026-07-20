@@ -43,7 +43,7 @@ export default function OpsTeamToday() {
   });
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="page-shell">
       <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-text-primary">EQUIPE HOJE</h1>
