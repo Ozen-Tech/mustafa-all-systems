@@ -92,6 +92,7 @@ Consulte `backend/.env.example`. Resumo:
 | `NODE_ENV` | Sim | `production` |
 | `PORT` | Não (Cloud Run define) | Porta do servidor |
 | `DATABASE_URL` | Sim | Connection string do Postgres |
+| `DIRECT_URL` | Sim (migrate) | URL **direta** Supabase `:5432` (obrigatória para `prisma migrate deploy`; use Secret Manager) |
 | `JWT_SECRET` | Sim | Chave para tokens JWT |
 | `JWT_REFRESH_SECRET` | Sim | Chave para refresh tokens |
 | `CORS_ORIGIN` | Sim | URLs do Firebase Hosting (e outras origens) separadas por vírgula |
@@ -110,7 +111,17 @@ Após o deploy, anote a URL do serviço (ex.: `https://promo-gestao-backend-xxx-
 
 ### 2.5 Migrações
 
-O container usa `docker-entrypoint.sh`, que executa `npx prisma migrate deploy` antes de iniciar o app. As migrações rodam a cada deploy. Garanta que `DATABASE_URL` esteja correto.
+O container usa `docker-entrypoint.sh`. Em produção, **`prisma migrate deploy` só roda automaticamente se `DIRECT_URL` estiver definida** (conexão direta `:5432`, não pooler). Sem ela, o app sobe mas as migrations ficam pendentes — configure no Cloud Run:
+
+```bash
+gcloud run services update gestaomustafa \
+  --region us-central1 \
+  --set-secrets="DIRECT_URL=mustafa-db-direct-url:latest"
+```
+
+O `cloudbuild.yaml` na raiz também roda migrate **antes** do deploy (step `migrate`), desde que o trigger use esse arquivo e os secrets `mustafa-db-url` / `mustafa-db-direct-url`.
+
+Para falhar o deploy se a migration quebrar: `RUN_MIGRATIONS_STRICT=true`.
 
 ---
 
