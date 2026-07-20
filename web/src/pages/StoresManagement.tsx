@@ -4,6 +4,7 @@ import { supervisorService } from '../services/supervisorService';
 import Card, { CardHeader, CardContent } from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
+import { useConfirm } from '../hooks/useConfirm';
 import axios from 'axios';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
@@ -23,6 +24,7 @@ const emptyForm = { name: '', code: '', address: '', state: '', industryIds: [] 
 
 export default function StoresManagement() {
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const nameRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState({ ...emptyForm });
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -134,10 +136,15 @@ export default function StoresManagement() {
     setForm({ ...emptyForm, state: keepState, industryIds: keepIndustries });
   }
 
-  function handleDelete(id: string, name: string) {
-    if (confirm(`Deletar loja "${name}"?`)) {
-      deleteMutation.mutate(id);
-    }
+  async function handleDelete(id: string, name: string) {
+    const ok = await confirm({
+      title: `Deletar loja "${name}"?`,
+      description: 'Esta ação não pode ser desfeita.',
+      variant: 'danger',
+      confirmLabel: 'Deletar',
+    });
+    if (!ok) return;
+    deleteMutation.mutate(id);
   }
 
   function toggleIndustry(id: string) {

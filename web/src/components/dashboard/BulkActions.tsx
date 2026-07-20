@@ -4,6 +4,7 @@ import Button from '../ui/Button';
 import Input from '../ui/Input';
 import Badge from '../ui/Badge';
 import { supervisorService } from '../../services/supervisorService';
+import { toast } from '../ui/Toaster';
 
 interface BulkActionsProps {
   selectedPromoters: string[];
@@ -36,12 +37,12 @@ export default function BulkActions({ selectedPromoters, onActionComplete }: Bul
           supervisorService.setPromoterRoute(promoterId, selectedStores)
         )
       );
-      alert('Rotas atribuídas com sucesso!');
+      toast.success('Rotas atribuídas com sucesso!');
       setActionType(null);
       onActionComplete?.();
     } catch (error) {
       console.error('Erro ao atribuir rotas:', error);
-      alert('Erro ao atribuir rotas');
+      toast.error('Erro ao atribuir rotas');
     } finally {
       setLoading(false);
     }
@@ -53,13 +54,13 @@ export default function BulkActions({ selectedPromoters, onActionComplete }: Bul
     try {
       // Simular envio de mensagem - em produção, usar endpoint real
       console.log('Enviando mensagem para promotores:', selectedPromoters, message);
-      alert('Mensagens enviadas com sucesso!');
+      toast.success('Mensagens enviadas com sucesso!');
       setMessage('');
       setActionType(null);
       onActionComplete?.();
     } catch (error) {
       console.error('Erro ao enviar mensagens:', error);
-      alert('Erro ao enviar mensagens');
+      toast.error('Erro ao enviar mensagens');
     } finally {
       setLoading(false);
     }
@@ -73,12 +74,12 @@ export default function BulkActions({ selectedPromoters, onActionComplete }: Bul
           supervisorService.setPhotoQuota(promoterId, photoQuota)
         )
       );
-      alert('Quotas atualizadas com sucesso!');
+      toast.success('Quotas atualizadas com sucesso!');
       setActionType(null);
       onActionComplete?.();
     } catch (error) {
       console.error('Erro ao atualizar quotas:', error);
-      alert('Erro ao atualizar quotas');
+      toast.error('Erro ao atualizar quotas');
     } finally {
       setLoading(false);
     }
@@ -279,12 +280,12 @@ export default function BulkActions({ selectedPromoters, onActionComplete }: Bul
                     try {
                       // Simular ativação/desativação - em produção, usar endpoint real
                       console.log('Ativando/desativando promotores:', selectedPromoters);
-                      alert('Status dos promotores atualizado!');
+                      toast.success('Status dos promotores atualizado!');
                       setActionType(null);
                       onActionComplete?.();
                     } catch (error) {
                       console.error('Erro ao atualizar status:', error);
-                      alert('Erro ao atualizar status');
+                      toast.error('Erro ao atualizar status');
                     } finally {
                       setLoading(false);
                     }

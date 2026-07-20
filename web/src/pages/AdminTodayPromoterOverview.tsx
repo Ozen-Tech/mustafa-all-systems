@@ -6,12 +6,14 @@ import Badge from '../components/ui/Badge';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import { Link } from 'react-router-dom';
+import { useConfirm } from '../hooks/useConfirm';
 
 export default function AdminTodayPromoterOverview() {
   const [selectedState, setSelectedState] = useState<string>('');
   const [search, setSearch] = useState('');
   const [openThresholdHours, setOpenThresholdHours] = useState<number>(4);
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'today-overview'],
@@ -161,10 +163,13 @@ export default function AdminTodayPromoterOverview() {
                       variant="outline"
                       size="sm"
                       disabled={forceCheckout.isPending}
-                      onClick={() => {
-                        const ok = window.confirm(
-                          `Fechar visita em aberto agora?\n\nPromotor: ${it.promoterName}\nLoja: ${it.storeName || it.storeId}\nVisitID: ${it.visitId}`
-                        );
+                      onClick={async () => {
+                        const ok = await confirm({
+                          title: 'Fechar visita em aberto agora?',
+                          description: `Promotor: ${it.promoterName}\nLoja: ${it.storeName || it.storeId}\nVisitID: ${it.visitId}`,
+                          variant: 'warning',
+                          confirmLabel: 'Fechar visita',
+                        });
                         if (!ok) return;
                         forceCheckout.mutate(it.visitId);
                       }}

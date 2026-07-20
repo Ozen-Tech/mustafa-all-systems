@@ -8,6 +8,7 @@ import PromoterDetailHeader from '../components/ops/PromoterDetailHeader';
 import PromoterTradeMetrics from '../components/ops/PromoterTradeMetrics';
 import DiagnosisPanel from '../components/ops/DiagnosisPanel';
 import QuickActionsPanel from '../components/ops/QuickActionsPanel';
+import { toast } from '../components/ui/Toaster';
 
 export default function OpsPromoterDayDetail() {
   const navigate = useNavigate();
@@ -115,9 +116,9 @@ export default function OpsPromoterDayDetail() {
                   const el = document.getElementById('photos');
                   el?.scrollIntoView({ behavior: 'smooth' });
                 }}
-                onNudge={() => alert('Ação v1: integrar cobrança (WhatsApp/Notificação)')}
-                onValidate={() => alert('Ação v1: validar execução (fluxo a definir)')}
-                onEscalate={() => alert('Ação v1: encaminhar/registrar ocorrência')}
+                onNudge={() => toast.info('Ação v1: integrar cobrança (WhatsApp/Notificação)')}
+                onValidate={() => toast.info('Ação v1: validar execução (fluxo a definir)')}
+                onEscalate={() => toast.info('Ação v1: encaminhar/registrar ocorrência')}
               />
             </div>
           </div>

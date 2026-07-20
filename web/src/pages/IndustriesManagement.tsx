@@ -6,10 +6,12 @@ import Card, { CardHeader, CardContent } from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Badge from '../components/ui/Badge';
+import { useConfirm } from '../hooks/useConfirm';
 
 export default function IndustriesManagement() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingIndustry, setEditingIndustry] = useState<Industry | null>(null);
   const [formData, setFormData] = useState({
@@ -91,10 +93,15 @@ export default function IndustriesManagement() {
     }
   }
 
-  function handleDelete(id: string) {
-    if (confirm('Tem certeza que deseja deletar esta indústria?')) {
-      deleteMutation.mutate(id);
-    }
+  async function handleDelete(id: string) {
+    const ok = await confirm({
+      title: 'Deletar indústria?',
+      description: 'Tem certeza que deseja deletar esta indústria?',
+      variant: 'danger',
+      confirmLabel: 'Deletar',
+    });
+    if (!ok) return;
+    deleteMutation.mutate(id);
   }
 
   if (isLoading) {

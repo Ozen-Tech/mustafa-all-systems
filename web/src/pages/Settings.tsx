@@ -5,6 +5,7 @@ import Card, { CardHeader, CardContent } from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Badge from '../components/ui/Badge';
+import { toast } from '../components/ui/Toaster';
 
 export default function Settings() {
   const queryClient = useQueryClient();
@@ -21,23 +22,23 @@ export default function Settings() {
       supervisorService.setPhotoQuota(data.promoterId, data.expectedPhotos),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['promoters'] });
-      alert('Quota de fotos configurada com sucesso!');
+      toast.success('Quota de fotos configurada com sucesso!');
       setSelectedPromoter('');
       setExpectedPhotos(10);
     },
     onError: (error: any) => {
-      alert(error.response?.data?.message || 'Erro ao configurar quota');
+      toast.error(error.response?.data?.message || 'Erro ao configurar quota');
     },
   });
 
   function handleSetQuota() {
     if (!selectedPromoter) {
-      alert('Selecione um promotor');
+      toast.info('Selecione um promotor');
       return;
     }
 
     if (expectedPhotos <= 0) {
-      alert('A quantidade esperada deve ser maior que zero');
+      toast.warning('A quantidade esperada deve ser maior que zero');
       return;
     }
 

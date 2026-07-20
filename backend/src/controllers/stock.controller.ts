@@ -409,19 +409,96 @@ export async function getSales(req: AuthRequest, res: Response) {
   res.json({
     byIndustry: byIndustry
       .map((r) => {
+        const qtyCur = r._sum.qtyCurrent ?? 0;
+        const qtyPrev = r._sum.qtyPrevious ?? 0;
         const cur = r._sum.valueCurrent ?? 0;
         const prev = r._sum.valuePrevious ?? 0;
         return {
           industryName: r.industryName,
-          qtyCurrent: r._sum.qtyCurrent ?? 0,
-          qtyPrevious: r._sum.qtyPrevious ?? 0,
+          qtyCurrent: qtyCur,
+          qtyPrevious: qtyPrev,
+          // Projeção estilo planilha Mateus (TEND QTD ≈ 2x parcial do mês)
+          qtyTrend: qtyCur * 2,
+          qtyGrowthPct: qtyPrev > 0 ? ((qtyCur - qtyPrev) / qtyPrev) * 100 : null,
           valueCurrent: cur,
           valuePrevious: prev,
+          valueTrend: cur * 2,
           growthPct: prev > 0 ? ((cur - prev) / prev) * 100 : null,
         };
       })
       .sort((a, b) => b.valueCurrent - a.valueCurrent),
     records,
+  });
+}
+
+/** Vendas agregadas de uma loja (PWA promotor). */
+export async function getStoreSales(req: AuthRequest, res: Response) {
+  const { storeId } = req.params;
+  const store = await prisma.store.findUnique({
+    where: { id: storeId },
+    select: { id: true, name: true, code: true, filialCode: true },
+  });
+  if (!store) return res.status(404).json({ message: 'Loja não encontrada' });
+
+  const orConditions: any[] = [{ storeId: store.id }];
+  const norm = normalizeFilialCode(store.filialCode || store.code || '');
+  if (norm) orConditions.push({ filialCode: { in: [norm, norm.padStart(4, '0')] } });
+
+  const records = await prisma.salesRecord.findMany({
+    where: { OR: orConditions },
+    orderBy: { valueCurrent: 'desc' },
+    take: 500,
+  });
+
+  const byIndustryMap = new Map<
+    string,
+    { qtyCurrent: number; qtyPrevious: number; valueCurrent: number; valuePrevious: number }
+  >();
+  for (const r of records) {
+    const key = r.industryName || 'Sem indústria';
+    const cur = byIndustryMap.get(key) || {
+      qtyCurrent: 0,
+      qtyPrevious: 0,
+      valueCurrent: 0,
+      valuePrevious: 0,
+    };
+    cur.qtyCurrent += r.qtyCurrent;
+    cur.qtyPrevious += r.qtyPrevious;
+    cur.valueCurrent += r.valueCurrent;
+    cur.valuePrevious += r.valuePrevious;
+    byIndustryMap.set(key, cur);
+  }
+
+  const byIndustry = Array.from(byIndustryMap.entries())
+    .map(([industryName, v]) => ({
+      industryName,
+      ...v,
+      qtyTrend: v.qtyCurrent * 2,
+      qtyGrowthPct: v.qtyPrevious > 0 ? ((v.qtyCurrent - v.qtyPrevious) / v.qtyPrevious) * 100 : null,
+      growthPct: v.valuePrevious > 0 ? ((v.valueCurrent - v.valuePrevious) / v.valuePrevious) * 100 : null,
+    }))
+    .sort((a, b) => b.valueCurrent - a.valueCurrent);
+
+  const totals = byIndustry.reduce(
+    (acc, r) => {
+      acc.qtyCurrent += r.qtyCurrent;
+      acc.valueCurrent += r.valueCurrent;
+      acc.valuePrevious += r.valuePrevious;
+      return acc;
+    },
+    { qtyCurrent: 0, valueCurrent: 0, valuePrevious: 0 }
+  );
+
+  res.json({
+    store,
+    totals: {
+      ...totals,
+      growthPct:
+        totals.valuePrevious > 0
+          ? ((totals.valueCurrent - totals.valuePrevious) / totals.valuePrevious) * 100
+          : null,
+    },
+    byIndustry,
   });
 }
 

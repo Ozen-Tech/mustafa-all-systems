@@ -6,6 +6,8 @@ import Card, { CardHeader, CardContent } from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Badge from '../components/ui/Badge';
+import { useConfirm } from '../hooks/useConfirm';
+import { toast } from '../components/ui/Toaster';
 
 interface Store {
   id: string;
@@ -38,6 +40,7 @@ export default function RouteConfig() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'ADMIN';
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const [storeSearch, setStoreSearch] = useState('');
   const [stateFilter, setStateFilter] = useState('');
   const [selectedPromoters, setSelectedPromoters] = useState<string[]>([]);
@@ -103,7 +106,7 @@ export default function RouteConfig() {
       const message =
         error?.response?.data?.message ||
         'Não foi possível salvar as indústrias. Verifique se a loja tem indústrias cadastradas.';
-      window.alert(message);
+      toast.error(message);
     },
   });
 
@@ -497,11 +500,16 @@ export default function RouteConfig() {
                                         </button>
 
                                         <button
-                                          onClick={(e) => {
+                                          onClick={async (e) => {
                                             e.stopPropagation();
-                                            if (confirm(`Remover "${s.store.name}" de ${route.promoter.name}?`)) {
-                                              handleRemoveStore(route.promoter.id, s.store.id);
-                                            }
+                                            const ok = await confirm({
+                                              title: `Remover "${s.store.name}"?`,
+                                              description: `Remover esta loja de ${route.promoter.name}?`,
+                                              variant: 'danger',
+                                              confirmLabel: 'Remover',
+                                            });
+                                            if (!ok) return;
+                                            handleRemoveStore(route.promoter.id, s.store.id);
                                           }}
                                           className="w-5 h-5 rounded-full flex items-center justify-center text-text-tertiary hover:text-red-400 hover:bg-red-500/20 transition-colors opacity-0 group-hover:opacity-100"
                                           title="Remover loja"

@@ -260,3 +260,101 @@ export async function listInformations(req: AuthRequest, res: Response) {
   }
 }
 
+/**
+ * Ativar / desativar informação
+ */
+export async function setInformationActive(req: AuthRequest, res: Response) {
+  try {
+    const { id } = req.params;
+    const { isActive } = z.object({ isActive: z.boolean() }).parse(req.body);
+
+    const information = await prisma.informationDistribution.update({
+      where: { id },
+      data: { isActive },
+    });
+
+    res.json({ information });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: 'Dados inválidos', errors: error.errors });
+    }
+    console.error('Set information active error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+}
+
+/**
+ * Publica resumo da última importação de estoque/vendas para promotores
+ */
+export async function publishStockSummary(req: AuthRequest, res: Response) {
+  try {
+    const lastImport = await prisma.stockImport.findFirst({
+      where: { status: 'DONE' },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!lastImport) {
+      return res.status(404).json({ message: 'Nenhuma importação concluída encontrada' });
+    }
+
+    const byIndustry = await prisma.salesRecord.groupBy({
+      by: ['industryName'],
+      _sum: { qtyCurrent: true, qtyPrevious: true, valueCurrent: true, valuePrevious: true },
+    });
+
+    const ranked = byIndustry
+      .map((r) => {
+        const cur = r._sum.valueCurrent ?? 0;
+        const prev = r._sum.valuePrevious ?? 0;
+        const growth = prev > 0 ? ((cur - prev) / prev) * 100 : null;
+        return {
+          industryName: r.industryName,
+          qtyCurrent: r._sum.qtyCurrent ?? 0,
+          valueCurrent: cur,
+          growthPct: growth,
+        };
+      })
+      .sort((a, b) => b.valueCurrent - a.valueCurrent)
+      .slice(0, 15);
+
+    const week = lastImport.weekLabel || new Date(lastImport.createdAt).toLocaleDateString('pt-BR');
+    const lines = ranked.map((r, i) => {
+      const g =
+        r.growthPct === null
+          ? 's/ base'
+          : `${r.growthPct >= 0 ? '+' : ''}${r.growthPct.toFixed(1)}%`;
+      return `${i + 1}. ${r.industryName} — R$ ${Math.round(r.valueCurrent).toLocaleString('pt-BR')} (${g})`;
+    });
+
+    const title = `Relatório de Vendas Mateus — ${week}`;
+    const content = [
+      `Resumo automático da importação "${lastImport.fileName}".`,
+      `Estoque: ${lastImport.stockRowCount.toLocaleString('pt-BR')} linhas · Vendas: ${lastImport.salesRowCount.toLocaleString('pt-BR')} linhas.`,
+      '',
+      'Top indústrias por faturamento (período atual):',
+      ...lines,
+    ].join('\n');
+
+    const geminiSummary = [
+      `Semana ${week}: ranking de vendas Mateus.`,
+      ranked.slice(0, 5).map((r) => `${r.industryName}`).join(', ') || 'Sem dados de venda',
+    ].join(' ');
+
+    const information = await prisma.informationDistribution.create({
+      data: {
+        title,
+        content,
+        type: 'estoque',
+        sourceData: { importId: lastImport.id, weekLabel: lastImport.weekLabel, ranked } as any,
+        geminiSummary,
+        isActive: true,
+      },
+    });
+
+    res.status(201).json({ information });
+  } catch (error) {
+    console.error('Publish stock summary error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+}
+

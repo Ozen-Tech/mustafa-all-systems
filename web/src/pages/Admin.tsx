@@ -6,6 +6,8 @@ import Card, { CardHeader, CardContent } from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Badge from '../components/ui/Badge';
+import { useConfirm } from '../hooks/useConfirm';
+import { toast } from '../components/ui/Toaster';
 
 const BRAZILIAN_STATES = [
   { uf: 'AC', name: 'Acre' }, { uf: 'AL', name: 'Alagoas' }, { uf: 'AP', name: 'Amapá' },
@@ -23,6 +25,7 @@ const BRAZILIAN_STATES = [
 export default function Admin() {
   const { user: currentUser } = useAuth();
   const queryClient = useQueryClient();
+  const confirm = useConfirm();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [formData, setFormData] = useState({
@@ -151,7 +154,7 @@ export default function Admin() {
       }
     } else {
       if (!formData.password) {
-        alert('A senha é obrigatória para criar um novo usuário');
+        toast.error('A senha é obrigatória para criar um novo usuário');
         return;
       }
       const createData: any = { ...formData };
@@ -160,15 +163,20 @@ export default function Admin() {
     }
   }
 
-  function handleDelete(id: string) {
+  async function handleDelete(id: string) {
     if (id === currentUser?.id) {
-      alert('Não é possível deletar seu próprio usuário');
+      toast.error('Não é possível deletar seu próprio usuário');
       return;
     }
 
-    if (confirm('Tem certeza que deseja deletar este usuário?')) {
-      deleteMutation.mutate(id);
-    }
+    const ok = await confirm({
+      title: 'Deletar usuário?',
+      description: 'Tem certeza que deseja deletar este usuário?',
+      variant: 'danger',
+      confirmLabel: 'Deletar',
+    });
+    if (!ok) return;
+    deleteMutation.mutate(id);
   }
 
   function getRoleLabel(role: string) {

@@ -31,16 +31,17 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-dark-background bg-gradient-to-br from-dark-background via-dark-backgroundSecondary to-dark-background">
-      <div className="max-w-md w-full space-y-8 p-8 bg-dark-card rounded-2xl shadow-card-elevated border border-dark-border animate-scale-in glow-primary">
+    <div className="min-h-screen flex items-center justify-center bg-dark-background relative overflow-hidden">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(124,58,237,0.18),_transparent_55%),radial-gradient(ellipse_at_bottom_right,_rgba(245,158,11,0.08),_transparent_45%)]" />
+      <div className="relative max-w-md w-full space-y-8 p-8 bg-dark-card/90 backdrop-blur-sm rounded-2xl shadow-card-elevated border border-dark-border animate-scale-in mx-4">
         <div className="text-center">
-          <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-dark-cardElevated border-2 border-primary-600 mb-4 shadow-primary p-4">
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-dark-cardElevated border border-primary-600/40 mb-4 shadow-primary p-4">
             <img src="/logo.png" alt="Promo Gestão" className="w-full h-full object-contain" />
           </div>
-          <h2 className="text-3xl font-bold text-text-primary">
+          <h2 className="text-3xl font-bold text-text-primary tracking-tight">
             Promo Gestão
           </h2>
-          <p className="mt-2 text-sm text-text-secondary">Dashboard Supervisor</p>
+          <p className="mt-2 text-sm text-text-tertiary">Acesse o painel de supervisão</p>
         </div>
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           {error && (

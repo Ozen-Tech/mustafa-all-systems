@@ -6,6 +6,7 @@ import Card, { CardHeader, CardContent } from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Badge from '../components/ui/Badge';
 import Input from '../components/ui/Input';
+import { toast } from '../components/ui/Toaster';
 
 interface Store {
   id: string;
@@ -53,12 +54,12 @@ export default function StoreIndustriesConfig() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['store-industries', selectedStore] });
       queryClient.invalidateQueries({ queryKey: ['all-store-industries'] });
-      alert('Indústrias configuradas com sucesso!');
+      toast.success('Indústrias configuradas com sucesso!');
     },
     onError: (error: any) => {
       console.error('Erro ao configurar indústrias:', error);
       const errorMessage = error.response?.data?.message || error.message || 'Erro ao configurar indústrias';
-      alert(`Erro: ${errorMessage}`);
+      toast.error(`Erro: ${errorMessage}`);
     },
   });
 
@@ -89,7 +90,7 @@ export default function StoreIndustriesConfig() {
 
   function handleSave() {
     if (!selectedStore) {
-      alert('Selecione uma loja');
+      toast.info('Selecione uma loja');
       return;
     }
     saveIndustriesMutation.mutate(selectedIndustries);

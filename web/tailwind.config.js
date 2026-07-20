@@ -7,24 +7,24 @@ export default {
   darkMode: 'class',
   theme: {
     extend: {
+      fontFamily: {
+        sans: ['"DM Sans"', 'system-ui', 'sans-serif'],
+      },
       colors: {
-        // Dark Mode Colors
         dark: {
-          background: '#0F0B1E',
-          backgroundSecondary: '#1A1528',
-          card: '#241F35',
-          cardElevated: '#2D2742',
-          border: '#3D3550',
-          borderLight: '#4A415D',
+          background: '#0C0918',
+          backgroundSecondary: '#151022',
+          card: '#1E1830',
+          cardElevated: '#2A2340',
+          border: '#3A3252',
+          borderLight: '#4B4264',
         },
-        // Text Colors
         text: {
-          primary: '#FFFFFF',
-          secondary: '#E5E7EB',
-          tertiary: '#9CA3AF',
-          disabled: '#6B7280',
+          primary: '#F8F7FC',
+          secondary: '#D4D0E0',
+          tertiary: '#9B95AD',
+          disabled: '#6B6578',
         },
-        // Primary Purple
         primary: {
           50: '#f5f3ff',
           100: '#ede9fe',
@@ -37,7 +37,6 @@ export default {
           800: '#5b21b6',
           900: '#4c1d95',
         },
-        // Accent Yellow
         accent: {
           50: '#fffbeb',
           100: '#fef3c7',
@@ -50,16 +49,81 @@ export default {
           800: '#92400e',
           900: '#78350f',
         },
+        success: {
+          50: '#ecfdf5',
+          100: '#d1fae5',
+          200: '#a7f3d0',
+          300: '#6ee7b7',
+          400: '#34d399',
+          500: '#10b981',
+          600: '#059669',
+          700: '#047857',
+          800: '#065f46',
+          900: '#064e3b',
+        },
+        warning: {
+          50: '#fffbeb',
+          100: '#fef3c7',
+          200: '#fde68a',
+          300: '#fcd34d',
+          400: '#fbbf24',
+          500: '#f59e0b',
+          600: '#d97706',
+          700: '#b45309',
+          800: '#92400e',
+          900: '#78350f',
+        },
+        error: {
+          50: '#fef2f2',
+          100: '#fee2e2',
+          200: '#fecaca',
+          300: '#fca5a5',
+          400: '#f87171',
+          500: '#ef4444',
+          600: '#dc2626',
+          700: '#b91c1c',
+          800: '#991b1b',
+          900: '#7f1d1d',
+        },
       },
       boxShadow: {
-        'primary': '0 10px 15px -3px rgba(124, 58, 237, 0.4), 0 4px 6px -2px rgba(124, 58, 237, 0.3), 0 0 20px rgba(124, 58, 237, 0.2)',
-        'primary-glow': '0 0 20px rgba(124, 58, 237, 0.4), 0 0 40px rgba(124, 58, 237, 0.2)',
-        'error': '0 10px 15px -3px rgba(239, 68, 68, 0.4), 0 4px 6px -2px rgba(239, 68, 68, 0.3), 0 0 20px rgba(239, 68, 68, 0.2)',
-        'card': '0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -1px rgba(0, 0, 0, 0.3)',
-        'card-elevated': '0 10px 15px -3px rgba(0, 0, 0, 0.6), 0 4px 6px -2px rgba(0, 0, 0, 0.4)',
+        'primary': '0 10px 15px -3px rgba(124, 58, 237, 0.35), 0 4px 6px -2px rgba(124, 58, 237, 0.25)',
+        'primary-glow': '0 0 24px rgba(124, 58, 237, 0.35), 0 0 48px rgba(124, 58, 237, 0.15)',
+        'accent': '0 8px 20px -4px rgba(245, 158, 11, 0.35)',
+        'error': '0 10px 15px -3px rgba(239, 68, 68, 0.35), 0 4px 6px -2px rgba(239, 68, 68, 0.25)',
+        'card': '0 4px 6px -1px rgba(0, 0, 0, 0.45), 0 2px 4px -1px rgba(0, 0, 0, 0.25)',
+        'card-elevated': '0 12px 24px -6px rgba(0, 0, 0, 0.55), 0 4px 8px -2px rgba(0, 0, 0, 0.35)',
+      },
+      keyframes: {
+        fadeIn: {
+          from: { opacity: '0' },
+          to: { opacity: '1' },
+        },
+        slideUp: {
+          from: { opacity: '0', transform: 'translateY(12px)' },
+          to: { opacity: '1', transform: 'translateY(0)' },
+        },
+        slideDown: {
+          from: { opacity: '0', transform: 'translateY(-12px)' },
+          to: { opacity: '1', transform: 'translateY(0)' },
+        },
+        scaleIn: {
+          from: { opacity: '0', transform: 'scale(0.96)' },
+          to: { opacity: '1', transform: 'scale(1)' },
+        },
+        overlayIn: {
+          from: { opacity: '0' },
+          to: { opacity: '1' },
+        },
+      },
+      animation: {
+        'fade-in': 'fadeIn 0.28s ease-out',
+        'slide-up': 'slideUp 0.35s ease-out',
+        'slide-down': 'slideDown 0.35s ease-out',
+        'scale-in': 'scaleIn 0.25s ease-out',
+        'overlay-in': 'overlayIn 0.2s ease-out',
       },
     },
   },
   plugins: [],
 }
-
