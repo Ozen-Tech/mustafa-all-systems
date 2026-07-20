@@ -80,9 +80,53 @@ export interface SalesByIndustry {
   industryName: string;
   qtyCurrent: number;
   qtyPrevious: number;
+  qtyTrend?: number;
+  qtyGrowthPct?: number | null;
   valueCurrent: number;
   valuePrevious: number;
+  valueTrend?: number;
   growthPct: number | null;
+}
+
+export type SalesGroupBy = 'industry' | 'store' | 'product';
+
+export interface SalesRowView {
+  key: string;
+  label: string;
+  sublabel?: string | null;
+  industryName?: string;
+  state?: string | null;
+  productCode?: string | null;
+  productName?: string | null;
+  qtyCurrent: number;
+  qtyPrevious: number;
+  qtyTrend: number;
+  valueCurrent: number;
+  valuePrevious: number;
+  valueTrend: number;
+  qtyGrowthPct: number | null;
+  growthPct: number | null;
+}
+
+export interface SalesResponse {
+  month: string | null;
+  groupBy: SalesGroupBy;
+  totals: {
+    qtyCurrent: number;
+    qtyPrevious: number;
+    valueCurrent: number;
+    valuePrevious: number;
+    qtyGrowthPct: number | null;
+    growthPct: number | null;
+  };
+  byIndustry?: SalesByIndustry[];
+  rows: SalesRowView[];
+  filters: {
+    months: string[];
+    states: string[];
+    industries: string[];
+    stores: { storeId: string | null; filialCode: string; filialName: string; state: string | null }[];
+  };
 }
 
 export interface UnmatchedFilial {
@@ -121,9 +165,20 @@ export const stockService = {
     return response.data.stores;
   },
 
-  async getSales(params: { industryName?: string; storeId?: string } = {}) {
+  async getSales(
+    params: {
+      industryName?: string;
+      storeId?: string;
+      state?: string;
+      month?: string;
+      product?: string;
+      filialCode?: string;
+      groupBy?: SalesGroupBy;
+      allMonths?: boolean;
+    } = {}
+  ) {
     const response = await apiClient.get('/stock/sales', { params });
-    return response.data as { byIndustry: SalesByIndustry[]; records: any[] };
+    return response.data as SalesResponse;
   },
 
   async getStoreItems(
