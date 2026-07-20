@@ -111,17 +111,24 @@ Após o deploy, anote a URL do serviço (ex.: `https://promo-gestao-backend-xxx-
 
 ### 2.5 Migrações
 
-O container usa `docker-entrypoint.sh`. Em produção, **`prisma migrate deploy` só roda automaticamente se `DIRECT_URL` estiver definida** (conexão direta `:5432`, não pooler). Sem ela, o app sobe mas as migrations ficam pendentes — configure no Cloud Run:
+O container **não** roda migrations no startup por padrão (isso quebrava o Cloud Run: o processo não chegava a escutar `$PORT`).
+
+Aplique schema no Supabase SQL Editor ou via `npx prisma migrate deploy` com `DIRECT_URL` (Postgres `:5432`).
+
+Opt-in no container (não recomendado no Cloud Run a menos que `DIRECT_URL` esteja ok):
 
 ```bash
+# NÃO use RUN_MIGRATIONS=true no Cloud Run sem DIRECT_URL — pode falhar o deploy.
+# Preferir SQL no Supabase. Se optar por migrate no boot:
 gcloud run services update gestaomustafa \
   --region us-central1 \
+  --update-env-vars="RUN_MIGRATIONS=true" \
   --set-secrets="DIRECT_URL=mustafa-db-direct-url:latest"
 ```
 
-O `cloudbuild.yaml` na raiz também roda migrate **antes** do deploy (step `migrate`), desde que o trigger use esse arquivo e os secrets `mustafa-db-url` / `mustafa-db-direct-url`.
+Se `RUN_MIGRATIONS=true` estiver setado e a migration falhar, o app **sobe mesmo assim** (a menos que `RUN_MIGRATIONS_STRICT=true`).
 
-Para falhar o deploy se a migration quebrar: `RUN_MIGRATIONS_STRICT=true`.
+O trigger atual do GCP usa o **Dockerfile na raiz** e o repo **Ozen-Tech/mustafa-all-systems** (merge de PRs do fork `enzoalmeida21`).
 
 ---
 
