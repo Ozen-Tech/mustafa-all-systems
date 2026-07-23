@@ -321,6 +321,7 @@ export async function deleteUser(req: AuthRequest, res: Response) {
     // Verificar se o usuário existe
     const existingUser = await prisma.user.findUnique({
       where: { id },
+      select: { id: true, role: true, name: true },
     });
 
     if (!existingUser) {
@@ -332,15 +333,34 @@ export async function deleteUser(req: AuthRequest, res: Response) {
       return res.status(400).json({ message: 'Não é possível deletar seu próprio usuário' });
     }
 
-    // Deletar usuário
-    await prisma.user.delete({
-      where: { id },
+    // Limpa dependências que ainda não têm ON DELETE CASCADE no banco
+    // (ex.: Visit.promoterId era Restrict e derrubava o delete com 500).
+    await prisma.$transaction(async (tx) => {
+      await tx.routeAssignment.updateMany({
+        where: { supervisorId: id },
+        data: { supervisorId: null },
+      });
+
+      // Visitas do promotor (fotos/misses/etc. cascateiam a partir da Visit)
+      await tx.visit.deleteMany({ where: { promoterId: id } });
+
+      await tx.user.delete({ where: { id } });
     });
 
     res.json({ message: 'Usuário deletado com sucesso' });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Delete user error:', error);
-    res.status(500).json({ message: 'Internal server error' });
+    // Prisma FK / constraint
+    if (error?.code === 'P2003' || error?.code === 'P2014') {
+      return res.status(409).json({
+        message:
+          'Não foi possível deletar: ainda há dados vinculados a este usuário. Tente novamente ou contate o suporte.',
+      });
+    }
+    res.status(500).json({
+      message: 'Internal server error',
+      detail: process.env.NODE_ENV === 'development' ? String(error?.message || error) : undefined,
+    });
   }
 }
 
