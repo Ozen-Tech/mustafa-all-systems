@@ -143,8 +143,8 @@ model Visit {
   updatedAt        DateTime  @updatedAt
 
   // Relations
-  promoter       User          @relation(fields: [promoterId], references: [id])
-  store          Store         @relation(fields: [storeId], references: [id])
+  promoter       User          @relation(fields: [promoterId], references: [id], onDelete: Cascade)
+  store          Store         @relation(fields: [storeId], references: [id], onDelete: Restrict)
   photos         Photo[]
   priceResearch  PriceResearch[]
   locations      Location[]
@@ -272,7 +272,7 @@ model RouteAssignment {
   // Relations
   promoter   User  @relation(fields: [promoterId], references: [id], onDelete: Cascade)
   store      Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  supervisor User? @relation("SupervisedRoutes", fields: [supervisorId], references: [id])
+  supervisor User? @relation("SupervisedRoutes", fields: [supervisorId], references: [id], onDelete: SetNull)
 
   @@unique([promoterId, storeId])
   @@index([promoterId])
