@@ -162,6 +162,7 @@ export default function Layout() {
 
   const navigation = [
     ...(isSupervisorOrAdmin ? [{ name: 'Equipe Hoje', path: '/', icon: DashboardIcon }] : []),
+    ...(isSupervisorOrAdmin ? [{ name: 'Vistoria Indústria', path: '/ops/industry-audit', icon: AdminIndustriesIcon }] : []),
     ...(isSupervisorOrAdmin ? [{ name: 'Métricas Trade', path: '/ops/trade-metrics', icon: ReportsIcon }] : []),
     ...(isSupervisorOrAdmin ? [{ name: 'Dashboard (legado)', path: '/dashboard-legacy', icon: DashboardIcon }] : []),
     ...(isIndustryOwner ? [{ name: 'Minha Industria', path: '/industry-dashboard', icon: DashboardIcon }] : []),

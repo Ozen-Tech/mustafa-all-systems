@@ -60,6 +60,47 @@ export const supervisorService = {
     return response.data;
   },
 
+  async getOpsIndustryAudit(params: {
+    industryId: string;
+    state?: string;
+    date?: string;
+    includeJustified?: boolean;
+  }) {
+    const qs = new URLSearchParams();
+    qs.set('industryId', params.industryId);
+    if (params.state) qs.set('state', params.state);
+    if (params.date) qs.set('date', params.date);
+    if (params.includeJustified === false) qs.set('includeJustified', '0');
+    const response = await apiClient.get(`/supervisors/ops/industry-audit?${qs.toString()}`);
+    return response.data as {
+      date: string;
+      industry: {
+        id: string;
+        name: string;
+        code: string;
+        abbreviation: string | null;
+      };
+      stats: {
+        pending: number;
+        semFoto: number;
+        justificado: number;
+        semVisita: number;
+        feitos: number;
+      };
+      rows: Array<{
+        promoter: { id: string; name: string; email: string; state: string | null };
+        store: { id: string; name: string; address: string; state: string | null };
+        status: 'sem_foto' | 'justificado' | 'sem_visita';
+        visitId: string | null;
+        checkInAt: string | null;
+        checkOutAt: string | null;
+        missReason: string | null;
+        missReasonLabel: string | null;
+        missNote: string | null;
+      }>;
+    };
+  },
+
   async getOpsPromoterDayDetail(promoterId: string, params?: { date?: string }) {
     const qs = new URLSearchParams();
     if (params?.date) qs.set('date', params.date);
