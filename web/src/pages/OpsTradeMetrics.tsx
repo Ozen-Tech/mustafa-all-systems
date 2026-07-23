@@ -101,7 +101,7 @@ export default function OpsTradeMetrics() {
             <div className="xl:col-span-2 space-y-6">
               <TradeImpactRanking
                 items={data.ranking}
-                onOpenPromoter={(id) => navigate(`/ops/promoters/${id}/day?date=${date}`)}
+                onOpenPromoter={(id) => navigate(`/promoters/${id}?date=${date}`)}
               />
             </div>
             <div className="space-y-6">

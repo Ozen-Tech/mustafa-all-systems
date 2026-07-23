@@ -107,7 +107,7 @@ export default function OpsTeamToday() {
             <div className="xl:col-span-2 space-y-6">
               <PromotersTable
                 rows={data.rows}
-                onOpenPromoter={(id) => navigate(`/ops/promoters/${id}/day?date=${date}`)}
+                onOpenPromoter={(id) => navigate(`/promoters/${id}?date=${date}`)}
               />
               <OpsStrategyCard />
             </div>
