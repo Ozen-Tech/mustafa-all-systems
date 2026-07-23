@@ -192,14 +192,11 @@ export const supervisorService = {
       `/supervisors/promoters/${promoterId}/visits?date=${encodeURIComponent(date)}&limit=100`
     );
     const data = response.data;
-    // Compat: backend antigo ignora date — filtra no cliente
-    if (data?.date === date || (data?.visits && !data?.pagination)) {
-      const visits = (data.visits || []).filter((v: any) => {
-        const d = new Date(v.checkInAt).toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
-        return d === date;
-      });
-      return { promoter: data.promoter, date, visits: data.date ? data.visits : visits };
+    // Backend novo já devolve só o dia
+    if (data?.date === date) {
+      return data as { promoter: any; date: string; visits: any[] };
     }
+    // Backend antigo: filtra no cliente
     const visits = (data.visits || []).filter((v: any) => {
       const d = new Date(v.checkInAt).toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
       return d === date;

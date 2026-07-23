@@ -92,8 +92,20 @@ export async function opsTeamToday(req: AuthRequest, res: Response) {
       orderBy: { checkInAt: 'asc' },
     });
 
+    // Rotas ativas: lojas esperadas no dia mesmo sem check-in
+    const routeAssignments = await prisma.routeAssignment.findMany({
+      where: { promoterId: { in: promoterIds }, isActive: true },
+      select: {
+        promoterId: true,
+        storeId: true,
+        store: { select: { id: true, name: true, address: true } },
+      },
+    });
+
     const visitIds = visits.map((v) => v.id);
-    const storeIds = Array.from(new Set(visits.map((v) => v.storeId)));
+    const storeIds = Array.from(
+      new Set([...visits.map((v) => v.storeId), ...routeAssignments.map((r) => r.storeId)])
+    );
 
     // Work photos (OTHER) in day
     const photos = await prisma.photo.findMany({
@@ -114,29 +126,46 @@ export async function opsTeamToday(req: AuthRequest, res: Response) {
       orderBy: { createdAt: 'asc' },
     });
 
+    type IndustryRef = { id: string; name: string; code: string; abbreviation: string | null };
+
     // Required industries (prefer IndustryAssignment per promoter+store, else StoreIndustry)
     const [assignments, storeIndustries] = await Promise.all([
-      prisma.industryAssignment.findMany({
-        where: {
-          promoterId: { in: promoterIds },
-          storeId: { in: storeIds },
-          isActive: true,
-        },
-        select: { promoterId: true, storeId: true, industry: { select: { id: true, name: true, code: true } } },
-      }),
-      prisma.storeIndustry.findMany({
-        where: { storeId: { in: storeIds }, isActive: true },
-        select: { storeId: true, industry: { select: { id: true, name: true, code: true } } },
-      }),
+      storeIds.length
+        ? prisma.industryAssignment.findMany({
+            where: {
+              promoterId: { in: promoterIds },
+              storeId: { in: storeIds },
+              isActive: true,
+            },
+            select: {
+              promoterId: true,
+              storeId: true,
+              industry: { select: { id: true, name: true, code: true, abbreviation: true } },
+            },
+          })
+        : Promise.resolve([] as Array<{
+            promoterId: string;
+            storeId: string | null;
+            industry: IndustryRef;
+          }>),
+      storeIds.length
+        ? prisma.storeIndustry.findMany({
+            where: { storeId: { in: storeIds }, isActive: true },
+            select: {
+              storeId: true,
+              industry: { select: { id: true, name: true, code: true, abbreviation: true } },
+            },
+          })
+        : Promise.resolve([] as Array<{ storeId: string; industry: IndustryRef }>),
     ]);
 
-    const assignByPromoterStore = new Map<string, Array<{ id: string; name: string; code: string }>>();
+    const assignByPromoterStore = new Map<string, IndustryRef[]>();
     for (const a of assignments) {
       if (!a.storeId) continue;
       const key = `${a.promoterId}:${a.storeId}`;
       assignByPromoterStore.set(key, [...(assignByPromoterStore.get(key) || []), a.industry]);
     }
-    const storeIndByStore = new Map<string, Array<{ id: string; name: string; code: string }>>();
+    const storeIndByStore = new Map<string, IndustryRef[]>();
     for (const si of storeIndustries) {
       storeIndByStore.set(si.storeId, [...(storeIndByStore.get(si.storeId) || []), si.industry]);
     }
@@ -144,6 +173,13 @@ export async function opsTeamToday(req: AuthRequest, res: Response) {
     const photosByVisit = new Map<string, typeof photos>();
     for (const p of photos) {
       photosByVisit.set(p.visitId, [...(photosByVisit.get(p.visitId) || []), p]);
+    }
+
+    // Visits by promoter+store (merge multiple visits same day)
+    const visitsByPromoterStore = new Map<string, typeof visits>();
+    for (const v of visits) {
+      const key = `${v.promoterId}:${v.storeId}`;
+      visitsByPromoterStore.set(key, [...(visitsByPromoterStore.get(key) || []), v]);
     }
 
     // Compute per promoter aggregates
@@ -174,16 +210,25 @@ export async function opsTeamToday(req: AuthRequest, res: Response) {
     const rows: Array<{
       promoter: { id: string; name: string; email: string; state: string | null };
       store: { id: string; name: string; address: string } | null;
-      industry: { id: string; name: string; code: string } | null;
+      industry: { id: string; name: string; code: string; abbreviation?: string | null } | null;
       deliveryStatus: DeliveryStatus;
       deadlineStatus: DeadlineStatus;
       firstSentAt: string | null;
       photoCount: number;
-      executionPct: number | null; // per store/industry row, we can show store execution or promoter execution
+      executionPct: number | null;
       statusLabel: StatusLabel;
       statusBucket: string;
     }> = [];
 
+    type IndustryStatus = 'enviado' | 'pendente';
+    type IndustrySummary = {
+      id: string;
+      code: string;
+      name: string;
+      abbreviation: string | null;
+      status: IndustryStatus;
+      photoCount: number;
+    };
     type StoreStatus = 'feita' | 'em_execucao' | 'nao_feita';
     type StoreSummary = {
       id: string;
@@ -193,128 +238,194 @@ export async function opsTeamToday(req: AuthRequest, res: Response) {
       photoCount: number;
       industriesRequired: number;
       industriesCovered: number;
+      pendingCount: number;
+      industries: IndustrySummary[];
       checkInAt: string | null;
       checkOutAt: string | null;
+      fromRoute: boolean;
+      visited: boolean;
     };
 
     const storesByPromoter = new Map<string, StoreSummary[]>();
 
-    // Per visit: compute coverage and build rows per required industry
-    for (const v of visits) {
-      const promoter = promoters.find((p) => p.id === v.promoterId);
-      if (!promoter) continue;
-      const agg = promoterAgg.get(promoter.id)!;
-      agg.visitsCount += 1;
+    function requiredIndustriesFor(promoterId: string, storeId: string): IndustryRef[] {
+      const list =
+        assignByPromoterStore.get(`${promoterId}:${storeId}`) ?? storeIndByStore.get(storeId) ?? [];
+      return Array.from(new Map(list.map((i) => [i.id, i])).values());
+    }
 
-      const vPhotos = photosByVisit.get(v.id) || [];
-      if (vPhotos.length > 0) agg.coveredStores.add(v.storeId);
-
-      const firstSentAt = vPhotos.length > 0 ? vPhotos[0].createdAt : null;
-      if (firstSentAt && (!agg.firstSentAt || firstSentAt.getTime() < agg.firstSentAt.getTime())) {
-        agg.firstSentAt = firstSentAt;
-      }
-      agg.photoCount += vPhotos.length;
-
-      const valid = vPhotos.filter((p) => {
-        if (!p.url || p.url.includes('placeholder.com')) return false;
-        if (p.photoIndustries?.length && p.photoIndustries.length > 0) return true;
-        if (p.selectedIndustryId) return true;
-        if (p.industryId) return true;
-        return false;
-      }).length;
-      agg.validPhotoCount += valid;
-
-      const requiredIndustries =
-        assignByPromoterStore.get(`${promoter.id}:${v.storeId}`) ??
-        storeIndByStore.get(v.storeId) ??
-        [];
-      const requiredUnique = Array.from(new Map(requiredIndustries.map((i) => [i.id, i])).values());
+    function buildStoreSummary(params: {
+      promoterId: string;
+      store: { id: string; name: string; address: string };
+      storeVisits: typeof visits;
+      fromRoute: boolean;
+    }): StoreSummary {
+      const { promoterId, store, storeVisits, fromRoute } = params;
+      const visited = storeVisits.length > 0;
+      const allPhotos = storeVisits.flatMap((v) => photosByVisit.get(v.id) || []);
+      const requiredUnique = requiredIndustriesFor(promoterId, store.id);
 
       const coveredIndustryIds = new Set<string>();
-      for (const p of vPhotos) {
-        for (const pi of p.photoIndustries || []) coveredIndustryIds.add(pi.industryId);
-        if (p.selectedIndustryId) coveredIndustryIds.add(p.selectedIndustryId);
-        if (p.industryId) coveredIndustryIds.add(p.industryId);
+      const photoCountByIndustry = new Map<string, number>();
+      for (const p of allPhotos) {
+        const ids = new Set<string>();
+        for (const pi of p.photoIndustries || []) ids.add(pi.industryId);
+        if (p.selectedIndustryId) ids.add(p.selectedIndustryId);
+        if (p.industryId) ids.add(p.industryId);
+        for (const iid of ids) {
+          coveredIndustryIds.add(iid);
+          photoCountByIndustry.set(iid, (photoCountByIndustry.get(iid) || 0) + 1);
+        }
       }
 
-      const coveredCount = requiredUnique.filter((i) => coveredIndustryIds.has(i.id)).length;
-      if (requiredUnique.length > 0) {
-        agg.executionNumerator += coveredCount;
-        agg.executionDenominator += requiredUnique.length;
-      }
+      const industries: IndustrySummary[] = requiredUnique.map((ind) => {
+        const photoCount = photoCountByIndustry.get(ind.id) || 0;
+        return {
+          id: ind.id,
+          code: ind.code,
+          name: ind.name,
+          abbreviation: ind.abbreviation,
+          status: photoCount > 0 ? 'enviado' : 'pendente',
+          photoCount,
+        };
+      });
 
+      const coveredCount = industries.filter((i) => i.status === 'enviado').length;
+      const pendingCount = industries.filter((i) => i.status === 'pendente').length;
       const storeExecutionPct =
         requiredUnique.length > 0 ? Math.round((coveredCount / requiredUnique.length) * 100) : null;
 
-      // Status da loja: feita / em execução / não feita
+      const hasCheckout = storeVisits.some((v) => v.checkOutAt != null);
+      const firstCheckIn = storeVisits[0]?.checkInAt ?? null;
+      const lastCheckOut =
+        storeVisits
+          .map((v) => v.checkOutAt)
+          .filter(Boolean)
+          .sort((a, b) => (b as Date).getTime() - (a as Date).getTime())[0] ?? null;
+
       let storeStatus: StoreStatus = 'nao_feita';
-      if (
-        (requiredUnique.length > 0 && coveredCount >= requiredUnique.length) ||
-        (v.checkOutAt != null && vPhotos.length > 0)
-      ) {
+      if (requiredUnique.length > 0 && coveredCount >= requiredUnique.length) {
         storeStatus = 'feita';
-      } else if (vPhotos.length > 0 || coveredCount > 0) {
+      } else if (allPhotos.length > 0 || coveredCount > 0) {
         storeStatus = 'em_execucao';
+      } else if (visited && hasCheckout && allPhotos.length === 0 && requiredUnique.length === 0) {
+        storeStatus = 'feita';
       }
 
-      const list = storesByPromoter.get(promoter.id) || [];
-      // Evita duplicar a mesma loja se houver mais de uma visita no dia
-      const existingIdx = list.findIndex((s) => s.id === v.storeId);
-      const storeSummary: StoreSummary = {
-        id: v.storeId,
-        name: v.store.name,
+      return {
+        id: store.id,
+        name: store.name,
         status: storeStatus,
         executionPct: storeExecutionPct,
-        photoCount: vPhotos.length,
+        photoCount: allPhotos.length,
         industriesRequired: requiredUnique.length,
         industriesCovered: coveredCount,
-        checkInAt: v.checkInAt ? v.checkInAt.toISOString() : null,
-        checkOutAt: v.checkOutAt ? v.checkOutAt.toISOString() : null,
+        pendingCount,
+        industries,
+        checkInAt: firstCheckIn ? firstCheckIn.toISOString() : null,
+        checkOutAt: lastCheckOut ? (lastCheckOut as Date).toISOString() : null,
+        fromRoute,
+        visited,
       };
-      if (existingIdx >= 0) {
-        const prev = list[existingIdx];
-        const rank = (s: StoreStatus) => (s === 'feita' ? 2 : s === 'em_execucao' ? 1 : 0);
-        list[existingIdx] = {
-          ...storeSummary,
-          photoCount: prev.photoCount + storeSummary.photoCount,
-          industriesCovered: Math.max(prev.industriesCovered, storeSummary.industriesCovered),
-          status: rank(storeSummary.status) >= rank(prev.status) ? storeSummary.status : prev.status,
-          checkOutAt: storeSummary.checkOutAt || prev.checkOutAt,
-        };
-      } else {
-        list.push(storeSummary);
-      }
-      storesByPromoter.set(promoter.id, list);
-
-      for (const ind of requiredUnique) {
-        const indPhotoCount = vPhotos.filter((p) => {
-          if (p.photoIndustries?.some((pi) => pi.industryId === ind.id)) return true;
-          if (p.selectedIndustryId === ind.id) return true;
-          if (p.industryId === ind.id) return true;
-          return false;
-        }).length;
-
-        const deliveryStatus: DeliveryStatus = indPhotoCount > 0 ? 'enviado' : 'sem_envio';
-
-        rows.push({
-          promoter,
-          store: v.store,
-          industry: ind,
-          deliveryStatus,
-          deadlineStatus: 'sem_envio',
-          firstSentAt: firstSentAt ? firstSentAt.toISOString() : null,
-          photoCount: indPhotoCount,
-          executionPct: storeExecutionPct,
-          statusLabel: 'Atenção',
-          statusBucket: 'attention',
-        });
-      }
     }
 
-    // Promoters without visits today -> one row for fast ops view
+    // União rota ∪ visitas por promotor
+    const storeKeysByPromoter = new Map<string, Map<string, { store: { id: string; name: string; address: string }; fromRoute: boolean }>>();
     for (const p of promoters) {
-      const agg = promoterAgg.get(p.id)!;
-      if (agg.visitsCount > 0) continue;
+      storeKeysByPromoter.set(p.id, new Map());
+    }
+    for (const ra of routeAssignments) {
+      const map = storeKeysByPromoter.get(ra.promoterId);
+      if (!map) continue;
+      map.set(ra.storeId, { store: ra.store, fromRoute: true });
+    }
+    for (const v of visits) {
+      const map = storeKeysByPromoter.get(v.promoterId);
+      if (!map) continue;
+      const prev = map.get(v.storeId);
+      map.set(v.storeId, {
+        store: v.store,
+        fromRoute: prev?.fromRoute ?? false,
+      });
+    }
+
+    for (const promoter of promoters) {
+      const agg = promoterAgg.get(promoter.id)!;
+      const storeMap = storeKeysByPromoter.get(promoter.id) || new Map();
+      const list: StoreSummary[] = [];
+
+      for (const [storeId, meta] of storeMap.entries()) {
+        const storeVisits = visitsByPromoterStore.get(`${promoter.id}:${storeId}`) || [];
+        if (storeVisits.length > 0) {
+          agg.visitsCount += storeVisits.length;
+          const vPhotos = storeVisits.flatMap((v) => photosByVisit.get(v.id) || []);
+          if (vPhotos.length > 0) agg.coveredStores.add(storeId);
+
+          const firstSentAt = vPhotos.length > 0 ? vPhotos[0].createdAt : null;
+          if (firstSentAt && (!agg.firstSentAt || firstSentAt.getTime() < agg.firstSentAt.getTime())) {
+            agg.firstSentAt = firstSentAt;
+          }
+          agg.photoCount += vPhotos.length;
+
+          const valid = vPhotos.filter((p) => {
+            if (!p.url || p.url.includes('placeholder.com')) return false;
+            if (p.photoIndustries?.length && p.photoIndustries.length > 0) return true;
+            if (p.selectedIndustryId) return true;
+            if (p.industryId) return true;
+            return false;
+          }).length;
+          agg.validPhotoCount += valid;
+        }
+
+        const summary = buildStoreSummary({
+          promoterId: promoter.id,
+          store: meta.store,
+          storeVisits,
+          fromRoute: meta.fromRoute,
+        });
+
+        if (summary.industriesRequired > 0) {
+          agg.executionNumerator += summary.industriesCovered;
+          agg.executionDenominator += summary.industriesRequired;
+        }
+
+        list.push(summary);
+
+        const firstSentIso =
+          storeVisits.length > 0 && (photosByVisit.get(storeVisits[0].id) || []).length > 0
+            ? (photosByVisit.get(storeVisits[0].id) || [])[0].createdAt.toISOString()
+            : null;
+
+        for (const ind of summary.industries) {
+          rows.push({
+            promoter,
+            store: meta.store,
+            industry: {
+              id: ind.id,
+              name: ind.name,
+              code: ind.code,
+              abbreviation: ind.abbreviation,
+            },
+            deliveryStatus: ind.status === 'enviado' ? 'enviado' : 'sem_envio',
+            deadlineStatus: 'sem_envio',
+            firstSentAt: firstSentIso,
+            photoCount: ind.photoCount,
+            executionPct: summary.executionPct,
+            statusLabel: 'Atenção',
+            statusBucket: 'attention',
+          });
+        }
+      }
+
+      // Ordena: mais pendências primeiro, depois nome
+      list.sort((a, b) => b.pendingCount - a.pendingCount || a.name.localeCompare(b.name));
+      storesByPromoter.set(promoter.id, list);
+    }
+
+    // Promoters without any store (no route, no visit) -> legacy empty industry row
+    for (const p of promoters) {
+      const stores = storesByPromoter.get(p.id) || [];
+      if (stores.length > 0) continue;
       rows.push({
         promoter: p,
         store: null,
@@ -354,31 +465,39 @@ export async function opsTeamToday(req: AuthRequest, res: Response) {
       };
     });
 
-    // Uma linha por promotor (visão clean) com resumo de lojas
-    const promoterRows = promoters.map((p) => {
-      const agg = promoterAgg.get(p.id)!;
-      const st = promoterStatusById.get(p.id)!;
-      const stores = storesByPromoter.get(p.id) || [];
-      const storesFeitas = stores.filter((s) => s.status === 'feita').length;
-      const storesEmExecucao = stores.filter((s) => s.status === 'em_execucao').length;
-      const storesNaoFeitas = stores.filter((s) => s.status === 'nao_feita').length;
-      const sent = (agg.photoCount || 0) > 0;
-      return {
-        promoter: p,
-        deliveryStatus: (sent ? 'enviado' : 'sem_envio') as DeliveryStatus,
-        deadlineStatus: st.deadlineStatus,
-        firstSentAt: agg.firstSentAt ? agg.firstSentAt.toISOString() : null,
-        photoCount: agg.photoCount,
-        executionPct: st.executionPct,
-        statusLabel: st.label,
-        statusBucket: st.bucket,
-        storesCount: stores.length,
-        storesFeitas,
-        storesEmExecucao,
-        storesNaoFeitas,
-        stores,
-      };
-    });
+    // Uma linha por promotor com resumo loja × indústrias
+    const promoterRows = promoters
+      .map((p) => {
+        const agg = promoterAgg.get(p.id)!;
+        const st = promoterStatusById.get(p.id)!;
+        const stores = storesByPromoter.get(p.id) || [];
+        const storesFeitas = stores.filter((s) => s.status === 'feita').length;
+        const storesEmExecucao = stores.filter((s) => s.status === 'em_execucao').length;
+        const storesNaoFeitas = stores.filter((s) => s.status === 'nao_feita').length;
+        const pendingIndustriesTotal = stores.reduce((sum, s) => sum + s.pendingCount, 0);
+        const sent = (agg.photoCount || 0) > 0;
+        return {
+          promoter: p,
+          deliveryStatus: (sent ? 'enviado' : 'sem_envio') as DeliveryStatus,
+          deadlineStatus: st.deadlineStatus,
+          firstSentAt: agg.firstSentAt ? agg.firstSentAt.toISOString() : null,
+          photoCount: agg.photoCount,
+          executionPct: st.executionPct,
+          statusLabel: st.label,
+          statusBucket: st.bucket,
+          storesCount: stores.length,
+          storesFeitas,
+          storesEmExecucao,
+          storesNaoFeitas,
+          pendingIndustriesTotal,
+          stores,
+        };
+      })
+      .sort(
+        (a, b) =>
+          b.pendingIndustriesTotal - a.pendingIndustriesTotal ||
+          a.promoter.name.localeCompare(b.promoter.name)
+      );
 
     const nonSenders = promoters
       .filter((p) => {
@@ -407,6 +526,7 @@ export async function opsTeamToday(req: AuthRequest, res: Response) {
       return false;
     }).length;
     const avgQuality = allPhotosCount > 0 ? Math.round((allValidPhotosCount / allPhotosCount) * 100) : 0;
+    const pendingIndustriesAll = promoterRows.reduce((s, r) => s + r.pendingIndustriesTotal, 0);
 
     res.json({
       date: targetDate,
@@ -420,10 +540,11 @@ export async function opsTeamToday(req: AuthRequest, res: Response) {
         promotersLate: lateCount,
         storesCovered: coveredStores.size,
         averageEvidenceQuality: avgQuality,
+        pendingIndustries: pendingIndustriesAll,
       },
       // Visão principal: 1 linha por promotor
       rows: promoterRows,
-      // Detalhe legado (indústria x loja) — útil para drill-down futuro
+      // Detalhe legado (indústria x loja)
       industryRows: rowsEnriched,
       nonSenders,
       promoterStats: Array.from(promoterStatusById.entries()).map(([promoterId, st]) => ({
