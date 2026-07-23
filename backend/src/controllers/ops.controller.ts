@@ -1004,3 +1004,297 @@ export async function opsPromoterDayDetail(req: AuthRequest, res: Response) {
   }
 }
 
+const industryAuditQuerySchema = z.object({
+  industryId: z.string().uuid(),
+  state: z.string().min(1).max(2).optional(),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  /** Se true, inclui linhas justificadas (IndustryMiss). Default: true. */
+  includeJustified: z
+    .union([z.literal('0'), z.literal('1'), z.literal('true'), z.literal('false')])
+    .optional(),
+});
+
+const MISS_REASON_LABEL: Record<string, string> = {
+  STORE_CLOSED: 'Loja fechada',
+  NO_STOCK: 'Sem estoque / produto',
+  NO_AUTHORIZATION: 'Sem autorização',
+  NO_MATERIAL: 'Sem material no PDV',
+  PROMOTER_ERROR: 'Erro do promotor',
+  OTHER: 'Sem foto disponível',
+};
+
+/**
+ * Vistoria por indústria: lista quem NÃO enviou foto da indústria escolhida
+ * (por loja/promotor no dia). Justificativas do app aparecem como "justificado".
+ */
+export async function opsIndustryAudit(req: AuthRequest, res: Response) {
+  try {
+    if (req.userRole !== UserRole.SUPERVISOR && req.userRole !== UserRole.ADMIN) {
+      return res.status(403).json({ message: 'Supervisor or Admin access required' });
+    }
+
+    const parsed = industryAuditQuerySchema.parse(req.query);
+    const { industryId, state } = parsed;
+    const targetDate = parsed.date ?? toISODateBRT(new Date());
+    const { start, endExclusive } = dayRangeBRT(targetDate);
+    const includeJustified =
+      parsed.includeJustified === undefined ||
+      parsed.includeJustified === '1' ||
+      parsed.includeJustified === 'true';
+    const isAdmin = req.userRole === UserRole.ADMIN;
+
+    const industry = await prisma.industry.findUnique({
+      where: { id: industryId },
+      select: { id: true, name: true, code: true, abbreviation: true, isActive: true },
+    });
+    if (!industry) {
+      return res.status(404).json({ message: 'Indústria não encontrada' });
+    }
+
+    const promoters = await prisma.user.findMany({
+      where: scopedPromoterWhere({ isAdmin, supervisorId: req.userId, state }),
+      select: { id: true, name: true, email: true, state: true },
+      orderBy: { name: 'asc' },
+    });
+    const promoterIds = promoters.map((p) => p.id);
+    if (promoterIds.length === 0) {
+      return res.json({
+        date: targetDate,
+        industry,
+        stats: { pending: 0, semFoto: 0, justificado: 0, semVisita: 0, feitos: 0 },
+        rows: [],
+      });
+    }
+
+    const [routeAssignments, industryAssignments, storeIndustries] = await Promise.all([
+      prisma.routeAssignment.findMany({
+        where: { promoterId: { in: promoterIds }, isActive: true },
+        select: {
+          promoterId: true,
+          storeId: true,
+          store: { select: { id: true, name: true, address: true, state: true } },
+        },
+      }),
+      prisma.industryAssignment.findMany({
+        where: {
+          promoterId: { in: promoterIds },
+          industryId,
+          isActive: true,
+          storeId: { not: null },
+        },
+        select: {
+          promoterId: true,
+          storeId: true,
+          store: { select: { id: true, name: true, address: true, state: true } },
+        },
+      }),
+      prisma.storeIndustry.findMany({
+        where: { industryId, isActive: true },
+        select: {
+          storeId: true,
+          store: { select: { id: true, name: true, address: true, state: true } },
+        },
+      }),
+    ]);
+
+    const storeIndustryIds = new Set(storeIndustries.map((s) => s.storeId));
+
+    type Expected = {
+      promoterId: string;
+      store: { id: string; name: string; address: string; state: string | null };
+    };
+    const expectedMap = new Map<string, Expected>();
+
+    for (const a of industryAssignments) {
+      if (!a.storeId || !a.store) continue;
+      if (state && a.store.state && a.store.state.toUpperCase() !== state.toUpperCase()) continue;
+      expectedMap.set(`${a.promoterId}:${a.storeId}`, {
+        promoterId: a.promoterId,
+        store: a.store,
+      });
+    }
+
+    for (const ra of routeAssignments) {
+      if (!storeIndustryIds.has(ra.storeId)) continue;
+      if (state && ra.store.state && ra.store.state.toUpperCase() !== state.toUpperCase()) continue;
+      const key = `${ra.promoterId}:${ra.storeId}`;
+      if (!expectedMap.has(key)) {
+        expectedMap.set(key, { promoterId: ra.promoterId, store: ra.store });
+      }
+    }
+
+    const storeIds = Array.from(new Set(Array.from(expectedMap.values()).map((e) => e.store.id)));
+
+    const visits =
+      storeIds.length === 0
+        ? []
+        : await prisma.visit.findMany({
+            where: {
+              promoterId: { in: promoterIds },
+              storeId: { in: storeIds },
+              checkInAt: { gte: start, lt: endExclusive },
+            },
+            select: {
+              id: true,
+              promoterId: true,
+              storeId: true,
+              checkInAt: true,
+              checkOutAt: true,
+            },
+          });
+
+    const visitIds = visits.map((v) => v.id);
+
+    const [photos, misses] = await Promise.all([
+      visitIds.length
+        ? prisma.photo.findMany({
+            where: {
+              visitId: { in: visitIds },
+              type: 'OTHER',
+              createdAt: { gte: start, lt: endExclusive },
+            },
+            select: {
+              visitId: true,
+              industryId: true,
+              selectedIndustryId: true,
+              photoIndustries: { select: { industryId: true } },
+            },
+          })
+        : Promise.resolve([] as Array<{
+            visitId: string;
+            industryId: string | null;
+            selectedIndustryId: string | null;
+            photoIndustries: Array<{ industryId: string }>;
+          }>),
+      visitIds.length
+        ? prisma.industryMiss.findMany({
+            where: { visitId: { in: visitIds }, industryId },
+            select: {
+              visitId: true,
+              promoterId: true,
+              storeId: true,
+              reason: true,
+              note: true,
+            },
+          })
+        : Promise.resolve([] as Array<{
+            visitId: string;
+            promoterId: string;
+            storeId: string;
+            reason: string;
+            note: string | null;
+          }>),
+    ]);
+
+    const visitsByKey = new Map<string, typeof visits>();
+    for (const v of visits) {
+      const key = `${v.promoterId}:${v.storeId}`;
+      visitsByKey.set(key, [...(visitsByKey.get(key) || []), v]);
+    }
+
+    const coveredVisitIds = new Set<string>();
+    for (const p of photos) {
+      const ids = new Set<string>();
+      for (const pi of p.photoIndustries || []) ids.add(pi.industryId);
+      if (p.selectedIndustryId) ids.add(p.selectedIndustryId);
+      if (p.industryId) ids.add(p.industryId);
+      if (ids.has(industryId)) coveredVisitIds.add(p.visitId);
+    }
+
+    const missByKey = new Map<string, { reason: string; note: string | null }>();
+    for (const m of misses) {
+      missByKey.set(`${m.promoterId}:${m.storeId}`, { reason: m.reason, note: m.note });
+    }
+
+    const promoterById = new Map(promoters.map((p) => [p.id, p]));
+
+    type AuditStatus = 'sem_foto' | 'justificado' | 'sem_visita';
+    const rows: Array<{
+      promoter: { id: string; name: string; email: string; state: string | null };
+      store: { id: string; name: string; address: string; state: string | null };
+      status: AuditStatus;
+      visitId: string | null;
+      checkInAt: string | null;
+      checkOutAt: string | null;
+      missReason: string | null;
+      missReasonLabel: string | null;
+      missNote: string | null;
+    }> = [];
+
+    let feitos = 0;
+    let semFoto = 0;
+    let justificado = 0;
+    let semVisita = 0;
+
+    for (const exp of expectedMap.values()) {
+      const promoter = promoterById.get(exp.promoterId);
+      if (!promoter) continue;
+
+      const key = `${exp.promoterId}:${exp.store.id}`;
+      const dayVisits = visitsByKey.get(key) || [];
+      const hasPhoto = dayVisits.some((v) => coveredVisitIds.has(v.id));
+      if (hasPhoto) {
+        feitos += 1;
+        continue;
+      }
+
+      const miss = missByKey.get(key);
+      const latestVisit = dayVisits.length
+        ? [...dayVisits].sort((a, b) => b.checkInAt.getTime() - a.checkInAt.getTime())[0]
+        : null;
+
+      let status: AuditStatus;
+      if (miss) {
+        status = 'justificado';
+        justificado += 1;
+        if (!includeJustified) continue;
+      } else if (!latestVisit) {
+        status = 'sem_visita';
+        semVisita += 1;
+      } else {
+        status = 'sem_foto';
+        semFoto += 1;
+      }
+
+      rows.push({
+        promoter,
+        store: exp.store,
+        status,
+        visitId: latestVisit?.id ?? null,
+        checkInAt: latestVisit?.checkInAt?.toISOString() ?? null,
+        checkOutAt: latestVisit?.checkOutAt?.toISOString() ?? null,
+        missReason: miss?.reason ?? null,
+        missReasonLabel: miss ? MISS_REASON_LABEL[miss.reason] || miss.reason : null,
+        missNote: miss?.note ?? null,
+      });
+    }
+
+    const statusRank = (s: AuditStatus) => (s === 'sem_foto' ? 0 : s === 'sem_visita' ? 1 : 2);
+    rows.sort(
+      (a, b) =>
+        statusRank(a.status) - statusRank(b.status) ||
+        a.promoter.name.localeCompare(b.promoter.name) ||
+        a.store.name.localeCompare(b.store.name)
+    );
+
+    res.json({
+      date: targetDate,
+      industry,
+      stats: {
+        pending: rows.length,
+        semFoto,
+        justificado,
+        semVisita,
+        feitos,
+      },
+      rows,
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: 'Validation error', errors: error.errors });
+    }
+    console.error('opsIndustryAudit error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+}
+

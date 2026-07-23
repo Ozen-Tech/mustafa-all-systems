@@ -39,6 +39,7 @@ export interface Industry {
   id: string;
   name: string;
   code: string;
+  abbreviation?: string | null;
   description?: string;
   isActive: boolean;
   createdAt: string;

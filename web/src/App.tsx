@@ -12,6 +12,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import OpsTeamToday from './pages/OpsTeamToday';
 import OpsTradeMetrics from './pages/OpsTradeMetrics';
+import OpsIndustryAudit from './pages/OpsIndustryAudit';
 import OpsPromoterDayDetail from './pages/OpsPromoterDayDetail';
 import PromoterDetails from './pages/PromoterDetails';
 import RouteMap from './pages/RouteMap';
@@ -138,6 +139,14 @@ function AppRoutes() {
           element={
             <SupervisorOrAdminRoute>
               <OpsTradeMetrics />
+            </SupervisorOrAdminRoute>
+          }
+        />
+        <RouterRoute
+          path="ops/industry-audit"
+          element={
+            <SupervisorOrAdminRoute>
+              <OpsIndustryAudit />
             </SupervisorOrAdminRoute>
           }
         />
