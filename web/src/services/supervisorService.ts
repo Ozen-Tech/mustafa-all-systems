@@ -95,16 +95,35 @@ export const supervisorService = {
   /** Resumo leve: dias com lojas/fotos (sem carregar imagens). */
   async getPromoterVisitDays(promoterId: string) {
     const response = await apiClient.get(`/supervisors/promoters/${promoterId}/visits?summary=1`);
-    return response.data as {
-      promoter: {
-        id: string;
-        name: string;
-        email: string;
-        phone: string | null;
-        state: string | null;
-        avatarUrl?: string | null;
+    const data = response.data;
+    // Compat: backend antigo ignora summary e devolve { visits }
+    if (data?.days) {
+      return data as {
+        promoter: {
+          id: string;
+          name: string;
+          email: string;
+          phone: string | null;
+          state: string | null;
+          avatarUrl?: string | null;
+        };
+        days: Array<{
+          date: string;
+          visitCount: number;
+          storesCount: number;
+          storesDone: number;
+          storesOpen: number;
+          photoCount: number;
+          storeNames: string[];
+          states?: string[];
+        }>;
       };
-      days: Array<{
+    }
+
+    const visits: any[] = data?.visits || [];
+    const byDay = new Map<
+      string,
+      {
         date: string;
         visitCount: number;
         storesCount: number;
@@ -112,17 +131,80 @@ export const supervisorService = {
         storesOpen: number;
         photoCount: number;
         storeNames: string[];
-        states?: string[];
-      }>;
+        states: string[];
+        storeIds: Set<string>;
+      }
+    >();
+    for (const v of visits) {
+      const d = new Date(v.checkInAt);
+      const date = d.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+      let agg = byDay.get(date);
+      if (!agg) {
+        agg = {
+          date,
+          visitCount: 0,
+          storesCount: 0,
+          storesDone: 0,
+          storesOpen: 0,
+          photoCount: 0,
+          storeNames: [],
+          states: [],
+          storeIds: new Set(),
+        };
+        byDay.set(date, agg);
+      }
+      agg.visitCount += 1;
+      agg.photoCount += v.photoCount || v.photos?.length || 0;
+      if (v.store?.id && !agg.storeIds.has(v.store.id)) {
+        agg.storeIds.add(v.store.id);
+        agg.storeNames.push(v.store.name);
+        if (v.store.state) agg.states.push(v.store.state);
+      }
+      if (v.checkOutAt) agg.storesDone += 1;
+      else agg.storesOpen += 1;
+    }
+    const days = Array.from(byDay.values())
+      .map(({ storeIds, ...rest }) => ({
+        ...rest,
+        storesCount: storeIds.size,
+        storesDone: rest.storesDone,
+        storesOpen: rest.storesOpen,
+      }))
+      .sort((a, b) => b.date.localeCompare(a.date));
+
+    const first = visits[0];
+    return {
+      promoter: data?.promoter || {
+        id: promoterId,
+        name: first?.promoterName || 'Promotor',
+        email: '',
+        phone: null,
+        state: first?.store?.state || null,
+        avatarUrl: first?.checkInPhotoUrl || null,
+      },
+      days,
     };
   },
 
   /** Visitas + fotos de um dia (carrega só ao abrir a barra). */
   async getPromoterVisitsByDate(promoterId: string, date: string) {
     const response = await apiClient.get(
-      `/supervisors/promoters/${promoterId}/visits?date=${encodeURIComponent(date)}`
+      `/supervisors/promoters/${promoterId}/visits?date=${encodeURIComponent(date)}&limit=100`
     );
-    return response.data as { promoter: any; date: string; visits: any[] };
+    const data = response.data;
+    // Compat: backend antigo ignora date — filtra no cliente
+    if (data?.date === date || (data?.visits && !data?.pagination)) {
+      const visits = (data.visits || []).filter((v: any) => {
+        const d = new Date(v.checkInAt).toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+        return d === date;
+      });
+      return { promoter: data.promoter, date, visits: data.date ? data.visits : visits };
+    }
+    const visits = (data.visits || []).filter((v: any) => {
+      const d = new Date(v.checkInAt).toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+      return d === date;
+    });
+    return { promoter: data.promoter, date, visits };
   },
 
   async getPromoterRoute(promoterId: string, date?: string) {
