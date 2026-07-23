@@ -184,6 +184,21 @@ export async function opsTeamToday(req: AuthRequest, res: Response) {
       statusBucket: string;
     }> = [];
 
+    type StoreStatus = 'feita' | 'em_execucao' | 'nao_feita';
+    type StoreSummary = {
+      id: string;
+      name: string;
+      status: StoreStatus;
+      executionPct: number | null;
+      photoCount: number;
+      industriesRequired: number;
+      industriesCovered: number;
+      checkInAt: string | null;
+      checkOutAt: string | null;
+    };
+
+    const storesByPromoter = new Map<string, StoreSummary[]>();
+
     // Per visit: compute coverage and build rows per required industry
     for (const v of visits) {
       const promoter = promoters.find((p) => p.id === v.promoterId);
@@ -230,6 +245,46 @@ export async function opsTeamToday(req: AuthRequest, res: Response) {
 
       const storeExecutionPct =
         requiredUnique.length > 0 ? Math.round((coveredCount / requiredUnique.length) * 100) : null;
+
+      // Status da loja: feita / em execução / não feita
+      let storeStatus: StoreStatus = 'nao_feita';
+      if (
+        (requiredUnique.length > 0 && coveredCount >= requiredUnique.length) ||
+        (v.checkOutAt != null && vPhotos.length > 0)
+      ) {
+        storeStatus = 'feita';
+      } else if (vPhotos.length > 0 || coveredCount > 0) {
+        storeStatus = 'em_execucao';
+      }
+
+      const list = storesByPromoter.get(promoter.id) || [];
+      // Evita duplicar a mesma loja se houver mais de uma visita no dia
+      const existingIdx = list.findIndex((s) => s.id === v.storeId);
+      const storeSummary: StoreSummary = {
+        id: v.storeId,
+        name: v.store.name,
+        status: storeStatus,
+        executionPct: storeExecutionPct,
+        photoCount: vPhotos.length,
+        industriesRequired: requiredUnique.length,
+        industriesCovered: coveredCount,
+        checkInAt: v.checkInAt ? v.checkInAt.toISOString() : null,
+        checkOutAt: v.checkOutAt ? v.checkOutAt.toISOString() : null,
+      };
+      if (existingIdx >= 0) {
+        const prev = list[existingIdx];
+        const rank = (s: StoreStatus) => (s === 'feita' ? 2 : s === 'em_execucao' ? 1 : 0);
+        list[existingIdx] = {
+          ...storeSummary,
+          photoCount: prev.photoCount + storeSummary.photoCount,
+          industriesCovered: Math.max(prev.industriesCovered, storeSummary.industriesCovered),
+          status: rank(storeSummary.status) >= rank(prev.status) ? storeSummary.status : prev.status,
+          checkOutAt: storeSummary.checkOutAt || prev.checkOutAt,
+        };
+      } else {
+        list.push(storeSummary);
+      }
+      storesByPromoter.set(promoter.id, list);
 
       for (const ind of requiredUnique) {
         const indPhotoCount = vPhotos.filter((p) => {
@@ -299,6 +354,32 @@ export async function opsTeamToday(req: AuthRequest, res: Response) {
       };
     });
 
+    // Uma linha por promotor (visão clean) com resumo de lojas
+    const promoterRows = promoters.map((p) => {
+      const agg = promoterAgg.get(p.id)!;
+      const st = promoterStatusById.get(p.id)!;
+      const stores = storesByPromoter.get(p.id) || [];
+      const storesFeitas = stores.filter((s) => s.status === 'feita').length;
+      const storesEmExecucao = stores.filter((s) => s.status === 'em_execucao').length;
+      const storesNaoFeitas = stores.filter((s) => s.status === 'nao_feita').length;
+      const sent = (agg.photoCount || 0) > 0;
+      return {
+        promoter: p,
+        deliveryStatus: (sent ? 'enviado' : 'sem_envio') as DeliveryStatus,
+        deadlineStatus: st.deadlineStatus,
+        firstSentAt: agg.firstSentAt ? agg.firstSentAt.toISOString() : null,
+        photoCount: agg.photoCount,
+        executionPct: st.executionPct,
+        statusLabel: st.label,
+        statusBucket: st.bucket,
+        storesCount: stores.length,
+        storesFeitas,
+        storesEmExecucao,
+        storesNaoFeitas,
+        stores,
+      };
+    });
+
     const nonSenders = promoters
       .filter((p) => {
         const agg = promoterAgg.get(p.id)!;
@@ -340,7 +421,10 @@ export async function opsTeamToday(req: AuthRequest, res: Response) {
         storesCovered: coveredStores.size,
         averageEvidenceQuality: avgQuality,
       },
-      rows: rowsEnriched,
+      // Visão principal: 1 linha por promotor
+      rows: promoterRows,
+      // Detalhe legado (indústria x loja) — útil para drill-down futuro
+      industryRows: rowsEnriched,
       nonSenders,
       promoterStats: Array.from(promoterStatusById.entries()).map(([promoterId, st]) => ({
         promoterId,
