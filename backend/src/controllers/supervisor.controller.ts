@@ -224,25 +224,198 @@ export async function getPromoterPerformance(req: AuthRequest, res: Response) {
   }
 }
 
+function dayRangeBRT(dateISO: string): { start: Date; endExclusive: Date } {
+  const start = new Date(`${dateISO}T00:00:00-03:00`);
+  const endExclusive = new Date(`${dateISO}T00:00:00-03:00`);
+  endExclusive.setDate(endExclusive.getDate() + 1);
+  return { start, endExclusive };
+}
+
+function toISODateBRT(d: Date): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(d);
+  const y = parts.find((p) => p.type === 'year')?.value;
+  const m = parts.find((p) => p.type === 'month')?.value;
+  const day = parts.find((p) => p.type === 'day')?.value;
+  return `${y}-${m}-${day}`;
+}
+
 export async function getPromoterVisits(req: AuthRequest, res: Response) {
   try {
     const { id } = req.params;
-    const { page = '1', limit = '20' } = req.query;
+    const { page = '1', limit = '20', date, summary } = req.query;
+    const wantSummary = summary === '1' || summary === 'true';
+    const dateISO = typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : undefined;
 
-    const pageNum = parseInt(page as string, 10);
-    const limitNum = parseInt(limit as string, 10);
-    const skip = (pageNum - 1) * limitNum;
-
-    // Verificar se o promotor existe
     const promoter = await prisma.user.findUnique({
       where: { id },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        state: true,
+        role: true,
+        createdAt: true,
+      },
     });
 
     if (!promoter) {
       return res.status(404).json({ message: 'Promotor não encontrado' });
     }
 
-    // Buscar visitas com promotor e fotos (com indústria para etiquetas)
+    // Resumo leve: dias com lojas/fotos (sem carregar URLs de fotos)
+    if (wantSummary) {
+      const visits = await prisma.visit.findMany({
+        where: { promoterId: id },
+        select: {
+          id: true,
+          checkInAt: true,
+          checkOutAt: true,
+          checkInPhotoUrl: true,
+          store: { select: { id: true, name: true, state: true } },
+          _count: { select: { photos: true } },
+        },
+        orderBy: { checkInAt: 'desc' },
+        take: 1000,
+      });
+
+      type DayAgg = {
+        date: string;
+        visitCount: number;
+        photoCount: number;
+        storeNames: string[];
+        states: Set<string>;
+        storeIds: Set<string>;
+        doneIds: Set<string>;
+        openIds: Set<string>;
+      };
+      const byDay = new Map<string, DayAgg>();
+
+      for (const v of visits) {
+        const d = toISODateBRT(v.checkInAt);
+        let agg = byDay.get(d);
+        if (!agg) {
+          agg = {
+            date: d,
+            visitCount: 0,
+            photoCount: 0,
+            storeNames: [],
+            states: new Set(),
+            storeIds: new Set(),
+            doneIds: new Set(),
+            openIds: new Set(),
+          };
+          byDay.set(d, agg);
+        }
+        agg.visitCount += 1;
+        agg.photoCount += v._count.photos;
+        if (v.store?.state) agg.states.add(v.store.state);
+        if (v.store?.id) {
+          if (!agg.storeIds.has(v.store.id)) {
+            agg.storeIds.add(v.store.id);
+            agg.storeNames.push(v.store.name);
+          }
+          if (v.checkOutAt) {
+            agg.doneIds.add(v.store.id);
+            agg.openIds.delete(v.store.id);
+          } else if (!agg.doneIds.has(v.store.id)) {
+            agg.openIds.add(v.store.id);
+          }
+        }
+      }
+
+      const days = Array.from(byDay.values())
+        .map((a) => ({
+          date: a.date,
+          visitCount: a.visitCount,
+          storesCount: a.storeIds.size,
+          storesDone: a.doneIds.size,
+          storesOpen: a.openIds.size,
+          photoCount: a.photoCount,
+          storeNames: a.storeNames.slice(0, 6),
+          states: Array.from(a.states),
+        }))
+        .sort((a, b) => b.date.localeCompare(a.date));
+
+      const latestAvatar =
+        visits.find((v) => v.checkInPhotoUrl && !v.checkInPhotoUrl.includes('placeholder'))?.checkInPhotoUrl ??
+        null;
+
+      return res.json({
+        promoter: { ...promoter, avatarUrl: latestAvatar },
+        days,
+      });
+    }
+
+    // Visitas de um dia específico (com fotos) — usado ao abrir a barra do dia
+    if (dateISO) {
+      const { start, endExclusive } = dayRangeBRT(dateISO);
+      const visits = await prisma.visit.findMany({
+        where: {
+          promoterId: id,
+          checkInAt: { gte: start, lt: endExclusive },
+        },
+        include: {
+          store: true,
+          photos: {
+            orderBy: { createdAt: 'asc' },
+            include: {
+              photoIndustries: {
+                take: 1,
+                include: { industry: { select: { name: true, abbreviation: true } } },
+              },
+            },
+          },
+        },
+        orderBy: { checkInAt: 'asc' },
+      });
+
+      return res.json({
+        promoter,
+        date: dateISO,
+        visits: visits.map((visit: any) => ({
+          id: visit.id,
+          store: visit.store,
+          promoterName: promoter.name,
+          checkInAt: visit.checkInAt,
+          checkOutAt: visit.checkOutAt,
+          checkInLatitude: visit.checkInLatitude,
+          checkInLongitude: visit.checkInLongitude,
+          checkOutLatitude: visit.checkOutLatitude,
+          checkOutLongitude: visit.checkOutLongitude,
+          checkInPhotoUrl: visit.checkInPhotoUrl,
+          checkOutPhotoUrl: visit.checkOutPhotoUrl,
+          hoursWorked: visit.checkOutAt
+            ? ((visit.checkOutAt.getTime() - visit.checkInAt.getTime()) / (1000 * 60 * 60)).toFixed(2)
+            : null,
+          photos: visit.photos.map((p: any) => {
+            const industry = p.photoIndustries?.[0]?.industry;
+            return {
+              id: p.id,
+              url: p.url,
+              type: p.type,
+              latitude: p.latitude,
+              longitude: p.longitude,
+              createdAt: p.createdAt,
+              industryName: industry?.name ?? null,
+              industryAbbreviation: industry?.abbreviation ?? null,
+            };
+          }),
+          photoCount: visit.photos.length,
+        })),
+      });
+    }
+
+    // Paginação legada (todas as visitas com fotos)
+    const pageNum = parseInt(page as string, 10);
+    const limitNum = parseInt(limit as string, 10);
+    const skip = (pageNum - 1) * limitNum;
+
     const [visits, total] = await Promise.all([
       prisma.visit.findMany({
         where: { promoterId: id },
@@ -267,10 +440,11 @@ export async function getPromoterVisits(req: AuthRequest, res: Response) {
     ]);
 
     res.json({
+      promoter,
       visits: visits.map((visit: any) => ({
         id: visit.id,
         store: visit.store,
-        promoterName: visit.promoter?.name ?? null,
+        promoterName: visit.promoter?.name ?? promoter.name,
         checkInAt: visit.checkInAt,
         checkOutAt: visit.checkOutAt,
         checkInLatitude: visit.checkInLatitude,

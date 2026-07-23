@@ -92,6 +92,39 @@ export const supervisorService = {
     return response.data;
   },
 
+  /** Resumo leve: dias com lojas/fotos (sem carregar imagens). */
+  async getPromoterVisitDays(promoterId: string) {
+    const response = await apiClient.get(`/supervisors/promoters/${promoterId}/visits?summary=1`);
+    return response.data as {
+      promoter: {
+        id: string;
+        name: string;
+        email: string;
+        phone: string | null;
+        state: string | null;
+        avatarUrl?: string | null;
+      };
+      days: Array<{
+        date: string;
+        visitCount: number;
+        storesCount: number;
+        storesDone: number;
+        storesOpen: number;
+        photoCount: number;
+        storeNames: string[];
+        states?: string[];
+      }>;
+    };
+  },
+
+  /** Visitas + fotos de um dia (carrega só ao abrir a barra). */
+  async getPromoterVisitsByDate(promoterId: string, date: string) {
+    const response = await apiClient.get(
+      `/supervisors/promoters/${promoterId}/visits?date=${encodeURIComponent(date)}`
+    );
+    return response.data as { promoter: any; date: string; visits: any[] };
+  },
+
   async getPromoterRoute(promoterId: string, date?: string) {
     const params = date ? `?date=${date}` : '';
     const response = await apiClient.get(`/supervisors/promoters/${promoterId}/route${params}`);
