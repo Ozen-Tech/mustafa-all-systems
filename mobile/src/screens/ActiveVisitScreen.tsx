@@ -164,11 +164,16 @@ export default function ActiveVisitScreen({ route }: any) {
         Array.from(onboardingSelectedIds),
       );
       setNeedsOnboarding(false);
+      setNeedsSupervisorAssignment(false);
       setIndustries(res.industries);
       setExpandedIndustries(new Set(res.industries.map((i: Industry) => i.id)));
-    } catch (error) {
+      showAlert('Pronto', 'Indústrias salvas para esta loja.');
+    } catch (error: any) {
       console.error('Error saving store industries:', error);
-      showAlert('Erro', 'Não foi possível salvar. Tente novamente.');
+      showAlert(
+        'Erro',
+        error?.response?.data?.message || 'Não foi possível salvar. Tente novamente.'
+      );
     } finally {
       setOnboardingSubmitting(false);
     }
@@ -887,14 +892,16 @@ export default function ActiveVisitScreen({ route }: any) {
     );
   }
 
-  // ---- Aguardando supervisor definir indústrias na rota (web) ----
+  // ---- Loja sem indústrias cadastradas no sistema (admin) ----
 
   if (needsSupervisorAssignment === true) {
     return (
       <View style={[styles.container, { padding: 24, justifyContent: 'center' }]}>
-        <Text style={styles.title}>Indústrias não configuradas</Text>
+        <Text style={styles.title}>Loja sem indústrias</Text>
         <Text style={[styles.subtitle, { marginTop: 12 }]}>
-          Seu supervisor precisa marcar as indústrias desta loja em Configurar rotas (painel web) antes de você enviar fotos por indústria.
+          Esta loja ainda não tem indústrias vinculadas no sistema. Peça ao supervisor ou admin para
+          cadastrar as indústrias da loja no painel. Depois disso, na próxima visita você escolhe quais
+          você atende aqui.
         </Text>
         <TouchableOpacity
           style={[styles.navButton, styles.primaryButton, { marginTop: 24 }]}
@@ -906,18 +913,41 @@ export default function ActiveVisitScreen({ route }: any) {
     );
   }
 
-  // ---- Onboarding legado (API não deve mais retornar needsOnboarding true) ----
+  // ---- Onboarding: 1ª visita nesta loja — promotor escolhe as indústrias ----
 
   if (needsOnboarding === true && industries.length > 0) {
     return (
       <View style={styles.container}>
         <View style={styles.header}>
-          <Text style={styles.title}>Indústrias nesta loja</Text>
+          <Text style={styles.title}>Quais indústrias você faz aqui?</Text>
           <Text style={[styles.subtitle, { marginTop: 8 }]}>
-            Selecione as indústrias que você atende nesta loja (obrigatório no primeiro check-in).
+            É a primeira vez nesta loja. Marque as indústrias que você atende — isso fica salvo e não
+            precisa configurar de novo nas próximas visitas.
           </Text>
+          {visit.store?.name ? (
+            <Text style={[styles.storeName, { marginTop: 12 }]}>{visit.store.name}</Text>
+          ) : null}
         </View>
         <ScrollView style={[screenContainer, flexScroll]} contentContainerStyle={{ padding: 16 }}>
+          <TouchableOpacity
+            style={{
+              alignSelf: 'flex-start',
+              marginBottom: 12,
+              paddingVertical: 6,
+              paddingHorizontal: 10,
+            }}
+            onPress={() => {
+              if (onboardingSelectedIds.size === industries.length) {
+                setOnboardingSelectedIds(new Set());
+              } else {
+                setOnboardingSelectedIds(new Set(industries.map((i) => i.id)));
+              }
+            }}
+          >
+            <Text style={{ color: colors.primary[400], fontWeight: '600' }}>
+              {onboardingSelectedIds.size === industries.length ? 'Limpar seleção' : 'Selecionar todas'}
+            </Text>
+          </TouchableOpacity>
           {industries.map((industry) => {
             const isSelected = onboardingSelectedIds.has(industry.id);
             return (

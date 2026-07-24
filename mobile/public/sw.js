@@ -1,21 +1,43 @@
-/* Service Worker — shell offline; API sempre pela rede */
-const CACHE_NAME = 'mustafa-promotor-v3';
+/* Service Worker — v4: nunca servir HTML no lugar de JS (evita Unexpected token '<') */
+const CACHE_NAME = 'mustafa-promotor-v4';
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest'];
+
+function isHtmlResponse(res) {
+  const ct = (res.headers.get('content-type') || '').toLowerCase();
+  return ct.includes('text/html');
+}
+
+function isAssetRequest(url) {
+  return (
+    url.pathname.includes('/_expo/') ||
+    url.pathname.endsWith('.js') ||
+    url.pathname.endsWith('.css') ||
+    url.pathname.endsWith('.map') ||
+    url.pathname.endsWith('.png') ||
+    url.pathname.endsWith('.jpg') ||
+    url.pathname.endsWith('.webp') ||
+    url.pathname.endsWith('.ico') ||
+    url.pathname.endsWith('.woff') ||
+    url.pathname.endsWith('.woff2')
+  );
+}
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL).catch(() => null))
+    caches
+      .open(CACHE_NAME)
+      .then((cache) => cache.addAll(APP_SHELL).catch(() => null))
+      .then(() => self.skipWaiting())
   );
-  self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
-    )
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))))
+      .then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
 self.addEventListener('fetch', (event) => {
@@ -24,18 +46,19 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(req.url);
 
-  // API: sempre rede (sem cache stale)
+  // API: sempre rede
   if (url.pathname.startsWith('/api') || url.hostname.includes('run.app')) {
     event.respondWith(fetch(req));
     return;
   }
 
-  // JS/CSS do bundle: network-first para pegar correções de upload sem cache velho
+  // HTML / navegação: network-first (evita index.html antigo apontando para JS deletado)
+  const acceptsHtml = (req.headers.get('accept') || '').includes('text/html');
   if (
-    url.origin === self.location.origin &&
-    (url.pathname.includes('/_expo/') ||
-      url.pathname.endsWith('.js') ||
-      url.pathname.endsWith('.css'))
+    req.mode === 'navigate' ||
+    url.pathname === '/' ||
+    url.pathname === '/index.html' ||
+    acceptsHtml
   ) {
     event.respondWith(
       fetch(req)
@@ -46,25 +69,56 @@ self.addEventListener('fetch', (event) => {
           }
           return res;
         })
-        .catch(() => caches.match(req).then((cached) => cached || caches.match('/index.html')))
+        .catch(() => caches.match('/index.html'))
     );
     return;
   }
 
-  // App shell: cache-first
-  event.respondWith(
-    caches.match(req).then(
-      (cached) =>
-        cached ||
-        fetch(req)
-          .then((res) => {
-            if (res.ok && url.origin === self.location.origin) {
-              const copy = res.clone();
-              caches.open(CACHE_NAME).then((cache) => cache.put(req, copy)).catch(() => null);
-            }
+  // JS/CSS/assets: network-first; NUNCA fallback para index.html
+  if (url.origin === self.location.origin && isAssetRequest(url)) {
+    event.respondWith(
+      fetch(req)
+        .then((res) => {
+          // Firebase rewrite devolve HTML 200 para asset inexistente — não cachear isso
+          if (res.ok && !isHtmlResponse(res)) {
+            const copy = res.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(req, copy)).catch(() => null);
             return res;
+          }
+          if (isHtmlResponse(res)) {
+            return caches.match(req).then((cached) => {
+              if (cached && !isHtmlResponse(cached)) return cached;
+              return new Response('/* asset missing */', {
+                status: 404,
+                headers: { 'Content-Type': 'application/javascript' },
+              });
+            });
+          }
+          return res;
+        })
+        .catch(() =>
+          caches.match(req).then((cached) => {
+            if (cached && !isHtmlResponse(cached)) return cached;
+            return new Response('/* offline */', {
+              status: 503,
+              headers: { 'Content-Type': 'application/javascript' },
+            });
           })
-          .catch(() => caches.match('/index.html'))
-    )
+        )
+    );
+    return;
+  }
+
+  // Demais: network, com cache opcional
+  event.respondWith(
+    fetch(req)
+      .then((res) => {
+        if (res.ok && url.origin === self.location.origin && !isHtmlResponse(res)) {
+          const copy = res.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(req, copy)).catch(() => null);
+        }
+        return res;
+      })
+      .catch(() => caches.match(req))
   );
 });

@@ -107,10 +107,12 @@ if (!html.includes('manifest.webmanifest')) {
   console.log('[postbuild-web] index.html já contém o manifest, nada a fazer.');
 }
 
-// Garantir que sw.js está no dist (Expo copia public/, mas validamos)
+// Sempre copiar sw.js para dist (garante SW novo no deploy)
 const swSrc = path.join(projectRoot, 'public/sw.js');
 const swDst = path.join(distDir, 'sw.js');
-if (fs.existsSync(swSrc) && !fs.existsSync(swDst)) {
+if (fs.existsSync(swSrc)) {
   fs.copyFileSync(swSrc, swDst);
   console.log('[postbuild-web] sw.js copiado para dist/.');
+} else {
+  console.warn('[postbuild-web] public/sw.js não encontrado.');
 }

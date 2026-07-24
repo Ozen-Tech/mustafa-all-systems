@@ -792,7 +792,10 @@ export async function getDailySummary(req: AuthRequest, res: Response) {
 }
 
 /**
- * Indústrias da visita: se o promotor já tem IndustryAssignment para esta loja, retorna essas + needsOnboarding false; senão retorna StoreIndustry + needsOnboarding true.
+ * Indústrias da visita:
+ * - Se o promotor já tem IndustryAssignment nesta loja → usa essas (needsOnboarding false)
+ * - Senão → lista StoreIndustry da loja e pede onboarding (needsOnboarding true)
+ * - Se a loja não tem indústrias cadastradas → needsSupervisorAssignment (configurar no admin)
  * GET /promoters/visits/:visitId/industries
  */
 export async function getVisitIndustries(req: AuthRequest, res: Response) {
@@ -808,6 +811,7 @@ export async function getVisitIndustries(req: AuthRequest, res: Response) {
             storeIndustries: {
               where: { isActive: true },
               include: { industry: true },
+              orderBy: { industry: { name: 'asc' } },
             },
           },
         },
@@ -838,16 +842,32 @@ export async function getVisitIndustries(req: AuthRequest, res: Response) {
         storeId,
         needsOnboarding: false,
         needsSupervisorAssignment: false,
-        industries: assignments.map(a => a.industry),
+        industries: assignments.map((a) => a.industry),
+      });
+    }
+
+    const storeIndustries = (visit.store?.storeIndustries || [])
+      .map((si) => si.industry)
+      .filter((ind) => ind && ind.isActive !== false);
+
+    if (storeIndustries.length === 0) {
+      return res.json({
+        visitId: visit.id,
+        storeId,
+        needsOnboarding: false,
+        needsSupervisorAssignment: true,
+        industries: [],
+        message:
+          'Esta loja ainda não tem indústrias cadastradas no sistema. Peça ao supervisor/admin para vincular indústrias à loja.',
       });
     }
 
     return res.json({
       visitId: visit.id,
       storeId,
-      needsOnboarding: false,
-      needsSupervisorAssignment: true,
-      industries: [],
+      needsOnboarding: true,
+      needsSupervisorAssignment: false,
+      industries: storeIndustries,
     });
   } catch (error) {
     console.error('Get visit industries error:', error);

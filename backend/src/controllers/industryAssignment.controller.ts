@@ -223,15 +223,69 @@ const setMyStoreIndustriesSchema = z.object({
 });
 
 /**
- * Antes o promotor fazia onboarding aqui; indústrias por loja são definidas pelo supervisor na rota.
+ * Promotor define as indústrias que atende nesta loja (onboarding na 1ª visita).
+ * Grava IndustryAssignment (promoter + store) e passa a valer nas próximas visitas.
  * POST /industry-assignments/me/store/:storeId
  */
 export async function setMyStoreIndustries(req: AuthRequest, res: Response) {
   try {
-    setMyStoreIndustriesSchema.parse(req.body);
-    return res.status(403).json({
-      message:
-        'As indústrias desta loja são definidas pelo supervisor na configuração de rotas. Peça ao seu supervisor para ajustar.',
+    const promoterId = req.userId;
+    if (!promoterId || req.userRole !== UserRole.PROMOTER) {
+      return res.status(403).json({ message: 'Apenas promotores podem definir as próprias indústrias da loja.' });
+    }
+
+    const { storeId } = req.params;
+    const { industryIds } = setMyStoreIndustriesSchema.parse(req.body);
+
+    const store = await prisma.store.findUnique({
+      where: { id: storeId },
+      include: {
+        storeIndustries: {
+          where: { isActive: true },
+          select: { industryId: true },
+        },
+      },
+    });
+    if (!store) {
+      return res.status(404).json({ message: 'Loja não encontrada' });
+    }
+
+    const validIds = new Set(store.storeIndustries.map((si) => si.industryId));
+    if (validIds.size === 0) {
+      return res.status(400).json({
+        message:
+          'Esta loja não tem indústrias cadastradas. Peça ao supervisor/admin para vincular indústrias à loja.',
+      });
+    }
+
+    const uniqueRequested = [...new Set(industryIds)];
+    const filteredIds = uniqueRequested.filter((id) => validIds.has(id));
+    if (filteredIds.length === 0) {
+      return res.status(400).json({
+        message: 'Selecione pelo menos uma indústria válida desta loja.',
+      });
+    }
+
+    await prisma.$transaction([
+      prisma.industryAssignment.deleteMany({
+        where: { promoterId, storeId },
+      }),
+      ...filteredIds.map((industryId) =>
+        prisma.industryAssignment.create({
+          data: { promoterId, industryId, storeId, isActive: true },
+        })
+      ),
+    ]);
+
+    const assignments = await prisma.industryAssignment.findMany({
+      where: { promoterId, storeId, isActive: true },
+      include: { industry: true },
+      orderBy: { industry: { name: 'asc' } },
+    });
+
+    res.json({
+      message: 'Indústrias salvas para esta loja',
+      industries: assignments.map((a) => a.industry),
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
