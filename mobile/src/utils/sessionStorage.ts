@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
-import { toPersistablePhotoUri } from './photoUri';
+import { isFragilePhotoUri, isStableLocalPhotoUri, toPersistablePhotoUri } from './photoUri';
 
 export interface PendingPhoto {
   id?: string;
@@ -14,22 +14,43 @@ export interface PendingPhoto {
 const PENDING_PHOTOS_PREFIX = 'pending_photos_';
 
 /**
- * Salva fotos pendentes (não enviadas) para uma visita
+ * Salva fotos pendentes (não enviadas) para uma visita.
+ * No web, nunca persiste blob: — só data URLs estáveis.
  */
 export async function savePendingPhotos(visitId: string, photos: PendingPhoto[]): Promise<void> {
   try {
     const key = `${PENDING_PHOTOS_PREFIX}${visitId}`;
+
+    if (photos.length === 0) {
+      await AsyncStorage.removeItem(key);
+      console.log(`[sessionStorage] Fotos pendentes limpas para visita ${visitId}`);
+      return;
+    }
+
     let toStore = photos;
     if (Platform.OS === 'web') {
-      toStore = await Promise.all(
-        photos.map(async (photo) => ({
-          ...photo,
-          uri: await toPersistablePhotoUri(photo.uri),
-        }))
-      );
+      const stable: PendingPhoto[] = [];
+      for (const photo of photos) {
+        if (isFragilePhotoUri(photo.uri)) continue;
+        try {
+          const uri = isStableLocalPhotoUri(photo.uri)
+            ? photo.uri
+            : await toPersistablePhotoUri(photo.uri);
+          if (isFragilePhotoUri(uri)) continue;
+          stable.push({ ...photo, uri });
+        } catch (error) {
+          console.warn('[sessionStorage] Pulando foto não persistível:', error);
+        }
+      }
+      toStore = stable;
+      if (toStore.length === 0) {
+        await AsyncStorage.removeItem(key);
+        return;
+      }
     }
+
     await AsyncStorage.setItem(key, JSON.stringify(toStore));
-    console.log(`[sessionStorage] Salvas ${photos.length} fotos pendentes para visita ${visitId}`);
+    console.log(`[sessionStorage] Salvas ${toStore.length} fotos pendentes para visita ${visitId}`);
   } catch (error) {
     console.error('[sessionStorage] Erro ao salvar fotos pendentes:', error);
     throw error;
@@ -74,8 +95,8 @@ export async function clearPendingPhotos(visitId: string): Promise<void> {
 export async function getAllPendingVisits(): Promise<string[]> {
   try {
     const keys = await AsyncStorage.getAllKeys();
-    const pendingKeys = keys.filter(key => key.startsWith(PENDING_PHOTOS_PREFIX));
-    return pendingKeys.map(key => key.replace(PENDING_PHOTOS_PREFIX, ''));
+    const pendingKeys = keys.filter((key) => key.startsWith(PENDING_PHOTOS_PREFIX));
+    return pendingKeys.map((key) => key.replace(PENDING_PHOTOS_PREFIX, ''));
   } catch (error) {
     console.error('[sessionStorage] Erro ao obter visitas pendentes:', error);
     return [];
@@ -88,11 +109,10 @@ export async function getAllPendingVisits(): Promise<string[]> {
 export async function clearAllPendingPhotos(): Promise<void> {
   try {
     const keys = await AsyncStorage.getAllKeys();
-    const pendingKeys = keys.filter(key => key.startsWith(PENDING_PHOTOS_PREFIX));
+    const pendingKeys = keys.filter((key) => key.startsWith(PENDING_PHOTOS_PREFIX));
     await AsyncStorage.multiRemove(pendingKeys);
     console.log(`[sessionStorage] Limpas ${pendingKeys.length} chaves de fotos pendentes`);
   } catch (error) {
     console.error('[sessionStorage] Erro ao limpar todas as fotos pendentes:', error);
   }
 }
-

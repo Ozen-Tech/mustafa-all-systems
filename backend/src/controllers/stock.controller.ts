@@ -298,10 +298,12 @@ export async function getStoreStock(req: AuthRequest, res: Response) {
   const norm = normalizeFilialCode(store.filialCode || store.code || '');
   if (norm) orConditions.push({ filialCode: { in: [norm, norm.padStart(4, '0')] } });
 
-  const where: any = {
-    locationType: 'LOJA',
+  const storeScope = {
+    locationType: 'LOJA' as const,
     OR: orConditions,
   };
+
+  const where: any = { ...storeScope };
   if (industryName) where.industryName = { equals: industryName, mode: 'insensitive' };
   if (search) {
     where.AND = [
@@ -314,13 +316,25 @@ export async function getStoreStock(req: AuthRequest, res: Response) {
     ];
   }
 
-  const items = await prisma.storeStockItem.findMany({
-    where,
-    orderBy: [{ industryName: 'asc' }, { qty: 'asc' }],
-    take: 2000,
-  });
+  const [items, industryRows] = await Promise.all([
+    prisma.storeStockItem.findMany({
+      where,
+      orderBy: [{ industryName: 'asc' }, { qty: 'asc' }],
+      take: 2000,
+    }),
+    // Lista completa de indústrias da loja (não depende do take/filtros),
+    // para o filtro do promotor permanecer estável.
+    prisma.storeStockItem.groupBy({
+      by: ['industryName'],
+      where: storeScope,
+      orderBy: { industryName: 'asc' },
+    }),
+  ]);
 
-  const industries = Array.from(new Set(items.map((i) => i.industryName))).sort();
+  const industries = industryRows
+    .map((r) => r.industryName)
+    .filter((name): name is string => Boolean(name && name.trim()))
+    .sort((a, b) => a.localeCompare(b, 'pt-BR'));
   const rupturas = items.filter((i) => i.qty <= 0).length;
   const baixoGiro = items.filter((i) => i.lowTurn).length;
 

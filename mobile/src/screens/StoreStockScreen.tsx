@@ -3,6 +3,7 @@ import {
   View,
   Text,
   StyleSheet,
+  SectionList,
   FlatList,
   TouchableOpacity,
   TextInput,
@@ -27,7 +28,19 @@ function fmtMoney(n: number): string {
   return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
 }
 
+function industryLabel(name: string | null | undefined): string {
+  const trimmed = (name || '').trim();
+  return trimmed || 'Sem indústria';
+}
+
 type Tab = 'estoque' | 'vendas';
+
+type StockSection = {
+  title: string;
+  data: StoreStockItem[];
+  itemCount: number;
+  rupturas: number;
+};
 
 export default function StoreStockScreen({ route }: any) {
   const { storeId, storeName } = route.params || {};
@@ -84,10 +97,19 @@ export default function StoreStockScreen({ route }: any) {
     }
   }, [tab, sales, loadSales]);
 
+  const industryOptions = useMemo(() => {
+    if (industries.length > 0) return industries;
+    return Array.from(new Set(items.map((i) => industryLabel(i.industryName)))).sort((a, b) =>
+      a.localeCompare(b, 'pt-BR')
+    );
+  }, [industries, items]);
+
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
     let list = items;
-    if (activeIndustry) list = list.filter((i) => i.industryName === activeIndustry);
+    if (activeIndustry) {
+      list = list.filter((i) => industryLabel(i.industryName) === activeIndustry);
+    }
     if (term) {
       list = list.filter(
         (i) =>
@@ -97,6 +119,53 @@ export default function StoreStockScreen({ route }: any) {
     }
     return list;
   }, [items, activeIndustry, search]);
+
+  const sections = useMemo<StockSection[]>(() => {
+    const map = new Map<string, StoreStockItem[]>();
+    for (const item of filtered) {
+      const key = industryLabel(item.industryName);
+      const bucket = map.get(key);
+      if (bucket) bucket.push(item);
+      else map.set(key, [item]);
+    }
+
+    const preferredOrder = activeIndustry
+      ? [activeIndustry]
+      : industryOptions.length > 0
+        ? industryOptions
+        : [...map.keys()].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
+    const orderedKeys = [
+      ...preferredOrder.filter((k) => map.has(k)),
+      ...[...map.keys()].filter((k) => !preferredOrder.includes(k)),
+    ];
+
+    return orderedKeys.map((title) => {
+      const data = map.get(title) || [];
+      return {
+        title,
+        data,
+        itemCount: data.length,
+        rupturas: data.filter((i) => i.qty <= 0).length,
+      };
+    });
+  }, [filtered, industryOptions, activeIndustry]);
+
+  const filteredSales = useMemo(() => {
+    const rows = sales?.byIndustry || [];
+    if (!activeIndustry) return rows;
+    return rows.filter((r) => industryLabel(r.industryName) === activeIndustry);
+  }, [sales, activeIndustry]);
+
+  const salesIndustryOptions = useMemo(() => {
+    const fromSales = (sales?.byIndustry || []).map((r) => industryLabel(r.industryName));
+    if (fromSales.length > 0) {
+      return Array.from(new Set(fromSales)).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    }
+    return industryOptions;
+  }, [sales, industryOptions]);
+
+  const filterOptions = tab === 'estoque' ? industryOptions : salesIndustryOptions;
 
   const renderItem = ({ item }: { item: StoreStockItem }) => {
     const ruptura = item.qty <= 0;
@@ -127,6 +196,20 @@ export default function StoreStockScreen({ route }: any) {
       </View>
     );
   };
+
+  const renderSectionHeader = ({ section }: { section: StockSection }) => (
+    <View style={styles.sectionHeader}>
+      <View style={styles.sectionHeaderLeft}>
+        <Text style={styles.sectionTitle} numberOfLines={1}>
+          {section.title}
+        </Text>
+        <Text style={styles.sectionMeta}>
+          {section.itemCount} {section.itemCount === 1 ? 'item' : 'itens'}
+          {section.rupturas > 0 ? ` · ${section.rupturas} ruptura${section.rupturas === 1 ? '' : 's'}` : ''}
+        </Text>
+      </View>
+    </View>
+  );
 
   const renderSalesRow = ({ item }: { item: StoreSalesIndustry }) => (
     <View style={styles.itemCard}>
@@ -220,38 +303,40 @@ export default function StoreStockScreen({ route }: any) {
       </View>
 
       {tab === 'estoque' && (
-        <>
-          <TextInput
-            style={styles.search}
-            placeholder="Buscar produto ou código..."
-            placeholderTextColor={colors.text.tertiary}
-            value={search}
-            onChangeText={setSearch}
-          />
-          {industries.length > 1 && (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.chipsList}
-              contentContainerStyle={styles.chipsContent}
-            >
-              {['', ...industries].map((ind) => {
-                const active = activeIndustry === ind;
-                return (
-                  <TouchableOpacity
-                    key={ind || 'all'}
-                    onPress={() => setActiveIndustry(ind)}
-                    style={[styles.chip, active && styles.chipActive]}
-                  >
-                    <Text style={[styles.chipText, active && styles.chipTextActive]}>
-                      {ind || 'Todas'}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          )}
-        </>
+        <TextInput
+          style={styles.search}
+          placeholder="Buscar produto ou código..."
+          placeholderTextColor={colors.text.tertiary}
+          value={search}
+          onChangeText={setSearch}
+        />
+      )}
+
+      {filterOptions.length > 0 && (
+        <View style={styles.filterBlock}>
+          <Text style={styles.filterLabel}>Indústria</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.chipsList}
+            contentContainerStyle={styles.chipsContent}
+          >
+            {['', ...filterOptions].map((ind) => {
+              const active = activeIndustry === ind;
+              return (
+                <TouchableOpacity
+                  key={ind || 'all'}
+                  onPress={() => setActiveIndustry(ind)}
+                  style={[styles.chip, active && styles.chipActive]}
+                >
+                  <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                    {ind || 'Todas'}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
       )}
 
       {error ? (
@@ -259,10 +344,12 @@ export default function StoreStockScreen({ route }: any) {
           <Text style={styles.errorText}>{error}</Text>
         </View>
       ) : tab === 'estoque' ? (
-        <FlatList
-          data={filtered}
+        <SectionList
+          sections={sections}
           keyExtractor={(i) => i.id}
           renderItem={renderItem}
+          renderSectionHeader={renderSectionHeader}
+          stickySectionHeadersEnabled
           contentContainerStyle={styles.listContent}
           refreshControl={
             <RefreshControl
@@ -278,14 +365,16 @@ export default function StoreStockScreen({ route }: any) {
             <View style={styles.center}>
               <Text style={styles.emptyText}>Nenhum item de estoque para esta loja.</Text>
               <Text style={styles.emptySubtext}>
-                Aparece após importar o relatório Mateus e vincular a filial.
+                {search || activeIndustry
+                  ? 'Tente limpar a busca ou o filtro de indústria.'
+                  : 'Aparece após importar o relatório Mateus e vincular a filial.'}
               </Text>
             </View>
           }
         />
       ) : (
         <FlatList
-          data={sales?.byIndustry || []}
+          data={filteredSales}
           keyExtractor={(i) => i.industryName}
           renderItem={renderSalesRow}
           contentContainerStyle={styles.listContent}
@@ -301,7 +390,11 @@ export default function StoreStockScreen({ route }: any) {
           }
           ListEmptyComponent={
             <View style={styles.center}>
-              <Text style={styles.emptyText}>Sem vendas importadas para esta loja.</Text>
+              <Text style={styles.emptyText}>
+                {activeIndustry
+                  ? 'Sem vendas para esta indústria nesta loja.'
+                  : 'Sem vendas importadas para esta loja.'}
+              </Text>
             </View>
           }
         />
@@ -356,6 +449,16 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     color: colors.text.primary,
   },
+  filterBlock: { marginBottom: 4 },
+  filterLabel: {
+    color: colors.text.tertiary,
+    fontSize: 12,
+    fontWeight: '600',
+    marginHorizontal: 16,
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
   chipsList: { maxHeight: 44, flexGrow: 0 },
   chipsContent: { paddingHorizontal: 16, gap: 8, paddingVertical: 4 },
   chip: {
@@ -370,7 +473,26 @@ const styles = StyleSheet.create({
   chipActive: { backgroundColor: colors.primary[600], borderColor: colors.primary[600] },
   chipText: { color: colors.text.secondary, fontSize: 13 },
   chipTextActive: { color: colors.text.primary, fontWeight: '700' },
-  listContent: { padding: 16, paddingTop: 8, gap: 10 },
+  listContent: { padding: 16, paddingTop: 8 },
+  sectionHeader: {
+    backgroundColor: colors.dark.background,
+    paddingTop: 8,
+    paddingBottom: 8,
+    marginBottom: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.dark.border,
+  },
+  sectionHeaderLeft: { flex: 1 },
+  sectionTitle: {
+    color: colors.text.primary,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  sectionMeta: {
+    color: colors.text.tertiary,
+    fontSize: 12,
+    marginTop: 2,
+  },
   itemCard: {
     backgroundColor: colors.dark.card,
     borderRadius: 12,
