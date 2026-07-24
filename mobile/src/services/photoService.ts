@@ -1,7 +1,12 @@
 import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import { apiClient } from './apiClient';
-import { isLocalPhotoUri } from '../utils/photoUri';
+import {
+  compressDataUrl,
+  isFragilePhotoUri,
+  isLocalPhotoUri,
+  toPersistablePhotoUri,
+} from '../utils/photoUri';
 
 export interface PresignedUrlRequest {
   visitId: string;
@@ -10,16 +15,53 @@ export interface PresignedUrlRequest {
   extension?: string;
 }
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isNetworkError(error: any): boolean {
+  if (!error) return false;
+  if (error.code === 'ERR_NETWORK' || error.code === 'ECONNABORTED') return true;
+  if (!error.response && error.message) {
+    const msg = String(error.message).toLowerCase();
+    return (
+      msg.includes('network') ||
+      msg.includes('failed to fetch') ||
+      msg.includes('timeout') ||
+      msg.includes('aborted')
+    );
+  }
+  return false;
+}
+
 async function uriToBase64(fileUri: string): Promise<string> {
-  if (fileUri.startsWith('data:image/')) return fileUri;
-  const response = await fetch(fileUri);
-  const blob = await response.blob();
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(String(reader.result));
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
+  if (isFragilePhotoUri(fileUri)) {
+    throw new Error(
+      'Foto local expirou ou ficou inválida. Tire/selecione a foto novamente e envie em seguida.'
+    );
+  }
+
+  let dataUrl: string;
+  if (fileUri.startsWith('data:image/')) {
+    dataUrl = fileUri;
+  } else {
+    try {
+      dataUrl = await toPersistablePhotoUri(fileUri);
+    } catch (error: any) {
+      const msg = String(error?.message || error || '');
+      if (msg.toLowerCase().includes('failed to fetch') || isFragilePhotoUri(fileUri)) {
+        throw new Error(
+          'Foto local expirou ou ficou inválida. Tire/selecione a foto novamente e envie em seguida.'
+        );
+      }
+      throw error;
+    }
+  }
+
+  if (Platform.OS === 'web' && dataUrl.startsWith('data:image/')) {
+    return compressDataUrl(dataUrl);
+  }
+  return dataUrl;
 }
 
 function shouldUseBackendUpload(fileUri: string): boolean {
@@ -28,6 +70,35 @@ function shouldUseBackendUpload(fileUri: string): boolean {
     fileUri.startsWith('blob:') ||
     fileUri.startsWith('data:')
   );
+}
+
+async function postDirectWithRetry(
+  body: Record<string, unknown>,
+  attempts = 3
+): Promise<{ url: string; key?: string }> {
+  let lastError: any;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const response = await apiClient.post('/upload/photo/direct', body, {
+        timeout: 120_000,
+      });
+      return { url: response.data.url, key: response.data.key };
+    } catch (error: any) {
+      lastError = error;
+      // Blob morto / validação: não retry
+      if (error?.response?.status && error.response.status < 500) {
+        throw error;
+      }
+      if (!isNetworkError(error) && error?.response) {
+        throw error;
+      }
+      if (i < attempts - 1) {
+        await sleep(600 * (i + 1));
+        continue;
+      }
+    }
+  }
+  throw lastError;
 }
 
 export const photoService = {
@@ -44,14 +115,13 @@ export const photoService = {
 
     if (shouldUseBackendUpload(data.fileUri)) {
       const imageBase64 = await uriToBase64(data.fileUri);
-      const response = await apiClient.post('/upload/photo/direct', {
+      return postDirectWithRetry({
         visitId: data.visitId,
         type: data.type,
         contentType,
         extension: data.extension || 'jpg',
         imageBase64,
       });
-      return { url: response.data.url, key: response.data.key };
     }
 
     const { presignedUrl, url, key } = await this.getPresignedUrl(data);

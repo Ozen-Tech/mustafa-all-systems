@@ -22,8 +22,13 @@ import { flexScroll, screenContainer } from '../styles/webLayout';
 import Button from '../components/ui/Button';
 import { requestForegroundPermissions, getCurrentPosition } from '../utils/locationHelper';
 import { pickMultiplePhotos, pickSinglePhoto } from '../utils/imagePickerHelper';
-import { isPendingLocalPhoto } from '../utils/photoUri';
-import { savePendingPhotos, getPendingPhotos, clearPendingPhotos, PendingPhoto } from '../utils/sessionStorage';
+import {
+  ensurePersistablePhotoUri,
+  isFragilePhotoUri,
+  isPendingLocalPhoto,
+  isStableLocalPhotoUri,
+} from '../utils/photoUri';
+import { savePendingPhotos, getPendingPhotos, PendingPhoto } from '../utils/sessionStorage';
 import IndustryNoPhotoToggle from '../components/IndustryNoPhotoToggle';
 import { NO_PHOTO_INDUSTRY_NOTE } from '../constants/industryJustification';
 import { showAlert } from '../utils/alertHelper';
@@ -51,6 +56,8 @@ type VisitPhoto = {
   url?: string;
   type: 'FACADE_CHECKIN' | 'FACADE_CHECKOUT' | 'OTHER';
   industryId?: string;
+  /** URI local morta (blob revogado) — não envia; precisa apagar/refazer. */
+  invalid?: boolean;
 };
 
 type Industry = {
@@ -97,12 +104,6 @@ export default function ActiveVisitScreen({ route }: any) {
     loadCurrentVisit();
     setWorking().catch(() => {});
   }, []);
-
-  useEffect(() => {
-    if (visit?.id) {
-      restorePendingPhotos();
-    }
-  }, [visit?.id]);
 
   useEffect(() => {
     if (visit?.id && visit?.store?.id) {
@@ -173,26 +174,98 @@ export default function ActiveVisitScreen({ route }: any) {
     }
   }
 
-  async function restorePendingPhotos() {
-    if (!visit?.id) return;
-
+  async function restorePendingPhotos(visitId: string) {
     try {
-      const pendingPhotos = await getPendingPhotos(visit.id);
-      if (pendingPhotos.length > 0) {
-        const restoredPhotos: VisitPhoto[] = pendingPhotos.map(photo => ({
-          uri: photo.uri,
-          type: photo.type,
-          industryId: photo.industryId,
-        }));
-        setPhotos((prev) => {
-          const existingUris = new Set(prev.map(p => p.uri || p.url));
-          const newPhotos = restoredPhotos.filter(p => p.uri && !existingUris.has(p.uri));
-          return [...prev, ...newPhotos];
-        });
+      const pendingPhotos = await getPendingPhotos(visitId);
+      if (pendingPhotos.length === 0) return;
+
+      const restoredPhotos: VisitPhoto[] = [];
+      for (const photo of pendingPhotos) {
+        if (!photo.uri) continue;
+        if (isFragilePhotoUri(photo.uri)) {
+          restoredPhotos.push({
+            uri: photo.uri,
+            type: photo.type,
+            industryId: photo.industryId,
+            invalid: true,
+          });
+          continue;
+        }
+        try {
+          const uri = isStableLocalPhotoUri(photo.uri)
+            ? photo.uri
+            : await ensurePersistablePhotoUri(photo.uri, { compress: true });
+          restoredPhotos.push({
+            uri,
+            type: photo.type,
+            industryId: photo.industryId,
+            invalid: isFragilePhotoUri(uri),
+          });
+        } catch {
+          restoredPhotos.push({
+            uri: photo.uri,
+            type: photo.type,
+            industryId: photo.industryId,
+            invalid: true,
+          });
+        }
       }
+
+      setPhotos((prev) => {
+        const existingUris = new Set(prev.map((p) => p.uri || p.url));
+        const newPhotos = restoredPhotos.filter((p) => p.uri && !existingUris.has(p.uri));
+        return newPhotos.length > 0 ? [...prev, ...newPhotos] : prev;
+      });
     } catch (error) {
       console.error('[ActiveVisitScreen] Erro ao restaurar fotos pendentes:', error);
     }
+  }
+
+  async function appendLocalPhotos(
+    uris: string[],
+    industryId?: string
+  ): Promise<void> {
+    const newPhotos: VisitPhoto[] = [];
+    for (const rawUri of uris) {
+      try {
+        const uri = await ensurePersistablePhotoUri(rawUri, { compress: true });
+        if (isFragilePhotoUri(uri)) {
+          throw new Error('URI ainda é blob após persistir');
+        }
+        newPhotos.push({
+          uri,
+          type: 'OTHER',
+          industryId,
+          invalid: false,
+        });
+      } catch (error) {
+        console.error('[ActiveVisitScreen] Foto inválida na captura:', error);
+        showAlert(
+          'Foto inválida',
+          'Não foi possível guardar esta foto. Tire ou selecione novamente.'
+        );
+      }
+    }
+
+    if (newPhotos.length === 0) return;
+
+    setPhotos((prev) => {
+      const updated = [...prev, ...newPhotos];
+      if (visit?.id) {
+        savePendingPhotosToStorage(visit.id, updated);
+      }
+      return updated;
+    });
+  }
+
+  function markPhotoInvalid(index: number) {
+    setPhotos((prev) => {
+      const updated = prev.map((p, i) => (i === index ? { ...p, invalid: true } : p));
+      if (visit?.id) {
+        savePendingPhotosToStorage(visit.id, updated);
+      }
+      return updated;
+    });
   }
 
   function buildVisitFromLocal(lv: {
@@ -215,6 +288,8 @@ export default function ActiveVisitScreen({ route }: any) {
   }
 
   async function loadCurrentVisit() {
+    let visitIdForPending: string | null = initialVisit?.id || localVisit?.visitId || null;
+
     try {
       setLoadingVisit(true);
       setVisitLoadError(false);
@@ -222,6 +297,7 @@ export default function ActiveVisitScreen({ route }: any) {
       if (response.visit) {
         await syncFromServerCurrentVisit(response.visit);
         setVisit(response.visit);
+        visitIdForPending = response.visit.id;
         const workPhotos = (response.visit.photos || [])
           .filter((photo: Visit['photos'][number]) =>
             photo.type !== 'FACADE_CHECKIN' && photo.type !== 'FACADE_CHECKOUT'
@@ -237,14 +313,17 @@ export default function ActiveVisitScreen({ route }: any) {
         await clearVisit();
         setVisit(null);
         navigation.navigate('Stores');
+        return;
       }
     } catch (error) {
       console.error('Error loading visit:', error);
       if (initialVisit) {
         setVisit(initialVisit);
+        visitIdForPending = initialVisit.id;
         setVisitLoadError(false);
       } else if (localVisit && isActiveVisit) {
         setVisit(buildVisitFromLocal(localVisit));
+        visitIdForPending = localVisit.visitId;
         setVisitLoadError(false);
       } else {
         setVisitLoadError(true);
@@ -252,13 +331,17 @@ export default function ActiveVisitScreen({ route }: any) {
     } finally {
       setLoadingVisit(false);
     }
+
+    if (visitIdForPending) {
+      await restorePendingPhotos(visitIdForPending);
+    }
   }
 
   const savePendingPhotosToStorage = useCallback(async (visitId: string, photosToSave: VisitPhoto[]) => {
     try {
       const pendingPhotos: PendingPhoto[] = photosToSave
-        .filter(p => p.uri && !p.url)
-        .map(p => ({
+        .filter((p) => p.uri && !p.url && !p.invalid && isStableLocalPhotoUri(p.uri))
+        .map((p) => ({
           uri: p.uri!,
           type: p.type,
           visitId,
@@ -268,6 +351,9 @@ export default function ActiveVisitScreen({ route }: any) {
 
       if (pendingPhotos.length > 0) {
         await savePendingPhotos(visitId, pendingPhotos);
+      } else {
+        // Nenhuma pendente válida: limpa chave para não restaurar blobs mortos
+        await savePendingPhotos(visitId, []);
       }
     } catch (error) {
       console.error('[ActiveVisitScreen] Erro ao salvar fotos pendentes:', error);
@@ -278,23 +364,9 @@ export default function ActiveVisitScreen({ route }: any) {
 
   async function pickImagesForIndustry(industryId: string) {
     try {
-      const uris = await pickMultiplePhotos({ quality: 0.8, selectionLimit: 20 });
+      const uris = await pickMultiplePhotos({ selectionLimit: 20 });
       if (uris.length === 0) return;
-
-      const newPhotos: VisitPhoto[] = uris.map((uri) => ({
-        uri,
-        type: 'OTHER' as const,
-        industryId,
-      }));
-
-      setPhotos((prev) => {
-        const updated = [...prev, ...newPhotos];
-        if (visit?.id) {
-          savePendingPhotosToStorage(visit.id, updated);
-        }
-        return updated;
-      });
-
+      await appendLocalPhotos(uris, industryId);
       setExpandedIndustries((prev) => new Set(prev).add(industryId));
     } catch (error) {
       console.error('Erro ao selecionar imagens:', error);
@@ -304,23 +376,9 @@ export default function ActiveVisitScreen({ route }: any) {
 
   async function takePhotoForIndustry(industryId: string) {
     try {
-      const uri = await pickSinglePhoto({ quality: 0.8 });
+      const uri = await pickSinglePhoto();
       if (!uri) return;
-
-      const newPhoto: VisitPhoto = {
-        uri,
-        type: 'OTHER',
-        industryId,
-      };
-
-      setPhotos((prev) => {
-        const updated = [...prev, newPhoto];
-        if (visit?.id) {
-          savePendingPhotosToStorage(visit.id, updated);
-        }
-        return updated;
-      });
-
+      await appendLocalPhotos([uri], industryId);
       setExpandedIndustries((prev) => new Set(prev).add(industryId));
     } catch (error) {
       console.error('Erro ao capturar foto:', error);
@@ -331,19 +389,9 @@ export default function ActiveVisitScreen({ route }: any) {
   // Para lojas sem indústrias configuradas
   async function pickImagesNoIndustry() {
     try {
-      const uris = await pickMultiplePhotos({ quality: 0.8, selectionLimit: 20 });
+      const uris = await pickMultiplePhotos({ selectionLimit: 20 });
       if (uris.length === 0) return;
-
-      const newPhotos: VisitPhoto[] = uris.map((uri) => ({
-        uri,
-        type: 'OTHER' as const,
-      }));
-
-      setPhotos((prev) => {
-        const updated = [...prev, ...newPhotos];
-        if (visit?.id) savePendingPhotosToStorage(visit.id, updated);
-        return updated;
-      });
+      await appendLocalPhotos(uris);
     } catch (error) {
       console.error('Erro ao selecionar imagens:', error);
       showAlert('Erro', 'Não foi possível selecionar as imagens');
@@ -352,19 +400,9 @@ export default function ActiveVisitScreen({ route }: any) {
 
   async function takePhotoNoIndustry() {
     try {
-      const uri = await pickSinglePhoto({ quality: 0.8 });
+      const uri = await pickSinglePhoto();
       if (!uri) return;
-
-      const newPhoto: VisitPhoto = {
-        uri,
-        type: 'OTHER',
-      };
-
-      setPhotos((prev) => {
-        const updated = [...prev, newPhoto];
-        if (visit?.id) savePendingPhotosToStorage(visit.id, updated);
-        return updated;
-      });
+      await appendLocalPhotos([uri]);
     } catch (error) {
       console.error('Erro ao capturar foto:', error);
       showAlert('Erro', 'Não foi possível capturar a foto');
@@ -488,14 +526,25 @@ export default function ActiveVisitScreen({ route }: any) {
 
       const location = await getCurrentPosition();
 
+      const invalidPending = photos.filter(
+        (photo) => photo.uri && !photo.url && (photo.invalid || isFragilePhotoUri(photo.uri))
+      );
       const photosToUpload = photos.filter((photo) => isPendingLocalPhoto(photo));
 
       if (photosToUpload.length === 0) {
-        showAlert('Aviso', 'Não há fotos novas para enviar');
+        if (invalidPending.length > 0) {
+          showAlert(
+            'Fotos inválidas',
+            `${invalidPending.length} foto(s) não podem ser enviadas (arquivo local expirou). Apague-as (×) e tire de novo.`
+          );
+        } else {
+          showAlert('Aviso', 'Não há fotos novas para enviar');
+        }
         return;
       }
 
       const uploadResults: { photo: VisitPhoto; url: string; success: boolean; error?: string }[] = [];
+      let workingPhotos = [...photos];
 
       for (const photo of photosToUpload) {
         try {
@@ -512,15 +561,31 @@ export default function ActiveVisitScreen({ route }: any) {
           uploadResults.push({ photo, url, success: true });
         } catch (error: any) {
           console.error('❌ [ActiveVisit] Erro no upload:', error?.message);
-          uploadResults.push({ photo, url: '', success: false, error: error?.response?.data?.detail || error?.response?.data?.message || error?.message });
+          const errMsg =
+            error?.response?.data?.detail ||
+            error?.response?.data?.message ||
+            error?.message;
+          const expired =
+            typeof errMsg === 'string' &&
+            (errMsg.toLowerCase().includes('expirou') ||
+              errMsg.toLowerCase().includes('inválida') ||
+              errMsg.toLowerCase().includes('failed to fetch'));
+          if (expired) {
+            workingPhotos = workingPhotos.map((p) =>
+              p.uri === photo.uri ? { ...p, invalid: true } : p
+            );
+          }
+          uploadResults.push({ photo, url: '', success: false, error: errMsg });
         }
       }
 
-      const successResults = uploadResults.filter(r => r.success);
-      const failedCount = uploadResults.filter(r => !r.success).length;
+      const successResults = uploadResults.filter((r) => r.success);
+      const failedCount = uploadResults.filter((r) => !r.success).length;
 
       if (successResults.length === 0) {
-        const firstError = uploadResults.find(r => r.error)?.error;
+        setPhotos(workingPhotos);
+        await savePendingPhotosToStorage(visit.id, workingPhotos);
+        const firstError = uploadResults.find((r) => r.error)?.error;
         showAlert(
           'Erro',
           firstError || 'Nenhuma foto foi enviada. Verifique sua conexão e tente novamente.'
@@ -531,7 +596,7 @@ export default function ActiveVisitScreen({ route }: any) {
       try {
         await visitService.uploadPhotos({
           visitId: visit.id,
-          photos: successResults.map(r => ({
+          photos: successResults.map((r) => ({
             url: r.url,
             type: 'OTHER' as const,
             latitude: location.coords.latitude,
@@ -540,24 +605,25 @@ export default function ActiveVisitScreen({ route }: any) {
           })),
         });
 
-        await clearPendingPhotos(visit.id);
-
         const uriToUrl = new Map<string, string>();
-        successResults.forEach(r => {
+        successResults.forEach((r) => {
           if (r.photo.uri) uriToUrl.set(r.photo.uri, r.url);
         });
 
-        setPhotos((prev) =>
-          prev.map((p) => {
-            const newUrl = p.uri ? uriToUrl.get(p.uri) : undefined;
-            if (newUrl) {
-              return { ...p, url: newUrl, uri: undefined };
-            }
-            return p;
-          })
-        );
+        const nextPhotos = workingPhotos.map((p) => {
+          const newUrl = p.uri ? uriToUrl.get(p.uri) : undefined;
+          if (newUrl) {
+            return { ...p, url: newUrl, uri: undefined, invalid: undefined };
+          }
+          return p;
+        });
+        setPhotos(nextPhotos);
+
+        // Mantém no storage só as pendentes válidas que ainda não subiram
+        await savePendingPhotosToStorage(visit.id, nextPhotos);
       } catch (error: any) {
         console.error('❌ [ActiveVisit] Erro ao registrar fotos no backend:', error);
+        setPhotos(workingPhotos);
         const detail =
           error?.response?.data?.message ||
           error?.response?.data?.detail ||
@@ -571,8 +637,11 @@ export default function ActiveVisitScreen({ route }: any) {
         return;
       }
 
-      if (failedCount > 0) {
-        showAlert('Sucesso parcial', `${successResults.length} foto(s) enviadas. ${failedCount} falharam.`);
+      if (failedCount > 0 || invalidPending.length > 0) {
+        showAlert(
+          'Sucesso parcial',
+          `${successResults.length} foto(s) enviadas. ${failedCount + invalidPending.length} falharam — apague as marcadas como Inválida e tire de novo, ou toque em Enviar outra vez.`
+        );
       } else {
         showAlert('Sucesso', `${successResults.length} foto(s) enviadas com sucesso!`);
       }
@@ -597,8 +666,11 @@ export default function ActiveVisitScreen({ route }: any) {
   }
 
   // ---- Contadores ----
-  const totalPending = photos.filter(p => p.uri && !p.url).length;
-  const totalUploaded = photos.filter(p => p.url).length;
+  const totalPending = photos.filter((p) => isPendingLocalPhoto(p)).length;
+  const totalUploaded = photos.filter((p) => p.url).length;
+  const totalInvalid = photos.filter(
+    (p) => p.uri && !p.url && (p.invalid || isFragilePhotoUri(p.uri))
+  ).length;
 
   // ---- Render helpers ----
 
@@ -616,18 +688,41 @@ export default function ActiveVisitScreen({ route }: any) {
         {industryPhotos.map((photo, localIdx) => {
           const sourceUri = photo.uri || photo.url;
           if (!sourceUri) return null;
-          const isPending = !!photo.uri && !photo.url;
+          const isInvalid = !!photo.invalid || isFragilePhotoUri(photo.uri);
+          const isPending = !!photo.uri && !photo.url && !isInvalid;
           const globalIdx = getGlobalPhotoIndex(industryId, localIdx);
 
           return (
             <TouchableOpacity
               key={`photo-${industryId ?? 'none'}-${localIdx}-${photo.id ?? ''}`}
-              style={styles.photoThumbnailContainer}
-              onPress={() => setSelectedPhotoIndex(globalIdx)}
+              style={[
+                styles.photoThumbnailContainer,
+                isInvalid ? styles.photoThumbnailInvalid : null,
+              ]}
+              onPress={() => {
+                if (isInvalid) {
+                  showAlert(
+                    'Foto inválida',
+                    'Esta foto expirou e não pode ser visualizada nem enviada. Apague (×) e tire novamente.'
+                  );
+                  return;
+                }
+                setSelectedPhotoIndex(globalIdx);
+              }}
               activeOpacity={0.8}
             >
-              <Image source={{ uri: sourceUri }} style={styles.photoThumbnail as any} />
-              {isPending ? (
+              <Image
+                source={{ uri: sourceUri }}
+                style={styles.photoThumbnail as any}
+                onError={() => {
+                  if (globalIdx >= 0) markPhotoInvalid(globalIdx);
+                }}
+              />
+              {isInvalid ? (
+                <View style={styles.invalidBadge}>
+                  <Text style={styles.invalidBadgeText}>Inválida</Text>
+                </View>
+              ) : isPending ? (
                 <View style={styles.pendingBadge}>
                   <Text style={styles.pendingBadgeText}>Pendente</Text>
                 </View>
@@ -636,7 +731,7 @@ export default function ActiveVisitScreen({ route }: any) {
                   <Text style={styles.uploadedBadgeText}>✓</Text>
                 </View>
               )}
-              {isPending && (
+              {(isPending || isInvalid) && (
                 <TouchableOpacity
                   style={styles.deleteButton}
                   onPress={(e) => {
@@ -657,8 +752,11 @@ export default function ActiveVisitScreen({ route }: any) {
   function renderIndustrySection(industry: Industry) {
     const industryPhotos = getPhotosForIndustry(industry.id);
     const isExpanded = expandedIndustries.has(industry.id);
-    const pendingCount = industryPhotos.filter(p => p.uri && !p.url).length;
-    const uploadedCount = industryPhotos.filter(p => p.url).length;
+    const pendingCount = industryPhotos.filter((p) => isPendingLocalPhoto(p)).length;
+    const invalidCount = industryPhotos.filter(
+      (p) => p.uri && !p.url && (p.invalid || isFragilePhotoUri(p.uri))
+    ).length;
+    const uploadedCount = industryPhotos.filter((p) => p.url).length;
 
     return (
       <View key={industry.id} style={styles.industrySection}>
@@ -676,6 +774,7 @@ export default function ActiveVisitScreen({ route }: any) {
               <Text style={styles.industryStats}>
                 {uploadedCount} enviada{uploadedCount !== 1 ? 's' : ''}
                 {pendingCount > 0 ? ` · ${pendingCount} pendente${pendingCount !== 1 ? 's' : ''}` : ''}
+                {invalidCount > 0 ? ` · ${invalidCount} inválida${invalidCount !== 1 ? 's' : ''}` : ''}
                 {waivedIndustryIds.has(industry.id) && uploadedCount === 0 ? ' · Sem foto (justificado)' : ''}
               </Text>
             </View>
@@ -910,7 +1009,9 @@ export default function ActiveVisitScreen({ route }: any) {
           <Text style={styles.sectionTitle}>Fotos do Trabalho</Text>
           <View style={styles.photoCounter}>
             <Text style={styles.photoCounterText}>
-              {totalPending > 0 ? `${totalPending} pendentes · ` : ''}{totalUploaded + totalPending} total
+              {totalPending > 0 ? `${totalPending} pendentes · ` : ''}
+              {totalInvalid > 0 ? `${totalInvalid} inválidas · ` : ''}
+              {totalUploaded + totalPending + totalInvalid} total
             </Text>
           </View>
         </View>
@@ -1229,6 +1330,9 @@ const styles = StyleSheet.create({
     position: 'relative',
     marginBottom: 4,
   },
+  photoThumbnailInvalid: {
+    opacity: 0.55,
+  },
   photoThumbnail: {
     width: '100%',
     height: '100%',
@@ -1249,6 +1353,20 @@ const styles = StyleSheet.create({
   pendingBadgeText: {
     fontSize: 10,
     color: colors.text.primary,
+    fontWeight: 'bold',
+  },
+  invalidBadge: {
+    position: 'absolute',
+    top: 4,
+    left: 4,
+    backgroundColor: (colors.error || '#EF4444') + 'E6',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: theme.borderRadius.sm,
+  },
+  invalidBadgeText: {
+    fontSize: 10,
+    color: '#fff',
     fontWeight: 'bold',
   },
   uploadedBadge: {

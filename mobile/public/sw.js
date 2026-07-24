@@ -1,5 +1,5 @@
 /* Service Worker — shell offline; API sempre pela rede */
-const CACHE_NAME = 'mustafa-promotor-v2';
+const CACHE_NAME = 'mustafa-promotor-v3';
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {
@@ -27,6 +27,27 @@ self.addEventListener('fetch', (event) => {
   // API: sempre rede (sem cache stale)
   if (url.pathname.startsWith('/api') || url.hostname.includes('run.app')) {
     event.respondWith(fetch(req));
+    return;
+  }
+
+  // JS/CSS do bundle: network-first para pegar correções de upload sem cache velho
+  if (
+    url.origin === self.location.origin &&
+    (url.pathname.includes('/_expo/') ||
+      url.pathname.endsWith('.js') ||
+      url.pathname.endsWith('.css'))
+  ) {
+    event.respondWith(
+      fetch(req)
+        .then((res) => {
+          if (res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(req, copy)).catch(() => null);
+          }
+          return res;
+        })
+        .catch(() => caches.match(req).then((cached) => cached || caches.match('/index.html')))
+    );
     return;
   }
 
