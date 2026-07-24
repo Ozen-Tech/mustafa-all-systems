@@ -857,10 +857,20 @@ export async function getVisitIndustries(req: AuthRequest, res: Response) {
         needsOnboarding: false,
         needsSupervisorAssignment: true,
         industries: [],
+        suggestedIndustryIds: [],
         message:
           'Esta loja ainda não tem indústrias cadastradas no sistema. Peça ao supervisor/admin para vincular indústrias à loja.',
       });
     }
+
+    // Preferências gerais do promotor (storeId null) → pré-seleção no onboarding da loja
+    const generalAssignments = await prisma.industryAssignment.findMany({
+      where: { promoterId, storeId: null, isActive: true },
+      select: { industryId: true },
+    });
+    const generalIds = new Set(generalAssignments.map((a) => a.industryId));
+    const storeIndustryIds = new Set(storeIndustries.map((i) => i.id));
+    const suggestedIndustryIds = [...generalIds].filter((id) => storeIndustryIds.has(id));
 
     return res.json({
       visitId: visit.id,
@@ -868,6 +878,7 @@ export async function getVisitIndustries(req: AuthRequest, res: Response) {
       needsOnboarding: true,
       needsSupervisorAssignment: false,
       industries: storeIndustries,
+      suggestedIndustryIds,
     });
   } catch (error) {
     console.error('Get visit industries error:', error);

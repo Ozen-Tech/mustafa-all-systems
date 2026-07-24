@@ -132,6 +132,9 @@ export default function ActiveVisitScreen({ route }: any) {
       }
       if (!data.needsOnboarding && !data.needsSupervisorAssignment && data.industries.length > 0) {
         setExpandedIndustries(new Set(data.industries.map((i: Industry) => i.id)));
+      } else if (data.needsOnboarding) {
+        const suggested = data.suggestedIndustryIds || [];
+        setOnboardingSelectedIds(new Set(suggested));
       } else {
         setOnboardingSelectedIds(new Set());
       }
@@ -921,8 +924,11 @@ export default function ActiveVisitScreen({ route }: any) {
         <View style={styles.header}>
           <Text style={styles.title}>Quais indústrias você faz aqui?</Text>
           <Text style={[styles.subtitle, { marginTop: 8 }]}>
-            É a primeira vez nesta loja. Marque as indústrias que você atende — isso fica salvo e não
-            precisa configurar de novo nas próximas visitas.
+            É a primeira vez nesta loja. Confirme as indústrias que você atende aqui
+            {onboardingSelectedIds.size > 0
+              ? ' (já pré-selecionamos as do seu perfil geral).'
+              : '.'}{' '}
+            Isso fica salvo para as próximas visitas.
           </Text>
           {visit.store?.name ? (
             <Text style={[styles.storeName, { marginTop: 12 }]}>{visit.store.name}</Text>

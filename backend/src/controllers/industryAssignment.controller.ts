@@ -222,6 +222,102 @@ const setMyStoreIndustriesSchema = z.object({
   industryIds: z.array(z.string().uuid()).min(1, 'Selecione pelo menos uma indústria'),
 });
 
+const setMyGeneralIndustriesSchema = z.object({
+  industryIds: z.array(z.string().uuid()).min(1, 'Selecione pelo menos uma indústria'),
+});
+
+/**
+ * Status do onboarding geral do promotor (indústrias sem loja = preferências globais).
+ * GET /industry-assignments/me/general
+ */
+export async function getMyGeneralIndustries(req: AuthRequest, res: Response) {
+  try {
+    const promoterId = req.userId;
+    if (!promoterId) {
+      return res.status(401).json({ message: 'Não autenticado' });
+    }
+
+    const assignments = await prisma.industryAssignment.findMany({
+      where: {
+        promoterId,
+        storeId: null,
+        isActive: true,
+      },
+      include: { industry: true },
+      orderBy: { industry: { name: 'asc' } },
+    });
+
+    const industries = assignments
+      .map((a) => a.industry)
+      .filter((ind) => ind && ind.isActive !== false);
+
+    res.json({
+      needsGeneralOnboarding: industries.length === 0,
+      industries,
+    });
+  } catch (error) {
+    console.error('Get my general industries error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+}
+
+/**
+ * Promotor define indústrias gerais (onboarding na 1ª vez no app / edição no perfil).
+ * Grava IndustryAssignment com storeId null.
+ * PUT /industry-assignments/me/general
+ */
+export async function setMyGeneralIndustries(req: AuthRequest, res: Response) {
+  try {
+    const promoterId = req.userId;
+    if (!promoterId || req.userRole !== UserRole.PROMOTER) {
+      return res.status(403).json({
+        message: 'Apenas promotores podem definir as próprias indústrias gerais.',
+      });
+    }
+
+    const { industryIds } = setMyGeneralIndustriesSchema.parse(req.body);
+    const uniqueRequested = [...new Set(industryIds)];
+
+    const validIndustries = await prisma.industry.findMany({
+      where: { id: { in: uniqueRequested }, isActive: true },
+      select: { id: true },
+    });
+    const validIds = validIndustries.map((i) => i.id);
+    if (validIds.length === 0) {
+      return res.status(400).json({ message: 'Selecione pelo menos uma indústria válida.' });
+    }
+
+    await prisma.$transaction([
+      prisma.industryAssignment.deleteMany({
+        where: { promoterId, storeId: null },
+      }),
+      ...validIds.map((industryId) =>
+        prisma.industryAssignment.create({
+          data: { promoterId, industryId, storeId: null, isActive: true },
+        })
+      ),
+    ]);
+
+    const assignments = await prisma.industryAssignment.findMany({
+      where: { promoterId, storeId: null, isActive: true },
+      include: { industry: true },
+      orderBy: { industry: { name: 'asc' } },
+    });
+
+    res.json({
+      message: 'Indústrias gerais salvas',
+      needsGeneralOnboarding: false,
+      industries: assignments.map((a) => a.industry),
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: error.errors[0]?.message ?? 'Dados inválidos' });
+    }
+    console.error('Set my general industries error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+}
+
 /**
  * Promotor define as indústrias que atende nesta loja (onboarding na 1ª visita).
  * Grava IndustryAssignment (promoter + store) e passa a valer nas próximas visitas.

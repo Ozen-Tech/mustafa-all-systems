@@ -6,10 +6,16 @@ import {
   removeAssignment,
   setMyStoreIndustries,
   setPromoterStoreIndustries,
+  getMyGeneralIndustries,
+  setMyGeneralIndustries,
 } from '../controllers/industryAssignment.controller';
 import { authenticate, requireAdmin, requireSupervisor } from '../middleware/auth';
 
 const router = Router();
+
+// Promotor: onboarding geral (indústrias sem loja)
+router.get('/me/general', authenticate, getMyGeneralIndustries);
+router.put('/me/general', authenticate, setMyGeneralIndustries);
 
 // Promotor: definir indústrias que atende em uma loja (onboarding)
 router.post('/me/store/:storeId', authenticate, setMyStoreIndustries);

@@ -9,6 +9,8 @@ import HomeScreen from '../screens/HomeScreen';
 import HistoryScreen from '../screens/HistoryScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import InformationHubScreen from '../screens/InformationHubScreen';
+import GeneralOnboardingScreen from '../screens/GeneralOnboardingScreen';
+import { industryService } from '../services/industryService';
 import HomeIcon from '../components/icons/HomeIcon';
 import ClockIcon from '../components/icons/ClockIcon';
 import UserIcon from '../components/icons/UserIcon';
@@ -344,57 +346,114 @@ function MainTabs() {
 }
 
 export default function MainNavigator() {
+  const [checkingOnboarding, setCheckingOnboarding] = React.useState(true);
+  const [needsGeneralOnboarding, setNeedsGeneralOnboarding] = React.useState(false);
+  const [editingGeneral, setEditingGeneral] = React.useState(false);
+
+  React.useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const status = await industryService.getGeneralOnboarding();
+        if (mounted) {
+          setNeedsGeneralOnboarding(!!status.needsGeneralOnboarding);
+        }
+      } catch (error) {
+        console.warn('[MainNavigator] Falha ao checar onboarding geral:', error);
+        if (mounted) setNeedsGeneralOnboarding(false);
+      } finally {
+        if (mounted) setCheckingOnboarding(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  if (checkingOnboarding) {
+    return <LoadingScreen />;
+  }
+
+  if (needsGeneralOnboarding || editingGeneral) {
+    return (
+      <GeneralOnboardingScreen
+        allowSkip={editingGeneral}
+        title={editingGeneral ? 'Editar indústrias' : 'Quais indústrias você trabalha?'}
+        subtitle={
+          editingGeneral
+            ? 'Atualize as indústrias que você atende. Nas próximas lojas novas, elas virão pré-selecionadas.'
+            : 'Marque as indústrias que você atende no dia a dia. Isso facilita o setup em cada loja — você só confirma na primeira visita.'
+        }
+        onDone={() => {
+          setNeedsGeneralOnboarding(false);
+          setEditingGeneral(false);
+        }}
+        onCancel={editingGeneral ? () => setEditingGeneral(false) : undefined}
+      />
+    );
+  }
+
   return (
-    <Stack.Navigator
-      screenOptions={{
-        headerStyle: {
-          backgroundColor: colors.dark.background,
-          borderBottomColor: colors.dark.border,
-          borderBottomWidth: 1,
-        },
-        headerTintColor: colors.text.primary,
-        headerTitleStyle: {
-          fontWeight: theme.typography.fontWeight.bold,
-          fontSize: theme.typography.fontSize.lg,
-        },
-        cardStyle: {
-          flex: 1,
-          minHeight: 0,
-          backgroundColor: colors.dark.background,
-        },
-      }}
-    >
-      <Stack.Screen name="MainTabs" component={MainTabs} options={{ headerShown: false }} />
-      <Stack.Screen
-        name="Stores"
-        component={StoresScreenWrapper}
-        options={{ title: 'Selecione uma Loja' }}
-      />
-      <Stack.Screen
-        name="CheckIn"
-        component={CheckInScreenWrapper}
-        options={{ title: 'Check-in' }}
-      />
-      <Stack.Screen
-        name="ActiveVisit"
-        component={ActiveVisitScreenWrapper}
-        options={{ title: 'Visita em Andamento' }}
-      />
-      <Stack.Screen
-        name="PriceResearch"
-        component={PriceResearchScreenWrapper}
-        options={{ title: 'Pesquisa de Preços' }}
-      />
-      <Stack.Screen
-        name="Checkout"
-        component={CheckoutScreenWrapper}
-        options={{ title: 'Checkout' }}
-      />
-      <Stack.Screen
-        name="StoreStock"
-        component={StoreStockScreenWrapper}
-        options={{ title: 'Estoque da Loja' }}
-      />
-    </Stack.Navigator>
+    <GeneralOnboardingContext.Provider value={{ openGeneralOnboarding: () => setEditingGeneral(true) }}>
+      <Stack.Navigator
+        screenOptions={{
+          headerStyle: {
+            backgroundColor: colors.dark.background,
+            borderBottomColor: colors.dark.border,
+            borderBottomWidth: 1,
+          },
+          headerTintColor: colors.text.primary,
+          headerTitleStyle: {
+            fontWeight: theme.typography.fontWeight.bold,
+            fontSize: theme.typography.fontSize.lg,
+          },
+          cardStyle: {
+            flex: 1,
+            minHeight: 0,
+            backgroundColor: colors.dark.background,
+          },
+        }}
+      >
+        <Stack.Screen name="MainTabs" component={MainTabs} options={{ headerShown: false }} />
+        <Stack.Screen
+          name="Stores"
+          component={StoresScreenWrapper}
+          options={{ title: 'Selecione uma Loja' }}
+        />
+        <Stack.Screen
+          name="CheckIn"
+          component={CheckInScreenWrapper}
+          options={{ title: 'Check-in' }}
+        />
+        <Stack.Screen
+          name="ActiveVisit"
+          component={ActiveVisitScreenWrapper}
+          options={{ title: 'Visita em Andamento' }}
+        />
+        <Stack.Screen
+          name="PriceResearch"
+          component={PriceResearchScreenWrapper}
+          options={{ title: 'Pesquisa de Preços' }}
+        />
+        <Stack.Screen
+          name="Checkout"
+          component={CheckoutScreenWrapper}
+          options={{ title: 'Checkout' }}
+        />
+        <Stack.Screen
+          name="StoreStock"
+          component={StoreStockScreenWrapper}
+          options={{ title: 'Estoque da Loja' }}
+        />
+      </Stack.Navigator>
+    </GeneralOnboardingContext.Provider>
   );
+}
+
+const GeneralOnboardingContext = React.createContext<{ openGeneralOnboarding: () => void }>({
+  openGeneralOnboarding: () => {},
+});
+
+export function useGeneralOnboarding() {
+  return React.useContext(GeneralOnboardingContext);
 }

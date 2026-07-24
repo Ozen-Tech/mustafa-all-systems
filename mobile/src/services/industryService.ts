@@ -41,12 +41,32 @@ export interface CoverageResponse {
 }
 
 export const industryService = {
+  async listIndustries(isActive = true): Promise<Industry[]> {
+    const response = await apiClient.get('/industries', {
+      params: { isActive: String(isActive) },
+    });
+    return response.data.industries || response.data || [];
+  },
+
   async getPromoterIndustries(promoterId?: string): Promise<IndustryAssignment[]> {
     const endpoint = promoterId
       ? `/industry-assignments/promoter/${promoterId}`
       : '/industry-assignments/promoter/me';
     const response = await apiClient.get(endpoint);
     return response.data.assignments || [];
+  },
+
+  async getGeneralOnboarding(): Promise<{
+    needsGeneralOnboarding: boolean;
+    industries: Industry[];
+  }> {
+    const response = await apiClient.get('/industry-assignments/me/general');
+    return response.data;
+  },
+
+  async setMyGeneralIndustries(industryIds: string[]): Promise<{ industries: Industry[] }> {
+    const response = await apiClient.put('/industry-assignments/me/general', { industryIds });
+    return response.data;
   },
 
   async getStoreIndustries(storeId: string): Promise<Industry[]> {
@@ -65,6 +85,7 @@ export const industryService = {
     needsOnboarding: boolean;
     needsSupervisorAssignment?: boolean;
     industries: Industry[];
+    suggestedIndustryIds?: string[];
   }> {
     const response = await apiClient.get(`/promoters/visits/${visitId}/industries`);
     return response.data;

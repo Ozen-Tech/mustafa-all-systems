@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet } from 'react-native';
 import { useAuth } from '../context/AuthContext';
+import { useGeneralOnboarding } from '../navigation/MainNavigator';
+import { industryService, Industry } from '../services/industryService';
 import { colors, theme } from '../styles/theme';
 import { flexScroll } from '../styles/webLayout';
 import { layout, screenStyles } from '../styles/layout';
@@ -18,6 +20,15 @@ function getInitials(name?: string) {
 
 export default function ProfileScreen() {
   const { user, logout } = useAuth();
+  const { openGeneralOnboarding } = useGeneralOnboarding();
+  const [generalIndustries, setGeneralIndustries] = useState<Industry[]>([]);
+
+  useEffect(() => {
+    industryService
+      .getGeneralOnboarding()
+      .then((res) => setGeneralIndustries(res.industries || []))
+      .catch(() => setGeneralIndustries([]));
+  }, []);
 
   return (
     <ScrollView style={[screenStyles.root, flexScroll]} contentContainerStyle={styles.content}>
@@ -43,6 +54,26 @@ export default function ProfileScreen() {
             <Text style={styles.infoLabel}>Função</Text>
             <Text style={styles.infoValue}>Promotor de vendas</Text>
           </View>
+        </Card>
+      </Section>
+
+      <Section title="Minhas indústrias">
+        <Card shadow>
+          {generalIndustries.length > 0 ? (
+            <Text style={styles.industryList}>
+              {generalIndustries.map((i) => i.name).join(' · ')}
+            </Text>
+          ) : (
+            <Text style={styles.industryEmpty}>Nenhuma indústria geral definida ainda.</Text>
+          )}
+          <Button
+            variant="outline"
+            size="md"
+            onPress={openGeneralOnboarding}
+            style={styles.editIndustries}
+          >
+            Editar indústrias
+          </Button>
         </Card>
       </Section>
 
@@ -79,39 +110,48 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   avatarText: {
-    fontSize: theme.typography.fontSize.lg,
-    fontWeight: theme.typography.fontWeight.bold,
     color: colors.primary[300],
+    fontWeight: '700',
+    fontSize: 18,
   },
   identity: {
     flex: 1,
   },
   name: {
-    fontSize: theme.typography.fontSize.lg,
-    fontWeight: theme.typography.fontWeight.bold,
     color: colors.text.primary,
-    marginBottom: theme.spacing.xs,
+    fontSize: theme.typography.fontSize.lg,
+    fontWeight: '700',
   },
   email: {
-    fontSize: theme.typography.fontSize.sm,
     color: colors.text.secondary,
+    marginTop: 2,
   },
   infoRow: {
-    gap: theme.spacing.xs,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
   },
   infoLabel: {
-    fontSize: theme.typography.fontSize.xs,
-    fontWeight: theme.typography.fontWeight.semibold,
-    color: colors.text.tertiary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
+    color: colors.text.secondary,
   },
   infoValue: {
-    fontSize: theme.typography.fontSize.base,
     color: colors.text.primary,
-    fontWeight: theme.typography.fontWeight.medium,
+    fontWeight: '600',
+  },
+  industryList: {
+    color: colors.text.primary,
+    lineHeight: 22,
+    marginBottom: theme.spacing.md,
+  },
+  industryEmpty: {
+    color: colors.text.tertiary,
+    marginBottom: theme.spacing.md,
+  },
+  editIndustries: {
+    alignSelf: 'stretch',
   },
   logout: {
-    width: '100%',
+    marginTop: theme.spacing.sm,
   },
 });
