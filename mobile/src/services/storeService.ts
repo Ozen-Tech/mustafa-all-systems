@@ -18,10 +18,11 @@ export interface GetStoresResponse {
 
 export interface OnboardingStatus {
   needsGeneralOnboarding: boolean;
-  needsIndustries: boolean;
   needsStores: boolean;
-  industries: Array<{ id: string; name: string; code: string; isActive?: boolean }>;
+  needsStoreIndustries: boolean;
   stores: Store[];
+  storesPendingIndustries: Store[];
+  industryIdsByStore: Record<string, string[]>;
   availableStores: Store[];
   promoterState: string | null;
 }

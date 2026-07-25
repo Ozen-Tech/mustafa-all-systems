@@ -15,53 +15,52 @@ import { flexScroll, screenContainer } from '../styles/webLayout';
 import Button from '../components/ui/Button';
 import { showAlert } from '../utils/alertHelper';
 
-type Step = 'industries' | 'stores';
+type Phase = 'stores' | 'store-industries';
 
 type Props = {
   allowSkip?: boolean;
-  /** Quando true, abre direto na etapa de lojas (edição). */
-  initialStep?: Step;
   onDone: () => void;
   onCancel?: () => void;
 };
 
 export default function GeneralOnboardingScreen({
   allowSkip = false,
-  initialStep = 'industries',
   onDone,
   onCancel,
 }: Props) {
-  const [step, setStep] = useState<Step>(initialStep);
+  const [phase, setPhase] = useState<Phase>('stores');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  const [allIndustries, setAllIndustries] = useState<Industry[]>([]);
   const [availableStores, setAvailableStores] = useState<Store[]>([]);
   const [promoterState, setPromoterState] = useState<string | null>(null);
-
-  const [selectedIndustryIds, setSelectedIndustryIds] = useState<Set<string>>(new Set());
   const [selectedStoreIds, setSelectedStoreIds] = useState<Set<string>>(new Set());
   const [storeSearch, setStoreSearch] = useState('');
+
+  /** Lojas na ordem em que o promotor vai configurar indústrias */
+  const [queue, setQueue] = useState<Store[]>([]);
+  const [queueIndex, setQueueIndex] = useState(0);
+  const [storeIndustryOptions, setStoreIndustryOptions] = useState<Industry[]>([]);
+  const [selectedIndustryIds, setSelectedIndustryIds] = useState<Set<string>>(new Set());
+  const [existingByStore, setExistingByStore] = useState<Record<string, string[]>>({});
+  const [loadingStoreIndustries, setLoadingStoreIndustries] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [industries, onboarding] = await Promise.all([
-        industryService.listIndustries(true),
-        storeService.getOnboarding(),
-      ]);
-      setAllIndustries(industries);
+      const onboarding = await storeService.getOnboarding();
       setAvailableStores(onboarding.availableStores || []);
       setPromoterState(onboarding.promoterState);
-      setSelectedIndustryIds(new Set((onboarding.industries || []).map((i) => i.id)));
       setSelectedStoreIds(new Set((onboarding.stores || []).map((s) => s.id)));
+      setExistingByStore(onboarding.industryIdsByStore || {});
 
-      if (!allowSkip) {
-        if (onboarding.needsIndustries) setStep('industries');
-        else if (onboarding.needsStores) setStep('stores');
-        else setStep(initialStep);
+      if (!allowSkip && onboarding.stores?.length && onboarding.storesPendingIndustries?.length) {
+        // Já tem lojas, falta configurar indústrias em algumas
+        setQueue(onboarding.storesPendingIndustries);
+        setQueueIndex(0);
+        setPhase('store-industries');
       } else {
-        setStep(initialStep);
+        setPhase('stores');
       }
     } catch (error: any) {
       console.error('[GeneralOnboarding] load error:', error);
@@ -69,11 +68,45 @@ export default function GeneralOnboardingScreen({
     } finally {
       setLoading(false);
     }
-  }, [allowSkip, initialStep]);
+  }, [allowSkip]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  const currentStore = phase === 'store-industries' ? queue[queueIndex] : null;
+
+  useEffect(() => {
+    if (!currentStore) return;
+    let cancelled = false;
+    (async () => {
+      setLoadingStoreIndustries(true);
+      try {
+        const industries = await industryService.getStoreIndustries(currentStore.id);
+        if (cancelled) return;
+        setStoreIndustryOptions(industries);
+        const preexisting = existingByStore[currentStore.id] || [];
+        setSelectedIndustryIds(
+          new Set(preexisting.filter((id) => industries.some((i) => i.id === id)))
+        );
+      } catch (error: any) {
+        if (!cancelled) {
+          setStoreIndustryOptions([]);
+          setSelectedIndustryIds(new Set());
+          showAlert(
+            'Atenção',
+            error?.response?.data?.message ||
+              `Não foi possível carregar indústrias de ${currentStore.name}.`
+          );
+        }
+      } finally {
+        if (!cancelled) setLoadingStoreIndustries(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentStore?.id, existingByStore]);
 
   const filteredStores = useMemo(() => {
     const term = storeSearch.trim().toLowerCase();
@@ -86,15 +119,6 @@ export default function GeneralOnboardingScreen({
     );
   }, [availableStores, storeSearch]);
 
-  function toggleIndustry(id: string) {
-    setSelectedIndustryIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
   function toggleStore(id: string) {
     setSelectedStoreIds((prev) => {
       const next = new Set(prev);
@@ -104,37 +128,69 @@ export default function GeneralOnboardingScreen({
     });
   }
 
-  async function saveIndustriesAndContinue() {
-    if (selectedIndustryIds.size === 0) {
-      showAlert('Atenção', 'Selecione pelo menos uma indústria.');
-      return;
-    }
-    setSaving(true);
-    try {
-      await industryService.setMyGeneralIndustries(Array.from(selectedIndustryIds));
-      setStep('stores');
-    } catch (error: any) {
-      showAlert('Erro', error?.response?.data?.message || 'Não foi possível salvar as indústrias.');
-    } finally {
-      setSaving(false);
-    }
+  function toggleIndustry(id: string) {
+    setSelectedIndustryIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }
 
-  async function saveStoresAndFinish() {
+  async function saveStoresAndContinue() {
     if (selectedStoreIds.size === 0) {
       showAlert('Atenção', 'Selecione pelo menos uma loja.');
       return;
     }
     setSaving(true);
     try {
-      // Garante indústrias salvas também ao editar só lojas / voltar
-      if (selectedIndustryIds.size > 0) {
-        await industryService.setMyGeneralIndustries(Array.from(selectedIndustryIds));
-      }
-      await storeService.setMyRoute(Array.from(selectedStoreIds));
-      onDone();
+      const { stores } = await storeService.setMyRoute(Array.from(selectedStoreIds));
+      // Configura indústrias em todas as lojas selecionadas (na ordem da rota)
+      setQueue(stores);
+      setQueueIndex(0);
+      setPhase('store-industries');
     } catch (error: any) {
       showAlert('Erro', error?.response?.data?.message || 'Não foi possível salvar as lojas.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveStoreIndustriesAndContinue() {
+    if (!currentStore) return;
+    if (selectedIndustryIds.size === 0) {
+      showAlert('Atenção', 'Selecione pelo menos uma indústria nesta loja.');
+      return;
+    }
+    if (storeIndustryOptions.length === 0) {
+      showAlert(
+        'Loja sem indústrias',
+        'Esta loja ainda não tem indústrias cadastradas no sistema. Peça ao admin para vincular e tente de novo, ou pule esta loja removendo-a da rota.'
+      );
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await industryService.setMyStoreIndustries(
+        currentStore.id,
+        Array.from(selectedIndustryIds)
+      );
+      setExistingByStore((prev) => ({
+        ...prev,
+        [currentStore.id]: Array.from(selectedIndustryIds),
+      }));
+
+      if (queueIndex + 1 < queue.length) {
+        setQueueIndex((i) => i + 1);
+      } else {
+        onDone();
+      }
+    } catch (error: any) {
+      showAlert(
+        'Erro',
+        error?.response?.data?.message || 'Não foi possível salvar as indústrias desta loja.'
+      );
     } finally {
       setSaving(false);
     }
@@ -149,69 +205,36 @@ export default function GeneralOnboardingScreen({
     );
   }
 
-  const isIndustries = step === 'industries';
+  const totalSteps = 1 + Math.max(queue.length, selectedStoreIds.size || 1);
+  const currentStepNumber =
+    phase === 'stores' ? 1 : 1 + queueIndex + 1;
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.stepLabel}>
-          Passo {isIndustries ? '1' : '2'} de 2
+          {phase === 'stores'
+            ? 'Passo 1 · Lojas'
+            : `Passo ${currentStepNumber} · Indústrias (${queueIndex + 1}/${queue.length})`}
         </Text>
         <Text style={styles.title}>
-          {isIndustries ? 'Quais indústrias você trabalha?' : 'Quais lojas você faz?'}
+          {phase === 'stores'
+            ? 'Quais lojas você faz?'
+            : currentStore
+              ? `Indústrias em ${currentStore.name}`
+              : 'Indústrias da loja'}
         </Text>
         <Text style={styles.subtitle}>
-          {isIndustries
-            ? 'Marque as indústrias que você atende. Nas lojas, elas virão pré-selecionadas.'
-            : promoterState
-              ? `Escolha as lojas da sua rota (${promoterState}). Você pode buscar pelo nome.`
-              : 'Escolha as lojas da sua rota. Você pode buscar pelo nome.'}
+          {phase === 'stores'
+            ? promoterState
+              ? `Escolha as lojas da sua rota (${promoterState}). Depois você marca as indústrias em cada uma.`
+              : 'Escolha as lojas da sua rota. Depois você marca as indústrias em cada uma.'
+            : 'Marque as indústrias que você atende nesta loja. Isso fica salvo para as próximas visitas.'}
         </Text>
       </View>
 
       <ScrollView style={[screenContainer, flexScroll]} contentContainerStyle={styles.list}>
-        {isIndustries ? (
-          <>
-            <TouchableOpacity
-              style={styles.selectAll}
-              onPress={() => {
-                if (selectedIndustryIds.size === allIndustries.length) {
-                  setSelectedIndustryIds(new Set());
-                } else {
-                  setSelectedIndustryIds(new Set(allIndustries.map((i) => i.id)));
-                }
-              }}
-            >
-              <Text style={styles.selectAllText}>
-                {selectedIndustryIds.size === allIndustries.length
-                  ? 'Limpar seleção'
-                  : 'Selecionar todas'}
-              </Text>
-            </TouchableOpacity>
-
-            {allIndustries.map((industry) => {
-              const isSelected = selectedIndustryIds.has(industry.id);
-              return (
-                <TouchableOpacity
-                  key={industry.id}
-                  style={[styles.row, isSelected && styles.rowSelected]}
-                  onPress={() => toggleIndustry(industry.id)}
-                  activeOpacity={0.7}
-                >
-                  <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
-                    {isSelected ? <Text style={styles.checkMark}>✓</Text> : null}
-                  </View>
-                  <View style={styles.rowText}>
-                    <Text style={styles.itemName} numberOfLines={2}>
-                      {industry.name}
-                    </Text>
-                    <Text style={styles.itemMeta}>Cód. {industry.code}</Text>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-          </>
-        ) : (
+        {phase === 'stores' ? (
           <>
             <TextInput
               style={styles.search}
@@ -224,7 +247,7 @@ export default function GeneralOnboardingScreen({
               style={styles.selectAll}
               onPress={() => {
                 const ids = filteredStores.map((s) => s.id);
-                const allSelected = ids.every((id) => selectedStoreIds.has(id));
+                const allSelected = ids.length > 0 && ids.every((id) => selectedStoreIds.has(id));
                 if (allSelected) {
                   setSelectedStoreIds((prev) => {
                     const next = new Set(prev);
@@ -247,7 +270,6 @@ export default function GeneralOnboardingScreen({
                   : 'Selecionar filtradas'}
               </Text>
             </TouchableOpacity>
-
             <Text style={styles.countHint}>
               {selectedStoreIds.size} loja(s) selecionada(s)
               {availableStores.length > 0 ? ` · ${availableStores.length} disponíveis` : ''}
@@ -284,39 +306,99 @@ export default function GeneralOnboardingScreen({
               </Text>
             ) : null}
           </>
+        ) : loadingStoreIndustries ? (
+          <View style={styles.centeredInline}>
+            <ActivityIndicator color={colors.primary[400]} />
+            <Text style={styles.loadingText}>Carregando indústrias da loja...</Text>
+          </View>
+        ) : (
+          <>
+            <TouchableOpacity
+              style={styles.selectAll}
+              onPress={() => {
+                if (selectedIndustryIds.size === storeIndustryOptions.length) {
+                  setSelectedIndustryIds(new Set());
+                } else {
+                  setSelectedIndustryIds(new Set(storeIndustryOptions.map((i) => i.id)));
+                }
+              }}
+            >
+              <Text style={styles.selectAllText}>
+                {selectedIndustryIds.size === storeIndustryOptions.length &&
+                storeIndustryOptions.length > 0
+                  ? 'Limpar seleção'
+                  : 'Selecionar todas'}
+              </Text>
+            </TouchableOpacity>
+
+            {storeIndustryOptions.map((industry) => {
+              const isSelected = selectedIndustryIds.has(industry.id);
+              return (
+                <TouchableOpacity
+                  key={industry.id}
+                  style={[styles.row, isSelected && styles.rowSelected]}
+                  onPress={() => toggleIndustry(industry.id)}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
+                    {isSelected ? <Text style={styles.checkMark}>✓</Text> : null}
+                  </View>
+                  <View style={styles.rowText}>
+                    <Text style={styles.itemName} numberOfLines={2}>
+                      {industry.name}
+                    </Text>
+                    <Text style={styles.itemMeta}>Cód. {industry.code}</Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+
+            {storeIndustryOptions.length === 0 ? (
+              <Text style={styles.empty}>
+                Esta loja não tem indústrias cadastradas. Peça ao admin para vincular indústrias à
+                loja.
+              </Text>
+            ) : null}
+          </>
         )}
       </ScrollView>
 
       <View style={styles.footer}>
-        {isIndustries ? (
+        {phase === 'stores' ? (
           <Button
             variant="primary"
             size="lg"
-            onPress={saveIndustriesAndContinue}
-            disabled={selectedIndustryIds.size === 0 || saving}
+            onPress={saveStoresAndContinue}
+            disabled={selectedStoreIds.size === 0 || saving}
             isLoading={saving}
             style={{ width: '100%' }}
           >
-            Continuar ({selectedIndustryIds.size})
+            Continuar para indústrias ({selectedStoreIds.size})
           </Button>
         ) : (
           <>
             <Button
               variant="primary"
               size="lg"
-              onPress={saveStoresAndFinish}
-              disabled={selectedStoreIds.size === 0 || saving}
+              onPress={saveStoreIndustriesAndContinue}
+              disabled={
+                saving ||
+                loadingStoreIndustries ||
+                (storeIndustryOptions.length > 0 && selectedIndustryIds.size === 0)
+              }
               isLoading={saving}
               style={{ width: '100%' }}
             >
-              Confirmar lojas ({selectedStoreIds.size})
+              {queueIndex + 1 < queue.length
+                ? `Salvar e próxima loja (${queueIndex + 1}/${queue.length})`
+                : `Finalizar (${queueIndex + 1}/${queue.length})`}
             </Button>
             <TouchableOpacity
               style={styles.backBtn}
-              onPress={() => setStep('industries')}
+              onPress={() => setPhase('stores')}
               disabled={saving}
             >
-              <Text style={styles.backText}>← Voltar para indústrias</Text>
+              <Text style={styles.backText}>← Voltar para lojas</Text>
             </TouchableOpacity>
           </>
         )}
@@ -327,11 +409,16 @@ export default function GeneralOnboardingScreen({
           </TouchableOpacity>
         ) : (
           <Text style={styles.hint}>
-            {isIndustries
-              ? 'Selecione pelo menos uma indústria para continuar.'
-              : 'Selecione pelo menos uma loja para finalizar.'}
+            {phase === 'stores'
+              ? 'Selecione pelo menos uma loja para continuar.'
+              : 'Selecione as indústrias desta loja para seguir.'}
           </Text>
         )}
+        {phase === 'store-industries' ? (
+          <Text style={styles.progressHint}>
+            Total estimado de etapas: {totalSteps} · etapa atual {currentStepNumber}
+          </Text>
+        ) : null}
       </View>
     </View>
   );
@@ -344,6 +431,10 @@ const styles = StyleSheet.create({
   },
   centered: {
     justifyContent: 'center',
+    alignItems: 'center',
+  },
+  centeredInline: {
+    paddingVertical: 40,
     alignItems: 'center',
   },
   loadingText: {
@@ -465,6 +556,12 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: colors.text.tertiary,
     fontSize: 12,
+  },
+  progressHint: {
+    marginTop: 4,
+    textAlign: 'center',
+    color: colors.text.tertiary,
+    fontSize: 11,
   },
   backBtn: {
     marginTop: 12,
