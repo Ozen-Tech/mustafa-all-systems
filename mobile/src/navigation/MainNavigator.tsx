@@ -378,7 +378,6 @@ export default function MainNavigator() {
     return (
       <GeneralOnboardingScreen
         allowSkip={editingGeneral}
-        initialStep="industries"
         onDone={() => {
           setNeedsGeneralOnboarding(false);
           setEditingGeneral(false);

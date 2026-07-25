@@ -1,9 +1,9 @@
-import React, { useCallback, useFocusEffect } from 'react';
+import React, { useCallback } from 'react';
 import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import { useGeneralOnboarding } from '../navigation/MainNavigator';
 import { storeService, Store } from '../services/storeService';
-import { Industry } from '../services/industryService';
 import { colors, theme } from '../styles/theme';
 import { flexScroll } from '../styles/webLayout';
 import { layout, screenStyles } from '../styles/layout';
@@ -22,19 +22,19 @@ function getInitials(name?: string) {
 export default function ProfileScreen() {
   const { user, logout } = useAuth();
   const { openGeneralOnboarding } = useGeneralOnboarding();
-  const [generalIndustries, setGeneralIndustries] = React.useState<Industry[]>([]);
   const [myStores, setMyStores] = React.useState<Store[]>([]);
+  const [pendingCount, setPendingCount] = React.useState(0);
 
   const reload = useCallback(() => {
     storeService
       .getOnboarding()
       .then((res) => {
-        setGeneralIndustries((res.industries || []) as Industry[]);
         setMyStores(res.stores || []);
+        setPendingCount(res.storesPendingIndustries?.length || 0);
       })
       .catch(() => {
-        setGeneralIndustries([]);
         setMyStores([]);
+        setPendingCount(0);
       });
   }, []);
 
@@ -71,34 +71,25 @@ export default function ProfileScreen() {
         </Card>
       </Section>
 
-      <Section title="Minhas indústrias">
-        <Card shadow>
-          {generalIndustries.length > 0 ? (
-            <Text style={styles.listText}>
-              {generalIndustries.map((i) => i.name).join(' · ')}
-            </Text>
-          ) : (
-            <Text style={styles.emptyText}>Nenhuma indústria geral definida ainda.</Text>
-          )}
-        </Card>
-      </Section>
-
-      <Section title="Minhas lojas">
+      <Section title="Minha rota">
         <Card shadow>
           {myStores.length > 0 ? (
-            <Text style={styles.listText}>
-              {myStores.map((s) => s.name).join(' · ')}
-            </Text>
+            <Text style={styles.listText}>{myStores.map((s) => s.name).join(' · ')}</Text>
           ) : (
             <Text style={styles.emptyText}>Nenhuma loja na rota ainda.</Text>
           )}
+          {pendingCount > 0 ? (
+            <Text style={styles.pendingText}>
+              {pendingCount} loja(s) ainda sem indústrias configuradas.
+            </Text>
+          ) : null}
           <Button
             variant="outline"
             size="md"
             onPress={openGeneralOnboarding}
             style={styles.editBtn}
           >
-            Editar indústrias e lojas
+            Editar lojas e indústrias
           </Button>
         </Card>
       </Section>
@@ -173,6 +164,11 @@ const styles = StyleSheet.create({
   emptyText: {
     color: colors.text.tertiary,
     marginBottom: theme.spacing.md,
+  },
+  pendingText: {
+    color: colors.warning,
+    marginBottom: theme.spacing.md,
+    fontSize: 13,
   },
   editBtn: {
     alignSelf: 'stretch',

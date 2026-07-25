@@ -1000,7 +1000,8 @@ const setMyRouteSchema = z.object({
 });
 
 /**
- * Status do onboarding geral (indústrias + lojas da rota).
+ * Status do onboarding geral: lojas da rota + indústrias por loja.
+ * Fluxo: escolher lojas → escolher indústrias em cada loja.
  * GET /promoters/me/onboarding
  */
 export async function getMyOnboarding(req: AuthRequest, res: Response) {
@@ -1015,24 +1016,36 @@ export async function getMyOnboarding(req: AuthRequest, res: Response) {
       return res.status(403).json({ message: 'Apenas promotores' });
     }
 
-    const [generalAssignments, routeAssignments] = await Promise.all([
-      prisma.industryAssignment.findMany({
-        where: { promoterId, storeId: null, isActive: true },
-        include: { industry: true },
-        orderBy: { industry: { name: 'asc' } },
-      }),
-      prisma.routeAssignment.findMany({
-        where: { promoterId, isActive: true },
-        include: { store: true },
-        orderBy: { order: 'asc' },
-      }),
-    ]);
-
-    const industries = generalAssignments
-      .map((a) => a.industry)
-      .filter((ind) => ind && ind.isActive !== false);
+    const routeAssignments = await prisma.routeAssignment.findMany({
+      where: { promoterId, isActive: true },
+      include: { store: true },
+      orderBy: { order: 'asc' },
+    });
 
     const stores = routeAssignments.map((a) => a.store).filter(Boolean);
+    const storeIds = stores.map((s) => s.id);
+
+    const storeAssignments = storeIds.length
+      ? await prisma.industryAssignment.findMany({
+          where: {
+            promoterId,
+            isActive: true,
+            storeId: { in: storeIds },
+          },
+          select: { storeId: true, industryId: true },
+        })
+      : [];
+
+    const industryIdsByStore: Record<string, string[]> = {};
+    for (const a of storeAssignments) {
+      if (!a.storeId) continue;
+      if (!industryIdsByStore[a.storeId]) industryIdsByStore[a.storeId] = [];
+      industryIdsByStore[a.storeId].push(a.industryId);
+    }
+
+    const storesPendingIndustries = stores.filter(
+      (s) => !(industryIdsByStore[s.id]?.length > 0)
+    );
 
     const storeWhere: { state?: string } = {};
     if (user.state) {
@@ -1053,15 +1066,16 @@ export async function getMyOnboarding(req: AuthRequest, res: Response) {
       },
     });
 
-    const needsIndustries = industries.length === 0;
     const needsStores = stores.length === 0;
+    const needsStoreIndustries = storesPendingIndustries.length > 0;
 
     res.json({
-      needsGeneralOnboarding: needsIndustries || needsStores,
-      needsIndustries,
+      needsGeneralOnboarding: needsStores || needsStoreIndustries,
       needsStores,
-      industries,
+      needsStoreIndustries,
       stores,
+      storesPendingIndustries,
+      industryIdsByStore,
       availableStores,
       promoterState: user.state || null,
     });
