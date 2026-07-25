@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useFocusEffect } from 'react';
 import { View, Text, ScrollView, StyleSheet } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { useGeneralOnboarding } from '../navigation/MainNavigator';
-import { industryService, Industry } from '../services/industryService';
+import { storeService, Store } from '../services/storeService';
+import { Industry } from '../services/industryService';
 import { colors, theme } from '../styles/theme';
 import { flexScroll } from '../styles/webLayout';
 import { layout, screenStyles } from '../styles/layout';
@@ -21,14 +22,27 @@ function getInitials(name?: string) {
 export default function ProfileScreen() {
   const { user, logout } = useAuth();
   const { openGeneralOnboarding } = useGeneralOnboarding();
-  const [generalIndustries, setGeneralIndustries] = useState<Industry[]>([]);
+  const [generalIndustries, setGeneralIndustries] = React.useState<Industry[]>([]);
+  const [myStores, setMyStores] = React.useState<Store[]>([]);
 
-  useEffect(() => {
-    industryService
-      .getGeneralOnboarding()
-      .then((res) => setGeneralIndustries(res.industries || []))
-      .catch(() => setGeneralIndustries([]));
+  const reload = useCallback(() => {
+    storeService
+      .getOnboarding()
+      .then((res) => {
+        setGeneralIndustries((res.industries || []) as Industry[]);
+        setMyStores(res.stores || []);
+      })
+      .catch(() => {
+        setGeneralIndustries([]);
+        setMyStores([]);
+      });
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      reload();
+    }, [reload])
+  );
 
   return (
     <ScrollView style={[screenStyles.root, flexScroll]} contentContainerStyle={styles.content}>
@@ -60,19 +74,31 @@ export default function ProfileScreen() {
       <Section title="Minhas indústrias">
         <Card shadow>
           {generalIndustries.length > 0 ? (
-            <Text style={styles.industryList}>
+            <Text style={styles.listText}>
               {generalIndustries.map((i) => i.name).join(' · ')}
             </Text>
           ) : (
-            <Text style={styles.industryEmpty}>Nenhuma indústria geral definida ainda.</Text>
+            <Text style={styles.emptyText}>Nenhuma indústria geral definida ainda.</Text>
+          )}
+        </Card>
+      </Section>
+
+      <Section title="Minhas lojas">
+        <Card shadow>
+          {myStores.length > 0 ? (
+            <Text style={styles.listText}>
+              {myStores.map((s) => s.name).join(' · ')}
+            </Text>
+          ) : (
+            <Text style={styles.emptyText}>Nenhuma loja na rota ainda.</Text>
           )}
           <Button
             variant="outline"
             size="md"
             onPress={openGeneralOnboarding}
-            style={styles.editIndustries}
+            style={styles.editBtn}
           >
-            Editar indústrias
+            Editar indústrias e lojas
           </Button>
         </Card>
       </Section>
@@ -139,16 +165,16 @@ const styles = StyleSheet.create({
     color: colors.text.primary,
     fontWeight: '600',
   },
-  industryList: {
+  listText: {
     color: colors.text.primary,
     lineHeight: 22,
     marginBottom: theme.spacing.md,
   },
-  industryEmpty: {
+  emptyText: {
     color: colors.text.tertiary,
     marginBottom: theme.spacing.md,
   },
-  editIndustries: {
+  editBtn: {
     alignSelf: 'stretch',
   },
   logout: {

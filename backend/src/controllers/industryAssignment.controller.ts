@@ -251,8 +251,14 @@ export async function getMyGeneralIndustries(req: AuthRequest, res: Response) {
       .map((a) => a.industry)
       .filter((ind) => ind && ind.isActive !== false);
 
+    const routeCount = await prisma.routeAssignment.count({
+      where: { promoterId, isActive: true },
+    });
+
     res.json({
-      needsGeneralOnboarding: industries.length === 0,
+      needsGeneralOnboarding: industries.length === 0 || routeCount === 0,
+      needsIndustries: industries.length === 0,
+      needsStores: routeCount === 0,
       industries,
     });
   } catch (error) {

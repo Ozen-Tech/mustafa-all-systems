@@ -10,7 +10,7 @@ import HistoryScreen from '../screens/HistoryScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import InformationHubScreen from '../screens/InformationHubScreen';
 import GeneralOnboardingScreen from '../screens/GeneralOnboardingScreen';
-import { industryService } from '../services/industryService';
+import { storeService } from '../services/storeService';
 import HomeIcon from '../components/icons/HomeIcon';
 import ClockIcon from '../components/icons/ClockIcon';
 import UserIcon from '../components/icons/UserIcon';
@@ -354,7 +354,7 @@ export default function MainNavigator() {
     let mounted = true;
     (async () => {
       try {
-        const status = await industryService.getGeneralOnboarding();
+        const status = await storeService.getOnboarding();
         if (mounted) {
           setNeedsGeneralOnboarding(!!status.needsGeneralOnboarding);
         }
@@ -378,12 +378,7 @@ export default function MainNavigator() {
     return (
       <GeneralOnboardingScreen
         allowSkip={editingGeneral}
-        title={editingGeneral ? 'Editar indústrias' : 'Quais indústrias você trabalha?'}
-        subtitle={
-          editingGeneral
-            ? 'Atualize as indústrias que você atende. Nas próximas lojas novas, elas virão pré-selecionadas.'
-            : 'Marque as indústrias que você atende no dia a dia. Isso facilita o setup em cada loja — você só confirma na primeira visita.'
-        }
+        initialStep="industries"
         onDone={() => {
           setNeedsGeneralOnboarding(false);
           setEditingGeneral(false);

@@ -995,3 +995,163 @@ export async function getVisitCoverage(req: AuthRequest, res: Response) {
   }
 }
 
+const setMyRouteSchema = z.object({
+  storeIds: z.array(z.string().uuid()).min(1, 'Selecione pelo menos uma loja'),
+});
+
+/**
+ * Status do onboarding geral (indústrias + lojas da rota).
+ * GET /promoters/me/onboarding
+ */
+export async function getMyOnboarding(req: AuthRequest, res: Response) {
+  try {
+    const promoterId = req.userId!;
+
+    const user = await prisma.user.findUnique({
+      where: { id: promoterId },
+      select: { id: true, state: true, role: true },
+    });
+    if (!user || user.role !== 'PROMOTER') {
+      return res.status(403).json({ message: 'Apenas promotores' });
+    }
+
+    const [generalAssignments, routeAssignments] = await Promise.all([
+      prisma.industryAssignment.findMany({
+        where: { promoterId, storeId: null, isActive: true },
+        include: { industry: true },
+        orderBy: { industry: { name: 'asc' } },
+      }),
+      prisma.routeAssignment.findMany({
+        where: { promoterId, isActive: true },
+        include: { store: true },
+        orderBy: { order: 'asc' },
+      }),
+    ]);
+
+    const industries = generalAssignments
+      .map((a) => a.industry)
+      .filter((ind) => ind && ind.isActive !== false);
+
+    const stores = routeAssignments.map((a) => a.store).filter(Boolean);
+
+    const storeWhere: { state?: string } = {};
+    if (user.state) {
+      storeWhere.state = user.state;
+    }
+
+    const availableStores = await prisma.store.findMany({
+      where: storeWhere,
+      orderBy: [{ name: 'asc' }],
+      select: {
+        id: true,
+        name: true,
+        address: true,
+        state: true,
+        code: true,
+        latitude: true,
+        longitude: true,
+      },
+    });
+
+    const needsIndustries = industries.length === 0;
+    const needsStores = stores.length === 0;
+
+    res.json({
+      needsGeneralOnboarding: needsIndustries || needsStores,
+      needsIndustries,
+      needsStores,
+      industries,
+      stores,
+      availableStores,
+      promoterState: user.state || null,
+    });
+  } catch (error) {
+    console.error('Get my onboarding error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+}
+
+/**
+ * Promotor define as lojas da própria rota (onboarding / edição no perfil).
+ * PUT /promoters/me/route
+ */
+export async function setMyRoute(req: AuthRequest, res: Response) {
+  try {
+    const promoterId = req.userId!;
+    if (req.userRole !== 'PROMOTER') {
+      return res.status(403).json({ message: 'Apenas promotores podem definir a própria rota.' });
+    }
+
+    const { storeIds } = setMyRouteSchema.parse(req.body);
+    const uniqueIds = [...new Set(storeIds)];
+
+    const user = await prisma.user.findUnique({
+      where: { id: promoterId },
+      select: { state: true },
+    });
+
+    const stores = await prisma.store.findMany({
+      where: { id: { in: uniqueIds } },
+    });
+    if (stores.length !== uniqueIds.length) {
+      return res.status(400).json({ message: 'Uma ou mais lojas não foram encontradas.' });
+    }
+
+    if (user?.state) {
+      const outside = stores.filter((s) => s.state && s.state !== user.state);
+      if (outside.length > 0) {
+        return res.status(400).json({
+          message: `Selecione apenas lojas do seu estado (${user.state}).`,
+        });
+      }
+    }
+
+    const supervisorLink = await prisma.promoterSupervisor.findFirst({
+      where: { promoterId },
+      select: { supervisorId: true },
+    });
+
+    const existing = await prisma.routeAssignment.findMany({
+      where: { promoterId },
+      select: { storeId: true, supervisorId: true, expectedHours: true },
+    });
+    const prevByStore = new Map(existing.map((e) => [e.storeId, e]));
+
+    await prisma.$transaction([
+      prisma.routeAssignment.deleteMany({ where: { promoterId } }),
+      ...uniqueIds.map((storeId, index) =>
+        prisma.routeAssignment.create({
+          data: {
+            promoterId,
+            storeId,
+            order: index,
+            isActive: true,
+            expectedHours: prevByStore.get(storeId)?.expectedHours ?? null,
+            supervisorId:
+              prevByStore.get(storeId)?.supervisorId ||
+              supervisorLink?.supervisorId ||
+              null,
+          },
+        })
+      ),
+    ]);
+
+    const route = await prisma.routeAssignment.findMany({
+      where: { promoterId, isActive: true },
+      include: { store: true },
+      orderBy: { order: 'asc' },
+    });
+
+    res.json({
+      message: 'Lojas salvas na sua rota',
+      stores: route.map((a) => a.store),
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: error.errors[0]?.message ?? 'Dados inválidos' });
+    }
+    console.error('Set my route error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+}
+

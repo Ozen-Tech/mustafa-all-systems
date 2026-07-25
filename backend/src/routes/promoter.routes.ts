@@ -11,12 +11,16 @@ import {
   getDailySummary,
   getVisitCoverage,
   getVisitIndustries,
+  getMyOnboarding,
+  setMyRoute,
 } from '../controllers/promoter.controller';
 import { authenticate } from '../middleware/auth';
 
 const router = Router();
 
 router.use(authenticate);
+router.get('/me/onboarding', getMyOnboarding);
+router.put('/me/route', setMyRoute);
 router.get('/stores', getStores);
 router.get('/visits', getVisits);
 router.post('/checkin', checkIn);
