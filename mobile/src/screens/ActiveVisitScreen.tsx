@@ -21,7 +21,11 @@ import { colors, theme } from '../styles/theme';
 import { flexScroll, screenContainer } from '../styles/webLayout';
 import Button from '../components/ui/Button';
 import { requestForegroundPermissions, getCurrentPosition } from '../utils/locationHelper';
-import { pickMultiplePhotos, pickSinglePhoto } from '../utils/imagePickerHelper';
+import {
+  isGalleryBlockedOnPlatform,
+  pickMultiplePhotos,
+  pickSinglePhoto,
+} from '../utils/imagePickerHelper';
 import {
   ensurePersistablePhotoUri,
   isFragilePhotoUri,
@@ -794,12 +798,14 @@ export default function ActiveVisitScreen({ route }: any) {
           <View style={styles.industryContent}>
             {renderPhotoGrid(industryPhotos, industry.id)}
             <View style={styles.industryActions}>
-              <TouchableOpacity
-                style={[styles.actionButton, styles.galleryButton]}
-                onPress={() => pickImagesForIndustry(industry.id)}
-              >
-                <Text style={styles.actionButtonText}>📁 Galeria</Text>
-              </TouchableOpacity>
+              {!isGalleryBlockedOnPlatform() ? (
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.galleryButton]}
+                  onPress={() => pickImagesForIndustry(industry.id)}
+                >
+                  <Text style={styles.actionButtonText}>📁 Galeria</Text>
+                </TouchableOpacity>
+              ) : null}
               <TouchableOpacity
                 style={[styles.actionButton, styles.cameraButton]}
                 onPress={() => takePhotoForIndustry(industry.id)}
@@ -1062,12 +1068,14 @@ export default function ActiveVisitScreen({ route }: any) {
           <View>
             {renderPhotoGrid(getPhotosWithoutIndustry(), null)}
             <View style={styles.industryActions}>
-              <TouchableOpacity
-                style={[styles.actionButton, styles.galleryButton]}
-                onPress={pickImagesNoIndustry}
-              >
-                <Text style={styles.actionButtonText}>📁 Galeria</Text>
-              </TouchableOpacity>
+              {!isGalleryBlockedOnPlatform() ? (
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.galleryButton]}
+                  onPress={pickImagesNoIndustry}
+                >
+                  <Text style={styles.actionButtonText}>📁 Galeria</Text>
+                </TouchableOpacity>
+              ) : null}
               <TouchableOpacity
                 style={[styles.actionButton, styles.cameraButton]}
                 onPress={takePhotoNoIndustry}
