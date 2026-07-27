@@ -3,17 +3,13 @@ import * as ImagePicker from 'expo-image-picker';
 import { showAlert } from './alertHelper';
 import { ensurePersistablePhotoUri } from './photoUri';
 import {
-  isPhotoTakenToday,
+  checkGalleryAssetTakenToday,
   photoDateRejectMessage,
 } from './photoDateValidation';
 
 /** Na web, qualidade alta gera base64 enorme e estoura rede/limite do Cloud Run. */
 const DEFAULT_QUALITY = Platform.OS === 'web' ? 0.5 : 0.8;
 const MAX_WEB_QUALITY = 0.55;
-
-const GALLERY_BLOCKED_WEB_TITLE = 'Galeria indisponível';
-const GALLERY_BLOCKED_WEB_MESSAGE =
-  'No app web só é permitido tirar fotos pela câmera, para garantir que sejam do dia. Use o botão Câmera.';
 
 function resolveQuality(requested?: number): number {
   const q = requested ?? DEFAULT_QUALITY;
@@ -58,24 +54,32 @@ async function launchCamera(quality: number): Promise<string | null> {
   });
 
   if (!result.canceled && result.assets[0]?.uri) {
+    // Foto tirada agora — sempre do dia.
     return normalizePickedUri(result.assets[0].uri);
   }
   return null;
 }
 
-function validateGalleryAsset(
+/**
+ * Valida data do dia **antes** de comprimir (compressão remove EXIF no web).
+ */
+async function acceptGalleryAsset(
   asset: ImagePicker.ImagePickerAsset
-): { ok: true } | { ok: false; reason: 'missing_date' | 'not_today' } {
-  const exif = (asset.exif ?? null) as Record<string, unknown> | null;
-  return isPhotoTakenToday(exif);
+): Promise<{ uri: string } | { rejected: 'missing_date' | 'not_today' }> {
+  const check = await checkGalleryAssetTakenToday({
+    uri: asset.uri,
+    exif: (asset.exif ?? null) as Record<string, unknown> | null,
+  });
+  if (!check.ok) {
+    return { rejected: check.reason };
+  }
+  if (!asset.uri) {
+    return { rejected: 'missing_date' };
+  }
+  return { uri: await normalizePickedUri(asset.uri) };
 }
 
 async function launchGallerySingle(quality: number): Promise<string | null> {
-  if (Platform.OS === 'web') {
-    showAlert(GALLERY_BLOCKED_WEB_TITLE, GALLERY_BLOCKED_WEB_MESSAGE);
-    return null;
-  }
-
   const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (permission.status !== 'granted') {
     showAlert('Permissão necessária', 'É necessário permitir acesso à galeria ou câmera.');
@@ -93,20 +97,17 @@ async function launchGallerySingle(quality: number): Promise<string | null> {
     return null;
   }
 
-  const asset = result.assets[0];
-  const check = validateGalleryAsset(asset);
-  if (!check.ok) {
-    const { title, message } = photoDateRejectMessage(check.reason);
+  const outcome = await acceptGalleryAsset(result.assets[0]);
+  if ('rejected' in outcome) {
+    const { title, message } = photoDateRejectMessage(outcome.rejected);
     showAlert(title, message);
     return null;
   }
-
-  return normalizePickedUri(asset.uri);
+  return outcome.uri;
 }
 
 /**
- * Preferencialmente câmera. No PWA não há fallback para galeria (sem EXIF confiável).
- * No nativo, se a câmera falhar, tenta galeria com validação de data do dia.
+ * Preferencialmente câmera; se cancelar/indisponível, tenta galeria com validação do dia.
  */
 export async function pickSinglePhoto(options?: { quality?: number }): Promise<string | null> {
   const quality = resolveQuality(options?.quality);
@@ -118,34 +119,16 @@ export async function pickSinglePhoto(options?: { quality?: number }): Promise<s
     if (error instanceof Error && error.message.includes('Não foi possível ler')) {
       throw error;
     }
-    // Câmera indisponível — no nativo tenta galeria; no web alerta.
-    if (Platform.OS === 'web') {
-      showAlert(
-        'Câmera indisponível',
-        'Não foi possível abrir a câmera. Verifique a permissão e tente novamente. A galeria não é permitida no app web.'
-      );
-      return null;
-    }
-  }
-
-  if (Platform.OS === 'web') {
-    // Cancelou a câmera ou sem permissão já alertada — sem fallback galeria.
-    return null;
   }
 
   return launchGallerySingle(quality);
 }
 
-/** Seleção múltipla da galeria (fluxo de indústrias). Bloqueada no PWA. */
+/** Seleção da galeria (fluxo de indústrias). Só aceita fotos tiradas hoje. */
 export async function pickMultiplePhotos(options?: {
   quality?: number;
   selectionLimit?: number;
 }): Promise<string[]> {
-  if (Platform.OS === 'web') {
-    showAlert(GALLERY_BLOCKED_WEB_TITLE, GALLERY_BLOCKED_WEB_MESSAGE);
-    return [];
-  }
-
   const quality = resolveQuality(options?.quality);
   const selectionLimit = options?.selectionLimit ?? 20;
 
@@ -171,13 +154,13 @@ export async function pickMultiplePhotos(options?: {
 
   for (const asset of result.assets) {
     if (!asset.uri) continue;
-    const check = validateGalleryAsset(asset);
-    if (!check.ok) {
-      if (check.reason === 'not_today') rejectedNotToday += 1;
+    const outcome = await acceptGalleryAsset(asset);
+    if ('rejected' in outcome) {
+      if (outcome.rejected === 'not_today') rejectedNotToday += 1;
       else rejectedMissing += 1;
       continue;
     }
-    accepted.push(await normalizePickedUri(asset.uri));
+    accepted.push(outcome.uri);
   }
 
   const rejected = rejectedMissing + rejectedNotToday;
@@ -191,14 +174,9 @@ export async function pickMultiplePhotos(options?: {
     }
     showAlert(
       'Algumas fotos foram rejeitadas',
-      `${rejected} foto(s) não aceitas (${parts.join('; ')}). Só entram fotos tiradas hoje. Use a câmera se precisar.`
+      `${rejected} foto(s) não aceitas (${parts.join('; ')}). Só entram fotos tiradas hoje.`
     );
   }
 
   return accepted;
-}
-
-/** True no PWA/web — UI pode esconder o botão Galeria. */
-export function isGalleryBlockedOnPlatform(): boolean {
-  return Platform.OS === 'web';
 }
