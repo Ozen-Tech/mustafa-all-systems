@@ -7,9 +7,9 @@ import {
   photoDateRejectMessage,
 } from './photoDateValidation';
 
-/** Na web, qualidade alta gera base64 enorme e estoura rede/limite do Cloud Run. */
-const DEFAULT_QUALITY = Platform.OS === 'web' ? 0.5 : 0.8;
-const MAX_WEB_QUALITY = 0.55;
+/** Na web, qualidade alta gera base64 enorme e estoura memória/rede no Android. */
+const DEFAULT_QUALITY = Platform.OS === 'web' ? 0.35 : 0.8;
+const MAX_WEB_QUALITY = 0.4;
 
 function resolveQuality(requested?: number): number {
   const q = requested ?? DEFAULT_QUALITY;

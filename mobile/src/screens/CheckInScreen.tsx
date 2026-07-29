@@ -4,16 +4,17 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  Alert,
   ActivityIndicator,
   ScrollView,
   Image,
+  Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation, NavigationProp } from '@react-navigation/native';
 import { visitService } from '../services/visitService';
 import { photoService } from '../services/photoService';
 import { pickSinglePhoto } from '../utils/imagePickerHelper';
+import { preparePhotoForWebUpload } from '../utils/photoUri';
 import { useVisitFlow } from '../features/visits';
 import { useAuth } from '../context/AuthContext';
 import { colors, theme } from '../styles/theme';
@@ -120,7 +121,8 @@ export default function CheckInScreen({ route }: any) {
 
   async function takePhoto() {
     try {
-      const uri = await pickSinglePhoto({ quality: 0.8 });
+      // Qualidade baixa no PWA: evita reload por falta de memória no envio do check-in.
+      const uri = await pickSinglePhoto({ quality: Platform.OS === 'web' ? 0.35 : 0.7 });
       if (uri) {
         setPhotoUri(uri);
         setShowPreview(true);
@@ -177,14 +179,21 @@ export default function CheckInScreen({ route }: any) {
       // 2. Agora que temos o visitId real, fazer upload da foto
       console.log('📸 [CheckIn] Obtendo presigned URL com visitId real...');
       let photoUrl = '';
-      
+      let uploadUri = photoUri;
+
       try {
+        if (Platform.OS === 'web') {
+          uploadUri = await preparePhotoForWebUpload(photoUri);
+          // Troca preview pela versão leve para liberar memória antes do POST
+          setPhotoUri(uploadUri);
+        }
+
         const { url: photoUrlUploaded } = await photoService.uploadPhoto({
           visitId,
           type: 'FACADE_CHECKIN',
           contentType: 'image/jpeg',
           extension: 'jpg',
-          fileUri: photoUri,
+          fileUri: uploadUri,
         });
 
         console.log('✅ [CheckIn] Upload da foto concluído com sucesso');

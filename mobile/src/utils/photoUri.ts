@@ -2,8 +2,10 @@
  * Utilitários para URIs de foto locais (nativo + web/PWA).
  */
 
-const WEB_MAX_EDGE = 1600;
-const WEB_JPEG_QUALITY = 0.55;
+/** Limites agressivos no PWA — data URL grande + JSON no upload derruba Chrome Android por OOM. */
+const WEB_MAX_EDGE = 1024;
+const WEB_JPEG_QUALITY = 0.4;
+const WEB_UPLOAD_TARGET_BYTES = 320_000;
 
 export function isLocalPhotoUri(uri: string | undefined | null): boolean {
   if (!uri) return false;
@@ -38,6 +40,13 @@ export function isPendingLocalPhoto(photo: {
   return isStableLocalPhotoUri(photo.uri);
 }
 
+/** Estimativa do tamanho binário a partir de data URL. */
+export function estimateDataUrlBytes(dataUrl: string): number {
+  const comma = dataUrl.indexOf(',');
+  const b64 = comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl;
+  return Math.floor(b64.length * 0.75);
+}
+
 function loadImageFromUri(uri: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -67,10 +76,37 @@ export async function compressDataUrl(
     const ctx = canvas.getContext('2d');
     if (!ctx) return dataUrl;
     ctx.drawImage(img, 0, 0, width, height);
-    return canvas.toDataURL('image/jpeg', quality);
+    img.src = '';
+    const out = canvas.toDataURL('image/jpeg', quality);
+    canvas.width = 0;
+    canvas.height = 0;
+    return out;
   } catch {
     return dataUrl;
   }
+}
+
+/**
+ * Comprime em passos até caber no alvo (~320KB). Usado no upload PWA para evitar reload por memória.
+ */
+export async function preparePhotoForWebUpload(uri: string): Promise<string> {
+  let dataUrl = uri.startsWith('data:image/') ? uri : await toPersistablePhotoUri(uri);
+  if (!dataUrl.startsWith('data:image/')) return dataUrl;
+
+  const steps: Array<[number, number]> = [
+    [1024, 0.4],
+    [900, 0.36],
+    [720, 0.32],
+    [560, 0.28],
+  ];
+
+  for (const [edge, quality] of steps) {
+    dataUrl = await compressDataUrl(dataUrl, edge, quality);
+    if (estimateDataUrlBytes(dataUrl) <= WEB_UPLOAD_TARGET_BYTES) {
+      return dataUrl;
+    }
+  }
+  return dataUrl;
 }
 
 /** Converte URI volátil (blob) em data URL persistível no localStorage. */
