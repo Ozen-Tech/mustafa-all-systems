@@ -3,9 +3,9 @@
  */
 
 /** Limites agressivos no PWA — data URL grande + JSON no upload derruba Chrome Android por OOM. */
-const WEB_MAX_EDGE = 1024;
-const WEB_JPEG_QUALITY = 0.4;
-const WEB_UPLOAD_TARGET_BYTES = 320_000;
+const WEB_MAX_EDGE = 900;
+const WEB_JPEG_QUALITY = 0.36;
+const WEB_UPLOAD_TARGET_BYTES = 200_000;
 
 export function isLocalPhotoUri(uri: string | undefined | null): boolean {
   if (!uri) return false;
@@ -94,10 +94,10 @@ export async function preparePhotoForWebUpload(uri: string): Promise<string> {
   if (!dataUrl.startsWith('data:image/')) return dataUrl;
 
   const steps: Array<[number, number]> = [
-    [1024, 0.4],
     [900, 0.36],
     [720, 0.32],
     [560, 0.28],
+    [480, 0.25],
   ];
 
   for (const [edge, quality] of steps) {
