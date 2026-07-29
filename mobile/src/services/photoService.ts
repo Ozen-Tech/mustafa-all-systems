@@ -2,9 +2,9 @@ import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import { apiClient } from './apiClient';
 import {
-  compressDataUrl,
   isFragilePhotoUri,
   isLocalPhotoUri,
+  preparePhotoForWebUpload,
   toPersistablePhotoUri,
 } from '../utils/photoUri';
 
@@ -41,6 +41,11 @@ async function uriToBase64(fileUri: string): Promise<string> {
     );
   }
 
+  if (Platform.OS === 'web') {
+    // Compressão em passos até ~320KB — evita OOM/reload no Chrome Android no check-in.
+    return preparePhotoForWebUpload(fileUri);
+  }
+
   let dataUrl: string;
   if (fileUri.startsWith('data:image/')) {
     dataUrl = fileUri;
@@ -58,9 +63,6 @@ async function uriToBase64(fileUri: string): Promise<string> {
     }
   }
 
-  if (Platform.OS === 'web' && dataUrl.startsWith('data:image/')) {
-    return compressDataUrl(dataUrl);
-  }
   return dataUrl;
 }
 
