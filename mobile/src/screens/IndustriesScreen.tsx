@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   FlatList,
-  Alert,
 } from 'react-native';
 import { useNavigation, NavigationProp, useFocusEffect } from '@react-navigation/native';
 import { storeService, Store } from '../services/storeService';
@@ -19,6 +18,7 @@ import Input from '../components/ui/Input';
 import EmptyState from '../components/ui/EmptyState';
 import LoadingView from '../components/ui/LoadingView';
 import { ensureLocationPermission, getCurrentPosition } from '../utils/locationHelper';
+import { showAlert } from '../utils/alertHelper';
 
 type StoresNavigation = NavigationProp<Record<string, object | undefined>>;
 
@@ -44,7 +44,7 @@ export default function StoresScreen() {
       const filtered = stores.filter(
         (store) =>
           store.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          store.address.toLowerCase().includes(searchTerm.toLowerCase())
+          (store.address || '').toLowerCase().includes(searchTerm.toLowerCase())
       );
       setFilteredStores(filtered);
     }
@@ -59,7 +59,7 @@ export default function StoresScreen() {
       setCompletedStoreIdsToday(response.completedStoreIdsToday || []);
     } catch (error) {
       console.error('Erro ao carregar lojas:', error);
-      Alert.alert('Erro', 'Não foi possível carregar as lojas');
+      showAlert('Erro', 'Não foi possível carregar as lojas');
     } finally {
       setLoading(false);
     }
@@ -67,31 +67,49 @@ export default function StoresScreen() {
 
   async function handleCheckIn(store: Store) {
     if (completedStoreIdsToday.includes(store.id)) {
-      Alert.alert('Loja já visitada', 'Você já realizou visita nesta loja hoje. Não é possível fazer nova visita no mesmo dia.');
+      showAlert(
+        'Loja já visitada',
+        'Você já realizou visita nesta loja hoje. Não é possível fazer nova visita no mesmo dia.'
+      );
       return;
     }
     try {
       setCheckingIn(store.id);
 
-      // Solicitar permissão de localização usando o helper
       const hasPermission = await ensureLocationPermission();
       if (!hasPermission) {
-        setCheckingIn(null);
         return;
       }
 
-      // Obter localização atual
-      const location = await getCurrentPosition();
-      const { latitude, longitude } = location.coords;
+      // GPS com timeout curto. Se falhar, ainda abre o check-in — a tela tenta de novo.
+      let location:
+        | { latitude: number; longitude: number }
+        | undefined;
+      try {
+        const pos = await getCurrentPosition({ timeout: 12_000, maximumAge: 60_000 });
+        location = {
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+        };
+      } catch (gpsError: any) {
+        console.warn('[Stores] GPS indisponível agora, abrindo check-in mesmo assim:', gpsError);
+        showAlert(
+          'GPS demorou',
+          'Não deu para pegar a localização agora. Na próxima tela, aguarde o GPS ou toque para tentar de novo. Se aparecer aviso de memória, feche outros apps e recarregue o Promo Gestão.'
+        );
+      }
 
-      // Navegar para tela de check-in
       navigation.navigate('CheckIn', {
         store,
-        location: { latitude, longitude },
+        location,
       });
     } catch (error: any) {
       console.error('Erro ao fazer check-in:', error);
-      Alert.alert('Erro', error?.message || 'Erro ao fazer check-in. Verifique se o app tem permissão de localização.');
+      showAlert(
+        'Erro',
+        error?.message ||
+          'Erro ao iniciar check-in. Verifique a permissão de localização e a memória do celular.'
+      );
     } finally {
       setCheckingIn(null);
     }

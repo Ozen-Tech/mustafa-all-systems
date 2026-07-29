@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Alert, Image, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Image, ScrollView } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { colors, theme } from '../styles/theme';
 import { flexScroll } from '../styles/webLayout';
@@ -7,6 +7,7 @@ import { layout, screenStyles } from '../styles/layout';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import ScreenHeader from '../components/ui/ScreenHeader';
+import { showAlert } from '../utils/alertHelper';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -15,18 +16,24 @@ export default function LoginScreen() {
   const { login } = useAuth();
 
   async function handleLogin() {
-    if (!email || !password) {
-      Alert.alert('Erro', 'Preencha todos os campos');
+    const trimmedEmail = email.trim();
+    const trimmedPassword = password.trim();
+
+    if (!trimmedEmail || !trimmedPassword) {
+      showAlert('Erro', 'Preencha todos os campos');
       return;
     }
 
     setLoading(true);
     try {
-      await login(email, password);
+      await login(trimmedEmail, trimmedPassword);
     } catch (error: any) {
       let errorMessage = 'Erro ao fazer login';
 
-      if (error.response) {
+      if (error.code === 'ECONNABORTED' || error.message?.toLowerCase?.().includes('timeout')) {
+        errorMessage =
+          'A conexão demorou demais. Verifique a internet (Wi‑Fi ou dados) e tente novamente.';
+      } else if (error.response) {
         errorMessage =
           error.response.data?.message ||
           `Erro ${error.response.status}: ${error.response.statusText}`;
@@ -37,7 +44,7 @@ export default function LoginScreen() {
         errorMessage = error.message || 'Erro desconhecido';
       }
 
-      Alert.alert('Erro no Login', errorMessage);
+      showAlert('Erro no Login', errorMessage);
     } finally {
       setLoading(false);
     }
@@ -84,7 +91,13 @@ export default function LoginScreen() {
           autoCapitalize="none"
           autoCorrect={false}
         />
-        <Button variant="primary" size="lg" isLoading={loading} onPress={handleLogin} style={styles.button}>
+        <Button
+          variant="primary"
+          size="lg"
+          isLoading={loading}
+          onPress={handleLogin}
+          style={styles.button}
+        >
           Entrar
         </Button>
       </View>
