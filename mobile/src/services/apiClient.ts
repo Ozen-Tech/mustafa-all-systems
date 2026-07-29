@@ -14,6 +14,8 @@ export const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  /** Evita botão de login/check-in infinito em rede instável (PWA Android). */
+  timeout: 30_000,
 });
 
 let isRefreshing = false;
@@ -39,7 +41,7 @@ export async function refreshAccessToken(): Promise<string | null> {
     const response = await axios.post<{ accessToken: string; user?: unknown }>(
       apiConfig.ENDPOINTS.AUTH.REFRESH,
       { refreshToken },
-      { headers: { 'Content-Type': 'application/json' } }
+      { headers: { 'Content-Type': 'application/json' }, timeout: 30_000 }
     );
 
     const newAccessToken = response.data.accessToken;

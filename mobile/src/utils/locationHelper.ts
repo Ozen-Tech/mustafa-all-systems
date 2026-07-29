@@ -1,11 +1,11 @@
 /**
  * Helper centralizado para importação e uso do expo-location
- * 
- * Este helper resolve o problema de expo-location retornar undefined no Expo Go
- * e fornece uma interface consistente para todas as telas que precisam de localização.
+ *
+ * Inclui timeout obrigatório — sem isso o GPS pode travar o botão de check-in para sempre no PWA.
  */
 
-import { Alert } from 'react-native';
+import { Platform } from 'react-native';
+import { showAlert } from './alertHelper';
 
 export interface LocationCoords {
   latitude: number;
@@ -27,89 +27,79 @@ export interface LocationPermissionStatus {
   canAskAgain?: boolean;
 }
 
+const DEFAULT_POSITION_TIMEOUT_MS = 12_000;
+
 let cachedLocationModule: any = null;
 let isLocationAvailable = false;
 
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms);
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+}
+
 /**
  * Importa o módulo expo-location de forma robusta
- * Tenta diferentes formas de importação e cacheia o resultado
  */
 async function importLocationModule(): Promise<any> {
-  // Se já tentamos importar e está disponível, retorna o cache
   if (cachedLocationModule && isLocationAvailable) {
     return cachedLocationModule;
   }
 
   try {
-    console.log('📍 [locationHelper] Tentando importar expo-location...');
-    
-    // Tentar require() primeiro (funciona melhor com Metro bundler)
     const locationModule: any = require('expo-location');
-    
-    console.log('📍 [locationHelper] Módulo importado:', typeof locationModule, locationModule ? Object.keys(locationModule).slice(0, 10) : 'undefined');
-    
+
     if (!locationModule) {
       throw new Error('Módulo expo-location retornou undefined');
     }
-    
+
     let Location: any = null;
-    
-    // expo-location pode exportar de diferentes formas
+
     if (typeof locationModule === 'object') {
-      // Verificar se tem requestForegroundPermissionsAsync diretamente
       if (typeof locationModule.requestForegroundPermissionsAsync === 'function') {
         Location = locationModule;
-        console.log('📍 [locationHelper] Usando locationModule diretamente');
-      } 
-      // Verificar se tem default
-      else if (locationModule.default && typeof locationModule.default.requestForegroundPermissionsAsync === 'function') {
+      } else if (
+        locationModule.default &&
+        typeof locationModule.default.requestForegroundPermissionsAsync === 'function'
+      ) {
         Location = locationModule.default;
-        console.log('📍 [locationHelper] Usando locationModule.default');
-      }
-      // Verificar se tem Location
-      else if (locationModule.Location && typeof locationModule.Location.requestForegroundPermissionsAsync === 'function') {
+      } else if (
+        locationModule.Location &&
+        typeof locationModule.Location.requestForegroundPermissionsAsync === 'function'
+      ) {
         Location = locationModule.Location;
-        console.log('📍 [locationHelper] Usando locationModule.Location');
-      }
-      // Tentar usar o próprio módulo (pode ser namespace export)
-      else {
+      } else {
         Location = locationModule;
-        console.log('📍 [locationHelper] Usando locationModule como fallback');
       }
     } else {
       Location = locationModule;
     }
-    
-    // Verificar se o módulo Location está disponível
+
     if (!Location || typeof Location.requestForegroundPermissionsAsync !== 'function') {
-      console.error('❌ [locationHelper] expo-location não está disponível:', Location);
-      console.error('❌ [locationHelper] Tipo:', typeof Location);
-      console.error('❌ [locationHelper] Keys:', Location ? Object.keys(Location).slice(0, 10) : 'N/A');
-      throw new Error('Módulo de localização não está disponível. É necessário um development build para usar expo-location.');
+      throw new Error(
+        'Módulo de localização não está disponível. É necessário um development build para usar expo-location.'
+      );
     }
-    
-    // Cachear o módulo se estiver disponível
+
     cachedLocationModule = Location;
     isLocationAvailable = true;
-    console.log('✅ [locationHelper] expo-location carregado com sucesso');
-    
     return Location;
   } catch (importError: any) {
-    console.error('❌ [locationHelper] Erro ao importar expo-location:', importError);
-    console.error('❌ [locationHelper] Mensagem:', importError?.message);
-    console.error('❌ [locationHelper] Stack:', importError?.stack);
-    
-    // Não cachear se falhou
     cachedLocationModule = null;
     isLocationAvailable = false;
-    
     throw importError;
   }
 }
 
-/**
- * Verifica se o módulo de localização está disponível
- */
 export async function isLocationModuleAvailable(): Promise<boolean> {
   try {
     await importLocationModule();
@@ -119,113 +109,152 @@ export async function isLocationModuleAvailable(): Promise<boolean> {
   }
 }
 
-/**
- * Solicita permissão de localização em foreground
- */
 export async function requestForegroundPermissions(): Promise<LocationPermissionStatus> {
   try {
     const Location = await importLocationModule();
-    
-    console.log('📍 [locationHelper] Solicitando permissão de localização...');
-    const result = await Location.requestForegroundPermissionsAsync();
-    console.log('📍 [locationHelper] Status da permissão:', result.status);
-    
+    const result = await withTimeout(
+      Location.requestForegroundPermissionsAsync(),
+      15_000,
+      'Tempo esgotado ao solicitar permissão de localização. Tente novamente.'
+    );
     return {
       status: result.status,
       canAskAgain: result.canAskAgain,
     };
   } catch (error: any) {
     console.error('❌ [locationHelper] Erro ao solicitar permissão:', error);
-    throw new Error('Não foi possível solicitar permissão de localização. Verifique se o módulo está disponível.');
+    throw new Error(
+      error?.message ||
+        'Não foi possível solicitar permissão de localização. Verifique se o módulo está disponível.'
+    );
   }
 }
 
 /**
- * Obtém a localização atual do dispositivo
+ * Obtém a localização atual com timeout (padrão 12s).
+ * No web usa precisão equilibrada para evitar espera longa / uso excessivo de memória do GPS.
  */
 export async function getCurrentPosition(options?: {
   accuracy?: number;
   maximumAge?: number;
   timeout?: number;
 }): Promise<LocationObject> {
+  const timeoutMs = options?.timeout ?? DEFAULT_POSITION_TIMEOUT_MS;
+  const maximumAge = options?.maximumAge ?? 60_000;
+
   try {
     const Location = await importLocationModule();
-    
-    console.log('📍 [locationHelper] Obtendo localização atual...');
-    const location = await Location.getCurrentPositionAsync(options || {});
-    console.log('📍 [locationHelper] Localização obtida:', location.coords);
-    
+
+    // Accuracy: 3 = Balanced (expo-location). Evita High que demora e consome mais no Android.
+    const accuracy =
+      options?.accuracy ??
+      (typeof Location.Accuracy?.Balanced === 'number' ? Location.Accuracy.Balanced : 3);
+
+    const positionPromise = Location.getCurrentPositionAsync({
+      accuracy,
+      maximumAge,
+      mayShowUserSettingsDialog: true,
+    });
+
+    const location = await withTimeout(
+      positionPromise,
+      timeoutMs,
+      'Não foi possível obter o GPS a tempo. Verifique se a localização está ligada e tente de novo.'
+    );
+
     return location;
   } catch (error: any) {
     console.error('❌ [locationHelper] Erro ao obter localização:', error);
-    throw new Error('Não foi possível obter a localização. Verifique se as permissões foram concedidas.');
+
+    // Fallback web: Geolocation API nativa com timeout explícito
+    if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.geolocation) {
+      try {
+        const loc = await withTimeout(
+          new Promise<LocationObject>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(
+              (pos) => {
+                resolve({
+                  coords: {
+                    latitude: pos.coords.latitude,
+                    longitude: pos.coords.longitude,
+                    altitude: pos.coords.altitude,
+                    accuracy: pos.coords.accuracy,
+                    altitudeAccuracy: pos.coords.altitudeAccuracy,
+                    heading: pos.coords.heading,
+                    speed: pos.coords.speed,
+                  },
+                  timestamp: pos.timestamp,
+                });
+              },
+              (err) => reject(err),
+              { enableHighAccuracy: false, timeout: timeoutMs, maximumAge }
+            );
+          }),
+          timeoutMs + 1000,
+          'GPS demorou demais. Ative a localização e tente novamente.'
+        );
+        return loc;
+      } catch (geoErr: any) {
+        console.error('❌ [locationHelper] Fallback geolocation falhou:', geoErr);
+      }
+    }
+
+    throw new Error(
+      error?.message ||
+        'Não foi possível obter a localização. Verifique se as permissões foram concedidas.'
+    );
   }
 }
 
-/**
- * Solicita permissão e obtém localização em uma única chamada
- */
 export async function requestPermissionAndGetLocation(options?: {
   accuracy?: number;
   maximumAge?: number;
   timeout?: number;
 }): Promise<{ permission: LocationPermissionStatus; location: LocationObject }> {
   const permission = await requestForegroundPermissions();
-  
+
   if (permission.status !== 'granted') {
     throw new Error('Permissão de localização negada');
   }
-  
+
   const location = await getCurrentPosition(options);
-  
   return { permission, location };
 }
 
-/**
- * Mostra um alerta informando que o módulo de localização não está disponível
- */
 export function showLocationUnavailableAlert(): void {
-  Alert.alert(
+  showAlert(
     'Localização indisponível',
-    'Permita o acesso à localização nas configurações do navegador ou do dispositivo. O app precisa de HTTPS e permissão de GPS para check-in e checkout.',
-    [{ text: 'OK', style: 'default' }]
+    'Permita o acesso à localização nas configurações do navegador ou do dispositivo. O app precisa de HTTPS e permissão de GPS para check-in e checkout.'
   );
 }
 
-/**
- * Helper para verificar e solicitar permissão com tratamento de erros
- */
 export async function ensureLocationPermission(): Promise<boolean> {
   try {
     const isAvailable = await isLocationModuleAvailable();
-    
+
     if (!isAvailable) {
       showLocationUnavailableAlert();
       return false;
     }
-    
+
     const permission = await requestForegroundPermissions();
-    
+
     if (permission.status !== 'granted') {
-      Alert.alert(
-        'Permissão Necessária',
+      showAlert(
+        'Permissão necessária',
         'É necessário permitir o acesso à localização para usar esta funcionalidade.',
         [
           { text: 'Cancelar', style: 'cancel' },
-          { text: 'Tentar Novamente', onPress: () => ensureLocationPermission() },
+          { text: 'Tentar novamente', onPress: () => ensureLocationPermission() },
         ]
       );
       return false;
     }
-    
+
     return true;
   } catch (error: any) {
     console.error('❌ [locationHelper] Erro ao garantir permissão:', error);
-    Alert.alert(
-      'Erro',
-      error.message || 'Não foi possível solicitar permissão de localização.'
-    );
+    showAlert('Erro', error.message || 'Não foi possível solicitar permissão de localização.');
     return false;
   }
 }
-

@@ -352,6 +352,9 @@ export default function MainNavigator() {
 
   React.useEffect(() => {
     let mounted = true;
+    const safety = setTimeout(() => {
+      if (mounted) setCheckingOnboarding(false);
+    }, 20_000);
     (async () => {
       try {
         const status = await storeService.getOnboarding();
@@ -367,6 +370,7 @@ export default function MainNavigator() {
     })();
     return () => {
       mounted = false;
+      clearTimeout(safety);
     };
   }, []);
 

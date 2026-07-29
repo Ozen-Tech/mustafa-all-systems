@@ -37,11 +37,26 @@ type RootStackParamList = {
 
 export default function CheckInScreen({ route }: any) {
   const navigation = useNavigation<NavigationProp<RootStackParamList>>();
-  const { store } = route.params || {};
+  const { store, location: initialLocation } = route.params || {};
   const { user } = useAuth();
   const { startVisit, setCheckedIn } = useVisitFlow();
   const [locationPermission, setLocationPermission] = useState<boolean>(false);
-  const [location, setLocation] = useState<LocationObject | null>(null);
+  const [location, setLocation] = useState<LocationObject | null>(() => {
+    if (
+      initialLocation &&
+      typeof initialLocation.latitude === 'number' &&
+      typeof initialLocation.longitude === 'number'
+    ) {
+      return {
+        coords: {
+          latitude: initialLocation.latitude,
+          longitude: initialLocation.longitude,
+        },
+        timestamp: Date.now(),
+      };
+    }
+    return null;
+  });
   const [loading, setLoading] = useState(false);
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
@@ -56,12 +71,29 @@ export default function CheckInScreen({ route }: any) {
     try {
       const permission = await requestForegroundPermissions();
       setLocationPermission(permission.status === 'granted');
-      
+
       if (permission.status === 'granted') {
-        const loc = await getCurrentPosition();
-        setLocation(loc);
+        try {
+          const loc = await getCurrentPosition({ timeout: 12_000, maximumAge: 60_000 });
+          setLocation(loc);
+        } catch (gpsError: any) {
+          console.warn('[CheckIn] GPS falhou:', gpsError);
+          if (
+            !(
+              initialLocation &&
+              typeof initialLocation.latitude === 'number' &&
+              typeof initialLocation.longitude === 'number'
+            )
+          ) {
+            showAlert(
+              'GPS indisponível',
+              gpsError?.message ||
+                'Não foi possível obter a localização. Ative o GPS, feche outros apps se o celular estiver lento, e toque em Tentar novamente.'
+            );
+          }
+        }
       } else {
-        Alert.alert(
+        showAlert(
           'Permissão necessária',
           'É necessário permitir o acesso à localização para fazer check-in.',
           [
@@ -72,7 +104,7 @@ export default function CheckInScreen({ route }: any) {
       }
     } catch (error: any) {
       console.error('Erro ao solicitar permissão de localização:', error);
-      Alert.alert('Erro', error?.message || 'Não foi possível solicitar permissão de localização');
+      showAlert('Erro', error?.message || 'Não foi possível solicitar permissão de localização');
     }
   }
 
@@ -95,23 +127,23 @@ export default function CheckInScreen({ route }: any) {
       }
     } catch (error) {
       console.error('Erro ao capturar foto:', error);
-      Alert.alert('Erro', 'Não foi possível capturar a foto');
+      showAlert('Erro', 'Não foi possível capturar a foto');
     }
   }
 
   async function handleCheckIn() {
     if (!store) {
-      Alert.alert('Erro', 'Selecione uma loja primeiro');
+      showAlert('Erro', 'Selecione uma loja primeiro');
       return;
     }
 
     if (!location) {
-      Alert.alert('Erro', 'Não foi possível obter a localização');
+      showAlert('Erro', 'Não foi possível obter a localização');
       return;
     }
 
     if (!photoUri) {
-      Alert.alert('Erro', 'Tire uma foto da fachada primeiro');
+      showAlert('Erro', 'Tire uma foto da fachada primeiro');
       return;
     }
 
@@ -210,7 +242,7 @@ export default function CheckInScreen({ route }: any) {
         error?.message || 
         'Erro ao fazer check-in. Verifique sua conexão e tente novamente.';
       
-      Alert.alert('Erro', errorMessage);
+      showAlert('Erro', errorMessage);
     } finally {
       setLoading(false);
     }
