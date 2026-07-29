@@ -3,6 +3,7 @@ import {
   checkIn,
   checkOut,
   justifyMissingIndustries,
+  clearMissingIndustryJustifications,
   uploadPhotos,
   submitPriceResearch,
   getCurrentVisit,
@@ -26,6 +27,10 @@ router.get('/visits', getVisits);
 router.post('/checkin', checkIn);
 router.post('/checkout', checkOut);
 router.post('/visits/:visitId/justify-missing-industries', justifyMissingIndustries);
+router.post(
+  '/visits/:visitId/clear-missing-industry-justifications',
+  clearMissingIndustryJustifications
+);
 router.post('/photos', uploadPhotos);
 router.post('/price-research', submitPriceResearch);
 router.get('/current-visit', getCurrentVisit);
@@ -34,4 +39,3 @@ router.get('/visits/:visitId/coverage', getVisitCoverage);
 router.get('/visits/:visitId/industries', getVisitIndustries);
 
 export default router;
-

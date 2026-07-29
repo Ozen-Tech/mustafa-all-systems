@@ -31,7 +31,11 @@ export default function IndustryNoPhotoToggle({
       </View>
       <View style={styles.copy}>
         <Text style={styles.label}>Sem foto desta indústria</Text>
-        <Text style={styles.hint}>Marque se não houver imagem para enviar nesta visita</Text>
+        <Text style={styles.hint}>
+          {checked
+            ? 'Toque de novo para desmarcar se marcou por engano'
+            : 'Marque se não houver imagem para enviar nesta visita'}
+        </Text>
       </View>
     </TouchableOpacity>
   );

@@ -472,7 +472,7 @@ export default function ActiveVisitScreen({ route }: any) {
   }
 
   async function toggleIndustryWithoutPhoto(industryId: string) {
-    if (!visit?.id || waivedIndustryIds.has(industryId)) return;
+    if (!visit?.id) return;
 
     const uploadedCount = getPhotosForIndustry(industryId).filter((p) => p.url).length;
     if (uploadedCount > 0) {
@@ -480,20 +480,33 @@ export default function ActiveVisitScreen({ route }: any) {
       return;
     }
 
+    const isWaived = waivedIndustryIds.has(industryId);
     setWaivingIndustryId(industryId);
     try {
-      await visitService.justifyMissingIndustries(visit.id, [
-        {
-          industryId,
-          reason: 'OTHER',
-          note: NO_PHOTO_INDUSTRY_NOTE,
-        },
-      ]);
-      setWaivedIndustryIds((prev) => new Set(prev).add(industryId));
+      if (isWaived) {
+        await visitService.clearMissingIndustryJustifications(visit.id, [industryId]);
+        setWaivedIndustryIds((prev) => {
+          const next = new Set(prev);
+          next.delete(industryId);
+          return next;
+        });
+      } else {
+        await visitService.justifyMissingIndustries(visit.id, [
+          {
+            industryId,
+            reason: 'OTHER',
+            note: NO_PHOTO_INDUSTRY_NOTE,
+          },
+        ]);
+        setWaivedIndustryIds((prev) => new Set(prev).add(industryId));
+      }
     } catch (error: any) {
       showAlert(
         'Erro',
-        error?.response?.data?.message || 'Não foi possível registrar que não há foto desta indústria.'
+        error?.response?.data?.message ||
+          (isWaived
+            ? 'Não foi possível desmarcar. Tente novamente.'
+            : 'Não foi possível registrar que não há foto desta indústria.')
       );
     } finally {
       setWaivingIndustryId(null);
@@ -797,7 +810,6 @@ export default function ActiveVisitScreen({ route }: any) {
               <IndustryNoPhotoToggle
                 checked={waivedIndustryIds.has(industry.id)}
                 loading={waivingIndustryId === industry.id}
-                disabled={waivedIndustryIds.has(industry.id)}
                 onToggle={() => toggleIndustryWithoutPhoto(industry.id)}
               />
             ) : null}

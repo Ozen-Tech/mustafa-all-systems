@@ -60,6 +60,14 @@ export const visitService = {
     return response.data;
   },
 
+  async clearMissingIndustryJustifications(visitId: string, industryIds: string[]) {
+    const response = await apiClient.post(
+      `/promoters/visits/${visitId}/clear-missing-industry-justifications`,
+      { industryIds }
+    );
+    return response.data;
+  },
+
   async uploadPhotos(data: UploadPhotosRequest) {
     const response = await apiClient.post('/promoters/photos', data);
     return response.data;
