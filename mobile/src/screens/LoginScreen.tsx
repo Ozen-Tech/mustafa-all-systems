@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Image, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Image, ScrollView, TouchableOpacity } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { colors, theme } from '../styles/theme';
 import { flexScroll } from '../styles/webLayout';
@@ -12,6 +12,7 @@ import { showAlert } from '../utils/alertHelper';
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
 
@@ -82,15 +83,26 @@ export default function LoginScreen() {
           autoCapitalize="none"
           autoCorrect={false}
         />
-        <Input
-          label="Senha"
-          placeholder="Sua senha"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
+        <View>
+          <Input
+            label="Senha"
+            placeholder="Sua senha"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry={!showPassword}
+            autoCapitalize="none"
+            autoCorrect={false}
+            style={styles.passwordInput}
+          />
+          <TouchableOpacity
+            style={styles.showPasswordBtn}
+            onPress={() => setShowPassword((v) => !v)}
+            accessibilityRole="button"
+            accessibilityLabel={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+          >
+            <Text style={styles.showPasswordText}>{showPassword ? 'Ocultar' : 'Mostrar'}</Text>
+          </TouchableOpacity>
+        </View>
         <Button
           variant="primary"
           size="lg"
@@ -137,6 +149,21 @@ const styles = StyleSheet.create({
   },
   form: {
     gap: theme.spacing.lg,
+  },
+  passwordInput: {
+    paddingRight: 88,
+  },
+  showPasswordBtn: {
+    position: 'absolute',
+    right: theme.spacing.md,
+    bottom: theme.spacing.md + 2,
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.sm,
+  },
+  showPasswordText: {
+    color: colors.primary[400],
+    fontSize: theme.typography.fontSize.sm,
+    fontWeight: theme.typography.fontWeight.semibold,
   },
   button: {
     marginTop: theme.spacing.sm,
