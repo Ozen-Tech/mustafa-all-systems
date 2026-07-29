@@ -245,6 +245,51 @@ export async function justifyMissingIndustries(req: AuthRequest, res: Response) 
   }
 }
 
+const clearMissingJustificationsSchema = z.object({
+  industryIds: z.array(z.string().uuid()).min(1),
+});
+
+/**
+ * Remove justificativa de “sem foto” / miss — permite desmarcar no app se marcou por engano.
+ * POST /promoters/visits/:visitId/clear-missing-industry-justifications
+ */
+export async function clearMissingIndustryJustifications(req: AuthRequest, res: Response) {
+  try {
+    const { visitId } = req.params;
+    const promoterId = req.userId!;
+    const { industryIds } = clearMissingJustificationsSchema.parse(req.body);
+
+    const visit = await prisma.visit.findFirst({
+      where: { id: visitId, promoterId },
+      select: { id: true, checkOutAt: true },
+    });
+    if (!visit) return res.status(404).json({ message: 'Visita não encontrada' });
+    if (visit.checkOutAt) {
+      return res.status(400).json({ message: 'Visita já foi finalizada' });
+    }
+
+    const uniqueIds = [...new Set(industryIds)];
+    const result = await prisma.industryMiss.deleteMany({
+      where: {
+        visitId,
+        promoterId,
+        industryId: { in: uniqueIds },
+      },
+    });
+
+    res.json({
+      message: 'Justificativas removidas.',
+      removed: result.count,
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: 'Validation error', errors: error.errors });
+    }
+    console.error('Clear missing industry justifications error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+}
+
 export async function checkOut(req: AuthRequest, res: Response) {
   try {
     const { visitId, latitude, longitude, photoUrl } = checkOutSchema.parse(req.body);

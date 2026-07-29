@@ -76,11 +76,20 @@ export default function CheckoutScreen({ route }: any) {
     return reasonOptions.find((o) => o.code === code)?.label || code;
   }
 
-  function markIndustryNoPhoto(industryId: string) {
-    setJustifySelections((prev) => ({
-      ...prev,
-      [industryId]: { reason: 'OTHER', note: NO_PHOTO_INDUSTRY_NOTE },
-    }));
+  function toggleIndustryNoPhoto(industryId: string) {
+    setJustifySelections((prev) => {
+      const sel = prev[industryId];
+      const isNoPhoto = sel?.reason === 'OTHER' && sel?.note === NO_PHOTO_INDUSTRY_NOTE;
+      if (isNoPhoto) {
+        const next = { ...prev };
+        delete next[industryId];
+        return next;
+      }
+      return {
+        ...prev,
+        [industryId]: { reason: 'OTHER', note: NO_PHOTO_INDUSTRY_NOTE },
+      };
+    });
   }
 
   function openJustifyModal(
@@ -559,7 +568,7 @@ export default function CheckoutScreen({ route }: any) {
                     </Text>
                     <IndustryNoPhotoToggle
                       checked={isNoPhoto}
-                      onToggle={() => markIndustryNoPhoto(ind.id)}
+                      onToggle={() => toggleIndustryNoPhoto(ind.id)}
                     />
                     <Text style={styles.justifyReasonLabel}>Motivo</Text>
                     <View style={styles.reasonChips}>
