@@ -9,6 +9,7 @@ import {
   Image,
   Modal,
   FlatList,
+  Platform,
 } from 'react-native';
 
 import { useNavigation, NavigationProp } from '@react-navigation/native';
@@ -27,6 +28,7 @@ import {
   isFragilePhotoUri,
   isPendingLocalPhoto,
   isStableLocalPhotoUri,
+  preparePhotoForWebUpload,
 } from '../utils/photoUri';
 import { savePendingPhotos, getPendingPhotos, PendingPhoto } from '../utils/sessionStorage';
 import IndustryNoPhotoToggle from '../components/IndustryNoPhotoToggle';
@@ -236,7 +238,11 @@ export default function ActiveVisitScreen({ route }: any) {
     const newPhotos: VisitPhoto[] = [];
     for (const rawUri of uris) {
       try {
-        const uri = await ensurePersistablePhotoUri(rawUri, { compress: true });
+        // No PWA: comprime forte já na captura (evita várias fotos grandes na memória + localStorage).
+        const uri =
+          Platform.OS === 'web'
+            ? await preparePhotoForWebUpload(rawUri)
+            : await ensurePersistablePhotoUri(rawUri, { compress: true });
         if (isFragilePhotoUri(uri)) {
           throw new Error('URI ainda é blob após persistir');
         }
@@ -532,7 +538,7 @@ export default function ActiveVisitScreen({ route }: any) {
         return;
       }
 
-      const location = await getCurrentPosition();
+      const location = await getCurrentPosition({ timeout: 12_000, maximumAge: 60_000 });
 
       const invalidPending = photos.filter(
         (photo) => photo.uri && !photo.url && (photo.invalid || isFragilePhotoUri(photo.uri))
@@ -554,7 +560,9 @@ export default function ActiveVisitScreen({ route }: any) {
       const uploadResults: { photo: VisitPhoto; url: string; success: boolean; error?: string }[] = [];
       let workingPhotos = [...photos];
 
-      for (const photo of photosToUpload) {
+      // Uma foto por vez + registra no backend na hora (se a aba cair, o que já subiu não se perde).
+      for (let i = 0; i < photosToUpload.length; i++) {
+        const photo = photosToUpload[i];
         try {
           if (!photo.uri) throw new Error('URI da foto não disponível');
 
@@ -566,7 +574,26 @@ export default function ActiveVisitScreen({ route }: any) {
             fileUri: photo.uri,
           });
 
+          await visitService.uploadPhotos({
+            visitId: visit.id,
+            photos: [
+              {
+                url,
+                type: 'OTHER' as const,
+                latitude: location.coords.latitude,
+                longitude: location.coords.longitude,
+                industryId: photo.industryId,
+              },
+            ],
+          });
+
           uploadResults.push({ photo, url, success: true });
+          workingPhotos = workingPhotos.map((p) =>
+            p.uri === photo.uri ? { ...p, url, uri: undefined, invalid: undefined } : p
+          );
+          setPhotos(workingPhotos);
+          await savePendingPhotosToStorage(visit.id, workingPhotos);
+          await new Promise((r) => setTimeout(r, 80));
         } catch (error: any) {
           console.error('❌ [ActiveVisit] Erro no upload:', error?.message);
           const errMsg =
@@ -601,49 +628,8 @@ export default function ActiveVisitScreen({ route }: any) {
         return;
       }
 
-      try {
-        await visitService.uploadPhotos({
-          visitId: visit.id,
-          photos: successResults.map((r) => ({
-            url: r.url,
-            type: 'OTHER' as const,
-            latitude: location.coords.latitude,
-            longitude: location.coords.longitude,
-            industryId: r.photo.industryId,
-          })),
-        });
-
-        const uriToUrl = new Map<string, string>();
-        successResults.forEach((r) => {
-          if (r.photo.uri) uriToUrl.set(r.photo.uri, r.url);
-        });
-
-        const nextPhotos = workingPhotos.map((p) => {
-          const newUrl = p.uri ? uriToUrl.get(p.uri) : undefined;
-          if (newUrl) {
-            return { ...p, url: newUrl, uri: undefined, invalid: undefined };
-          }
-          return p;
-        });
-        setPhotos(nextPhotos);
-
-        // Mantém no storage só as pendentes válidas que ainda não subiram
-        await savePendingPhotosToStorage(visit.id, nextPhotos);
-      } catch (error: any) {
-        console.error('❌ [ActiveVisit] Erro ao registrar fotos no backend:', error);
-        setPhotos(workingPhotos);
-        const detail =
-          error?.response?.data?.message ||
-          error?.response?.data?.detail ||
-          error?.message;
-        showAlert(
-          'Erro ao registrar',
-          detail
-            ? `${successResults.length} foto(s) enviadas ao storage, mas falhou ao registrar no sistema: ${detail}`
-            : `${successResults.length} foto(s) enviadas, mas houve erro ao registrar`
-        );
-        return;
-      }
+      setPhotos(workingPhotos);
+      await savePendingPhotosToStorage(visit.id, workingPhotos);
 
       if (failedCount > 0 || invalidPending.length > 0) {
         showAlert(

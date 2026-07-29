@@ -1,6 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
-import { isFragilePhotoUri, isStableLocalPhotoUri, toPersistablePhotoUri } from './photoUri';
+import {
+  estimateDataUrlBytes,
+  isFragilePhotoUri,
+  isStableLocalPhotoUri,
+  preparePhotoForWebUpload,
+  toPersistablePhotoUri,
+} from './photoUri';
 
 export interface PendingPhoto {
   id?: string;
@@ -12,10 +18,12 @@ export interface PendingPhoto {
 }
 
 const PENDING_PHOTOS_PREFIX = 'pending_photos_';
+/** localStorage no Chrome Android quebra/reinicia com payloads grandes. */
+const WEB_PENDING_MAX_TOTAL_BYTES = 1_800_000;
 
 /**
  * Salva fotos pendentes (não enviadas) para uma visita.
- * No web, nunca persiste blob: — só data URLs estáveis.
+ * No web, comprime e limita o tamanho total para não derrubar a aba.
  */
 export async function savePendingPhotos(visitId: string, photos: PendingPhoto[]): Promise<void> {
   try {
@@ -30,13 +38,25 @@ export async function savePendingPhotos(visitId: string, photos: PendingPhoto[])
     let toStore = photos;
     if (Platform.OS === 'web') {
       const stable: PendingPhoto[] = [];
+      let totalBytes = 0;
       for (const photo of photos) {
         if (isFragilePhotoUri(photo.uri)) continue;
         try {
-          const uri = isStableLocalPhotoUri(photo.uri)
+          let uri = isStableLocalPhotoUri(photo.uri)
             ? photo.uri
             : await toPersistablePhotoUri(photo.uri);
           if (isFragilePhotoUri(uri)) continue;
+          if (uri.startsWith('data:image/')) {
+            uri = await preparePhotoForWebUpload(uri);
+          }
+          const size = estimateDataUrlBytes(uri);
+          if (totalBytes + size > WEB_PENDING_MAX_TOTAL_BYTES) {
+            console.warn(
+              '[sessionStorage] Limite de cache local atingido; demais fotos ficam só na memória até enviar.'
+            );
+            break;
+          }
+          totalBytes += size;
           stable.push({ ...photo, uri });
         } catch (error) {
           console.warn('[sessionStorage] Pulando foto não persistível:', error);
@@ -51,9 +71,20 @@ export async function savePendingPhotos(visitId: string, photos: PendingPhoto[])
 
     await AsyncStorage.setItem(key, JSON.stringify(toStore));
     console.log(`[sessionStorage] Salvas ${toStore.length} fotos pendentes para visita ${visitId}`);
-  } catch (error) {
+  } catch (error: any) {
+    // QuotaExceeded no Chrome: não derruba a visita — só deixa de cachear.
     console.error('[sessionStorage] Erro ao salvar fotos pendentes:', error);
-    throw error;
+    if (
+      String(error?.name || '').includes('Quota') ||
+      String(error?.message || '').toLowerCase().includes('quota')
+    ) {
+      try {
+        await AsyncStorage.removeItem(`${PENDING_PHOTOS_PREFIX}${visitId}`);
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
   }
 }
 
