@@ -22,6 +22,15 @@ export default function Login() {
     setLoading(true);
     try {
       await login(email, password);
+      const stored = localStorage.getItem('user');
+      const user = stored ? JSON.parse(stored) : null;
+      if (user?.role === 'INDUSTRY_OWNER') {
+        const portal =
+          import.meta.env.VITE_INDUSTRY_PORTAL_URL ||
+          'https://industria-mustafabucket.web.app';
+        window.location.href = portal;
+        return;
+      }
       navigate('/');
     } catch (err: any) {
       setError(err.response?.data?.message || 'Erro ao fazer login');

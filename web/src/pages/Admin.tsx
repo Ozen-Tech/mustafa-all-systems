@@ -2,12 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { adminService, User, CreateUserRequest, UpdateUserRequest } from '../services/adminService';
+import { industryService } from '../services/industryService';
 import Card, { CardHeader, CardContent } from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import Badge from '../components/ui/Badge';
 import { useConfirm } from '../hooks/useConfirm';
 import { toast } from '../components/ui/Toaster';
+
+const INDUSTRY_PORTAL_URL =
+  import.meta.env.VITE_INDUSTRY_PORTAL_URL || 'https://industria-mustafabucket.web.app';
 
 const BRAZILIAN_STATES = [
   { uf: 'AC', name: 'Acre' }, { uf: 'AL', name: 'Alagoas' }, { uf: 'AP', name: 'Amapá' },
@@ -35,6 +39,7 @@ export default function Admin() {
     phone: '',
     state: '',
     role: 'PROMOTER' as 'PROMOTER' | 'SUPERVISOR' | 'ADMIN' | 'INDUSTRY_OWNER',
+    industryId: '',
   });
   const [supervisorStates, setSupervisorStates] = useState<string[]>([]);
   const [promoterSupervisorIds, setPromoterSupervisorIds] = useState<string[]>([]);
@@ -42,6 +47,11 @@ export default function Admin() {
   const { data: users, isLoading } = useQuery({
     queryKey: ['admin', 'users'],
     queryFn: () => adminService.listUsers(),
+  });
+
+  const { data: industries = [] } = useQuery({
+    queryKey: ['industries', 'active'],
+    queryFn: () => industryService.listIndustries(true),
   });
 
   const createMutation = useMutation({
@@ -95,6 +105,7 @@ export default function Admin() {
       phone: '',
       state: '',
       role: 'PROMOTER',
+      industryId: '',
     });
     setSupervisorStates([]);
     setPromoterSupervisorIds([]);
@@ -111,6 +122,7 @@ export default function Admin() {
         phone: user.phone || '',
         state: user.state || '',
         role: user.role,
+        industryId: user.industryId || '',
       });
       if (user.role === 'SUPERVISOR') {
         adminService.getSupervisorRegions(user.id).then(setSupervisorStates).catch(() => {});
@@ -134,6 +146,11 @@ export default function Admin() {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
+    if (formData.role === 'INDUSTRY_OWNER' && !formData.industryId) {
+      toast.error('Selecione a indústria vinculada ao dono');
+      return;
+    }
+
     if (editingUser) {
       const updateData: UpdateUserRequest = {
         name: formData.name,
@@ -141,6 +158,8 @@ export default function Admin() {
         role: formData.role,
         phone: formData.phone || undefined,
         state: formData.state || null,
+        industryId:
+          formData.role === 'INDUSTRY_OWNER' ? formData.industryId : null,
       };
       if (formData.password) {
         updateData.password = formData.password;
@@ -157,9 +176,17 @@ export default function Admin() {
         toast.error('A senha é obrigatória para criar um novo usuário');
         return;
       }
-      const createData: any = { ...formData };
-      if (!createData.state) delete createData.state;
-      createMutation.mutate(createData as CreateUserRequest);
+      const createData: CreateUserRequest = {
+        name: formData.name,
+        email: formData.email,
+        password: formData.password,
+        role: formData.role,
+        phone: formData.phone || undefined,
+        state: formData.state || undefined,
+        industryId:
+          formData.role === 'INDUSTRY_OWNER' ? formData.industryId : undefined,
+      };
+      createMutation.mutate(createData);
     }
   }
 
@@ -237,6 +264,7 @@ export default function Admin() {
                   <th className="text-left py-3 px-4 text-text-secondary font-medium">Celular</th>
                   <th className="text-left py-3 px-4 text-text-secondary font-medium">Estado</th>
                   <th className="text-left py-3 px-4 text-text-secondary font-medium">Função</th>
+                  <th className="text-left py-3 px-4 text-text-secondary font-medium">Indústria</th>
                   <th className="text-left py-3 px-4 text-text-secondary font-medium">Criado em</th>
                   <th className="text-right py-3 px-4 text-text-secondary font-medium">Ações</th>
                 </tr>
@@ -250,6 +278,11 @@ export default function Admin() {
                     <td className="py-3 px-4 text-text-secondary">{user.state || '-'}</td>
                     <td className="py-3 px-4">
                       <Badge variant={getRoleColor(user.role)}>{getRoleLabel(user.role)}</Badge>
+                    </td>
+                    <td className="py-3 px-4 text-text-secondary text-sm">
+                      {user.role === 'INDUSTRY_OWNER'
+                        ? user.industry?.abbreviation || user.industry?.name || '-'
+                        : '-'}
                     </td>
                     <td className="py-3 px-4 text-text-tertiary">
                       {new Date(user.createdAt).toLocaleDateString('pt-BR')}
@@ -347,7 +380,11 @@ export default function Admin() {
                     value={formData.role}
                     onChange={(e) => {
                       const role = e.target.value as typeof formData.role;
-                      setFormData({ ...formData, role });
+                      setFormData({
+                        ...formData,
+                        role,
+                        industryId: role === 'INDUSTRY_OWNER' ? formData.industryId : '',
+                      });
                       if (role !== 'SUPERVISOR') setSupervisorStates([]);
                       if (role !== 'PROMOTER') setPromoterSupervisorIds([]);
                     }}
@@ -359,6 +396,29 @@ export default function Admin() {
                     <option value="ADMIN">Administrador</option>
                   </select>
                 </div>
+                {formData.role === 'INDUSTRY_OWNER' && (
+                  <div>
+                    <label className="block text-sm font-medium text-text-secondary mb-2">
+                      Indústria vinculada *
+                    </label>
+                    <select
+                      value={formData.industryId}
+                      onChange={(e) => setFormData({ ...formData, industryId: e.target.value })}
+                      required
+                      className="w-full px-4 py-2 bg-dark-backgroundSecondary border border-dark-border rounded-lg text-text-primary focus:outline-none focus:ring-2 focus:ring-primary-600"
+                    >
+                      <option value="">Selecione...</option>
+                      {industries.map((ind) => (
+                        <option key={ind.id} value={ind.id}>
+                          {ind.abbreviation || ind.code} — {ind.name}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-text-tertiary mt-2">
+                      Portal: <a className="text-primary-400 underline" href={INDUSTRY_PORTAL_URL} target="_blank" rel="noreferrer">{INDUSTRY_PORTAL_URL}</a>
+                    </p>
+                  </div>
+                )}
                 {formData.role === 'SUPERVISOR' && editingUser && (
                   <div>
                     <label className="block text-sm font-medium text-text-secondary mb-2">

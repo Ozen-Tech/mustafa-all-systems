@@ -7,6 +7,12 @@
       "rewrites": [{ "source": "**", "destination": "/index.html" }]
     },
     {
+      "target": "industria",
+      "public": "industry-web/dist",
+      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+      "rewrites": [{ "source": "**", "destination": "/index.html" }]
+    },
+    {
       "target": "promotor",
       "public": "mobile/dist",
       "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],

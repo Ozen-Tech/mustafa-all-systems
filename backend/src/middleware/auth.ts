@@ -39,3 +39,10 @@ export function requireAdmin(req: AuthRequest, res: Response, next: NextFunction
   }
   next();
 }
+
+export function requireIndustryOwner(req: AuthRequest, res: Response, next: NextFunction) {
+  if (req.userRole !== UserRole.INDUSTRY_OWNER && req.userRole !== UserRole.ADMIN) {
+    return res.status(403).json({ message: 'Industry owner or Admin access required' });
+  }
+  next();
+}

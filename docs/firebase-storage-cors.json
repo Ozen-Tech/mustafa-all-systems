@@ -5,8 +5,11 @@
       "https://promotor-mustafabucket.firebaseapp.com",
       "https://mustafabucket.web.app",
       "https://mustafabucket.firebaseapp.com",
+      "https://industria-mustafabucket.web.app",
+      "https://industria-mustafabucket.firebaseapp.com",
       "http://localhost:8081",
-      "http://localhost:19006"
+      "http://localhost:19006",
+      "http://localhost:5174"
     ],
     "method": ["GET", "HEAD", "PUT", "POST", "DELETE"],
     "responseHeader": ["Content-Type", "Content-Length", "x-goog-resumable"],
