@@ -76,26 +76,36 @@ export default function StoresScreen() {
     try {
       setCheckingIn(store.id);
 
-      const hasPermission = await ensureLocationPermission();
-      if (!hasPermission) {
-        return;
-      }
+      // Tenta permissão/GPS, mas NÃO trava o fluxo: muitos celulares bloqueiam o site
+      // e o alerta antigo impedia o promotor de entrar na loja.
+      const hasPermission = await ensureLocationPermission({ showAlertWhenDenied: false });
 
-      // GPS com timeout curto. Se falhar, ainda abre o check-in — a tela tenta de novo.
-      let location:
-        | { latitude: number; longitude: number }
-        | undefined;
-      try {
-        const pos = await getCurrentPosition({ timeout: 12_000, maximumAge: 60_000 });
-        location = {
-          latitude: pos.coords.latitude,
-          longitude: pos.coords.longitude,
-        };
-      } catch (gpsError: any) {
-        console.warn('[Stores] GPS indisponível agora, abrindo check-in mesmo assim:', gpsError);
+      let location: { latitude: number; longitude: number } | undefined;
+
+      if (hasPermission) {
+        try {
+          const pos = await getCurrentPosition({ timeout: 12_000, maximumAge: 60_000 });
+          location = {
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+          };
+        } catch (gpsError: any) {
+          console.warn('[Stores] GPS indisponível agora:', gpsError);
+        }
+      } else {
         showAlert(
-          'GPS demorou',
-          'Não deu para pegar a localização agora. Na próxima tela, aguarde o GPS ou toque para tentar de novo. Se aparecer aviso de memória, feche outros apps e recarregue o Promo Gestão.'
+          'Ative a localização do site',
+          [
+            'Vamos abrir o check-in mesmo assim.',
+            '',
+            'Para o GPS funcionar:',
+            '1. Toque no cadeado (ou ⓘ) ao lado do endereço',
+            '2. Localização → Permitir',
+            '3. Ou: menu do Chrome → Configurações do site → Localização → Permitir',
+            '4. Deixe a Localização do celular ligada',
+            '',
+            'Na próxima tela, se pedir permissão, toque em Permitir.',
+          ].join('\n')
         );
       }
 

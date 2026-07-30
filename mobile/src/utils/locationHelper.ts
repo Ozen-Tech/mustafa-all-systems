@@ -221,40 +221,89 @@ export async function requestPermissionAndGetLocation(options?: {
   return { permission, location };
 }
 
-export function showLocationUnavailableAlert(): void {
-  showAlert(
-    'Localização indisponível',
-    'Permita o acesso à localização nas configurações do navegador ou do dispositivo. O app precisa de HTTPS e permissão de GPS para check-in e checkout.'
-  );
+export function getLocationPermissionHelpMessage(): string {
+  if (Platform.OS === 'web') {
+    return [
+      'O app precisa da sua localização para o check-in.',
+      '',
+      'No celular (Chrome):',
+      '1. Toque no cadeado (ou ⓘ) ao lado do endereço do site',
+      '2. Em Localização, escolha Permitir',
+      '3. Se não aparecer: menu ⋮ → Configurações → Configurações do site → Localização → Permitir',
+      '4. Confira se a Localização do celular está ligada (Ajustes do aparelho)',
+      '',
+      'Depois toque em OK e tente de novo. Se ainda falhar, recarregue a página.',
+    ].join('\n');
+  }
+  return 'Permita o acesso à localização nas configurações do aparelho para usar check-in e checkout.';
 }
 
-export async function ensureLocationPermission(): Promise<boolean> {
+export function showLocationUnavailableAlert(): void {
+  showAlert('Localização indisponível', getLocationPermissionHelpMessage());
+}
+
+async function queryWebGeolocationState(): Promise<'granted' | 'denied' | 'prompt' | 'unknown'> {
+  if (Platform.OS !== 'web' || typeof navigator === 'undefined') return 'unknown';
+  try {
+    const perms = (navigator as any).permissions;
+    if (perms?.query) {
+      const result = await perms.query({ name: 'geolocation' });
+      if (result.state === 'granted' || result.state === 'denied' || result.state === 'prompt') {
+        return result.state;
+      }
+    }
+  } catch {
+    /* Safari antigo etc. */
+  }
+  return 'unknown';
+}
+
+/**
+ * Garante permissão de localização.
+ * @param options.showAlertWhenDenied — se false, só retorna boolean (sem popup).
+ */
+export async function ensureLocationPermission(options?: {
+  showAlertWhenDenied?: boolean;
+}): Promise<boolean> {
+  const showWhenDenied = options?.showAlertWhenDenied !== false;
+
   try {
     const isAvailable = await isLocationModuleAvailable();
 
     if (!isAvailable) {
-      showLocationUnavailableAlert();
+      if (showWhenDenied) showLocationUnavailableAlert();
       return false;
+    }
+
+    // Na web: se já está "denied", o requestAsync não reabre o prompt do Chrome.
+    if (Platform.OS === 'web') {
+      const webState = await queryWebGeolocationState();
+      if (webState === 'denied') {
+        if (showWhenDenied) {
+          showAlert('Localização bloqueada neste site', getLocationPermissionHelpMessage());
+        }
+        return false;
+      }
     }
 
     const permission = await requestForegroundPermissions();
 
     if (permission.status !== 'granted') {
-      showAlert(
-        'Permissão necessária',
-        'É necessário permitir o acesso à localização para usar esta funcionalidade.',
-        [
-          { text: 'Cancelar', style: 'cancel' },
-          { text: 'Tentar novamente', onPress: () => ensureLocationPermission() },
-        ]
-      );
+      if (showWhenDenied) {
+        showAlert('Permissão necessária', getLocationPermissionHelpMessage());
+      }
       return false;
     }
 
     return true;
   } catch (error: any) {
-    console.error('❌ [locationHelper] Erro ao garantir permissão:', error);
-    showAlert('Erro', error.message || 'Não foi possível solicitar permissão de localização.');
+    console.error('[locationHelper] Erro ao garantir permissão:', error);
+    if (showWhenDenied) {
+      showAlert(
+        'Erro de localização',
+        `${error.message || 'Não foi possível solicitar permissão.'}\n\n${getLocationPermissionHelpMessage()}`
+      );
+    }
     return false;
   }
 }
