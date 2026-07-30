@@ -36,7 +36,16 @@ const corsOptions = {
       return callback(null, true);
     }
 
-    const allowedOrigins = process.env.CORS_ORIGIN?.split(',').map(o => o.trim()) || [];
+    const envOrigins = process.env.CORS_ORIGIN?.split(',').map(o => o.trim()).filter(Boolean) || [];
+    const defaultOrigins = [
+      'https://mustafabucket.web.app',
+      'https://mustafabucket.firebaseapp.com',
+      'https://promotor-mustafabucket.web.app',
+      'https://promotor-mustafabucket.firebaseapp.com',
+      'https://industria-mustafabucket.web.app',
+      'https://industria-mustafabucket.firebaseapp.com',
+    ];
+    const allowedOrigins = Array.from(new Set([...envOrigins, ...defaultOrigins]));
     const isDevelopment = process.env.NODE_ENV === 'development';
     
     // In development, allow all origins
@@ -45,7 +54,7 @@ const corsOptions = {
     }
 
     // In production, check against allowed origins
-    if (allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+    if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
