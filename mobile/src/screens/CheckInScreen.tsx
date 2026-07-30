@@ -22,7 +22,7 @@ import { flexScroll } from '../styles/webLayout';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import Badge from '../components/ui/Badge';
-import { requestForegroundPermissions, getCurrentPosition, LocationObject } from '../utils/locationHelper';
+import { requestForegroundPermissions, getCurrentPosition, LocationObject, getLocationPermissionHelpMessage } from '../utils/locationHelper';
 import { showAlert } from '../utils/alertHelper';
 
 interface Store {
@@ -94,18 +94,17 @@ export default function CheckInScreen({ route }: any) {
           }
         }
       } else {
-        showAlert(
-          'Permissão necessária',
-          'É necessário permitir o acesso à localização para fazer check-in.',
-          [
-            { text: 'Cancelar', style: 'cancel' },
-            { text: 'Tentar novamente', onPress: requestLocationPermission },
-          ]
-        );
+        showAlert('Permissão necessária', getLocationPermissionHelpMessage(), [
+          { text: 'Cancelar', style: 'cancel' },
+          { text: 'Tentar novamente', onPress: requestLocationPermission },
+        ]);
       }
     } catch (error: any) {
       console.error('Erro ao solicitar permissão de localização:', error);
-      showAlert('Erro', error?.message || 'Não foi possível solicitar permissão de localização');
+      showAlert(
+        'Erro',
+        `${error?.message || 'Não foi possível solicitar permissão de localização'}\n\n${getLocationPermissionHelpMessage()}`
+      );
     }
   }
 
