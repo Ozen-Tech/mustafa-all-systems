@@ -165,7 +165,9 @@ export default function Layout() {
     ...(isSupervisorOrAdmin ? [{ name: 'Vistoria Indústria', path: '/ops/industry-audit', icon: AdminIndustriesIcon }] : []),
     ...(isSupervisorOrAdmin ? [{ name: 'Métricas Trade', path: '/ops/trade-metrics', icon: ReportsIcon }] : []),
     ...(isSupervisorOrAdmin ? [{ name: 'Dashboard (legado)', path: '/dashboard-legacy', icon: DashboardIcon }] : []),
-    ...(isIndustryOwner ? [{ name: 'Minha Industria', path: '/industry-dashboard', icon: DashboardIcon }] : []),
+    ...(isIndustryOwner
+      ? [{ name: 'Portal Indústria', path: '/industry-dashboard', icon: DashboardIcon }]
+      : []),
     ...(isSupervisorOrAdmin
       ? [{ name: 'Relatórios', path: '/reports', icon: ReportsIcon }]
       : []),

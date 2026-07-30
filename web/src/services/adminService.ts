@@ -45,6 +45,8 @@ export interface User {
   createdAt: string;
   updatedAt: string;
   supervisorRegions?: { state: string }[];
+  industryId?: string | null;
+  industry?: { id: string; name: string; code: string; abbreviation?: string | null } | null;
 }
 
 export interface CreateUserRequest {
@@ -54,6 +56,7 @@ export interface CreateUserRequest {
   role: 'PROMOTER' | 'SUPERVISOR' | 'ADMIN' | 'INDUSTRY_OWNER';
   phone?: string;
   state?: string;
+  industryId?: string;
 }
 
 export interface UpdateUserRequest {
@@ -63,6 +66,7 @@ export interface UpdateUserRequest {
   role?: 'PROMOTER' | 'SUPERVISOR' | 'ADMIN' | 'INDUSTRY_OWNER';
   phone?: string;
   state?: string | null;
+  industryId?: string | null;
 }
 
 export interface ListUsersResponse {

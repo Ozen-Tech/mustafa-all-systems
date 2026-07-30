@@ -16,6 +16,7 @@ import informationRoutes from './routes/information.routes';
 import whatsappReportRoutes from './routes/whatsappReport.routes';
 import storeIndustryRoutes from './routes/storeIndustry.routes';
 import stockRoutes from './routes/stock.routes';
+import industryOwnerRoutes from './routes/industryOwner.routes';
 
 dotenv.config();
 
@@ -74,6 +75,7 @@ app.use('/api/information', informationRoutes);
 app.use('/api/whatsapp-reports', whatsappReportRoutes);
 app.use('/api/store-industries', storeIndustryRoutes);
 app.use('/api/stock', stockRoutes);
+app.use('/api/industry-owner', industryOwnerRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

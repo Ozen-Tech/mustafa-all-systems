@@ -159,6 +159,7 @@ const createUserSchema = z.object({
   password: z.string().min(6),
   role: z.nativeEnum(UserRole),
   state: z.string().length(2).optional(),
+  industryId: z.string().uuid().optional(),
 });
 
 const updateUserSchema = z.object({
@@ -168,6 +169,7 @@ const updateUserSchema = z.object({
   role: z.nativeEnum(UserRole).optional(),
   phone: z.string().optional(),
   state: z.string().length(2).optional().nullable(),
+  industryId: z.string().uuid().optional().nullable(),
 });
 
 /**
@@ -185,13 +187,27 @@ export async function listUsers(req: AuthRequest, res: Response) {
         state: true,
         createdAt: true,
         updatedAt: true,
+        industryOwnerAssignment: {
+          select: {
+            industryId: true,
+            industry: {
+              select: { id: true, name: true, code: true, abbreviation: true },
+            },
+          },
+        },
       },
       orderBy: {
         createdAt: 'desc',
       },
     });
 
-    res.json({ users });
+    res.json({
+      users: users.map((u) => ({
+        ...u,
+        industryId: u.industryOwnerAssignment?.industryId ?? null,
+        industry: u.industryOwnerAssignment?.industry ?? null,
+      })),
+    });
   } catch (error) {
     console.error('List users error:', error);
     res.status(500).json({ message: 'Internal server error' });
@@ -204,6 +220,20 @@ export async function listUsers(req: AuthRequest, res: Response) {
 export async function createUser(req: AuthRequest, res: Response) {
   try {
     const data = createUserSchema.parse(req.body);
+
+    if (data.role === UserRole.INDUSTRY_OWNER && !data.industryId) {
+      return res.status(400).json({ message: 'Dono de indústria exige industryId' });
+    }
+
+    if (data.industryId) {
+      const industry = await prisma.industry.findUnique({
+        where: { id: data.industryId },
+        select: { id: true },
+      });
+      if (!industry) {
+        return res.status(400).json({ message: 'Indústria não encontrada' });
+      }
+    }
 
     // Verificar se o email já existe
     const existingUser = await prisma.user.findUnique({
@@ -225,6 +255,13 @@ export async function createUser(req: AuthRequest, res: Response) {
         role: data.role,
         phone: data.phone || null,
         state: data.state?.toUpperCase() || null,
+        ...(data.role === UserRole.INDUSTRY_OWNER && data.industryId
+          ? {
+              industryOwnerAssignment: {
+                create: { industryId: data.industryId },
+              },
+            }
+          : {}),
       },
       select: {
         id: true,
@@ -235,10 +272,24 @@ export async function createUser(req: AuthRequest, res: Response) {
         state: true,
         createdAt: true,
         updatedAt: true,
+        industryOwnerAssignment: {
+          select: {
+            industryId: true,
+            industry: {
+              select: { id: true, name: true, code: true, abbreviation: true },
+            },
+          },
+        },
       },
     });
 
-    res.status(201).json({ user });
+    res.status(201).json({
+      user: {
+        ...user,
+        industryId: user.industryOwnerAssignment?.industryId ?? null,
+        industry: user.industryOwnerAssignment?.industry ?? null,
+      },
+    });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ message: 'Dados inválidos', errors: error.errors });
@@ -286,6 +337,32 @@ export async function updateUser(req: AuthRequest, res: Response) {
       updateData.password = await hashPassword(data.password);
     }
 
+    const nextRole = data.role ?? existingUser.role;
+
+    if (nextRole === UserRole.INDUSTRY_OWNER) {
+      const industryId =
+        data.industryId !== undefined
+          ? data.industryId
+          : (
+              await prisma.industryOwnerAssignment.findUnique({
+                where: { userId: id },
+                select: { industryId: true },
+              })
+            )?.industryId ?? null;
+      if (!industryId) {
+        return res.status(400).json({ message: 'Dono de indústria exige industryId' });
+      }
+      if (data.industryId) {
+        const industry = await prisma.industry.findUnique({
+          where: { id: data.industryId },
+          select: { id: true },
+        });
+        if (!industry) {
+          return res.status(400).json({ message: 'Indústria não encontrada' });
+        }
+      }
+    }
+
     const user = await prisma.user.update({
       where: { id },
       data: updateData,
@@ -301,7 +378,35 @@ export async function updateUser(req: AuthRequest, res: Response) {
       },
     });
 
-    res.json({ user });
+    if (nextRole === UserRole.INDUSTRY_OWNER && data.industryId) {
+      await prisma.industryOwnerAssignment.upsert({
+        where: { userId: id },
+        create: { userId: id, industryId: data.industryId },
+        update: { industryId: data.industryId },
+      });
+    } else if (data.role && data.role !== UserRole.INDUSTRY_OWNER) {
+      await prisma.industryOwnerAssignment.deleteMany({ where: { userId: id } });
+    } else if (nextRole === UserRole.INDUSTRY_OWNER && data.industryId === null) {
+      await prisma.industryOwnerAssignment.deleteMany({ where: { userId: id } });
+    }
+
+    const assignment = await prisma.industryOwnerAssignment.findUnique({
+      where: { userId: id },
+      select: {
+        industryId: true,
+        industry: {
+          select: { id: true, name: true, code: true, abbreviation: true },
+        },
+      },
+    });
+
+    res.json({
+      user: {
+        ...user,
+        industryId: assignment?.industryId ?? null,
+        industry: assignment?.industry ?? null,
+      },
+    });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ message: 'Dados inválidos', errors: error.errors });

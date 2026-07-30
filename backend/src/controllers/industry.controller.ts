@@ -2,6 +2,8 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import prisma from '../prisma/client';
 import { AuthRequest } from '../middleware/auth';
+import { UserRole } from '../types';
+import { getOwnedIndustryId } from '../utils/industryOwnerScope';
 
 const createIndustrySchema = z.object({
   name: z.string().min(1),
@@ -27,6 +29,14 @@ export async function listIndustries(req: AuthRequest, res: Response) {
     const where: any = {};
     if (isActive !== undefined) {
       where.isActive = isActive === 'true';
+    }
+
+    if (req.userRole === UserRole.INDUSTRY_OWNER && req.userId) {
+      const ownedId = await getOwnedIndustryId(req.userId);
+      if (!ownedId) {
+        return res.json({ industries: [] });
+      }
+      where.id = ownedId;
     }
 
     const industries = await prisma.industry.findMany({
@@ -58,6 +68,13 @@ export async function listIndustries(req: AuthRequest, res: Response) {
 export async function getIndustry(req: AuthRequest, res: Response) {
   try {
     const { id } = req.params;
+
+    if (req.userRole === UserRole.INDUSTRY_OWNER && req.userId) {
+      const ownedId = await getOwnedIndustryId(req.userId);
+      if (!ownedId || ownedId !== id) {
+        return res.status(403).json({ message: 'Acesso negado a esta indústria' });
+      }
+    }
 
     const industry = await prisma.industry.findUnique({
       where: { id },
