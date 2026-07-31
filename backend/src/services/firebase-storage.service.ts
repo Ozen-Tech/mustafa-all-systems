@@ -350,6 +350,13 @@ export function generatePhotoKey(visitId: string, type: string, extension: strin
   return `photos/${visitId}/${type}-${timestamp}-${uuid}.${extension}`;
 }
 
+/** Documento de atestado / justificativa de falta (imagem ou PDF). */
+export function generateAbsenceDocKey(promoterId: string, extension: string = 'jpg'): string {
+  const timestamp = Date.now();
+  const uuid = uuidv4();
+  return `absences/${promoterId}/${timestamp}-${uuid}.${extension}`;
+}
+
 /**
  * Deleta foto do Firebase Storage
  */
