@@ -187,26 +187,50 @@ export async function listUsers(req: AuthRequest, res: Response) {
         state: true,
         createdAt: true,
         updatedAt: true,
-        industryOwnerAssignment: {
-          select: {
-            industryId: true,
-            industry: {
-              select: { id: true, name: true, code: true, abbreviation: true },
-            },
-          },
-        },
       },
       orderBy: {
         createdAt: 'desc',
       },
     });
 
+    const assignmentByUserId = new Map<
+      string,
+      {
+        industryId: string;
+        industry: { id: string; name: string; code: string; abbreviation: string | null };
+      }
+    >();
+
+    try {
+      const assignments = await prisma.industryOwnerAssignment.findMany({
+        select: {
+          userId: true,
+          industryId: true,
+          industry: {
+            select: { id: true, name: true, code: true, abbreviation: true },
+          },
+        },
+      });
+      for (const a of assignments) {
+        assignmentByUserId.set(a.userId, {
+          industryId: a.industryId,
+          industry: a.industry,
+        });
+      }
+    } catch (assignmentError) {
+      // Tabela pode ainda não existir se a migration não rodou em produção.
+      console.warn('listUsers: IndustryOwnerAssignment unavailable:', assignmentError);
+    }
+
     res.json({
-      users: users.map((u) => ({
-        ...u,
-        industryId: u.industryOwnerAssignment?.industryId ?? null,
-        industry: u.industryOwnerAssignment?.industry ?? null,
-      })),
+      users: users.map((u) => {
+        const assignment = assignmentByUserId.get(u.id);
+        return {
+          ...u,
+          industryId: assignment?.industryId ?? null,
+          industry: assignment?.industry ?? null,
+        };
+      }),
     });
   } catch (error) {
     console.error('List users error:', error);
@@ -255,13 +279,6 @@ export async function createUser(req: AuthRequest, res: Response) {
         role: data.role,
         phone: data.phone || null,
         state: data.state?.toUpperCase() || null,
-        ...(data.role === UserRole.INDUSTRY_OWNER && data.industryId
-          ? {
-              industryOwnerAssignment: {
-                create: { industryId: data.industryId },
-              },
-            }
-          : {}),
       },
       select: {
         id: true,
@@ -272,22 +289,42 @@ export async function createUser(req: AuthRequest, res: Response) {
         state: true,
         createdAt: true,
         updatedAt: true,
-        industryOwnerAssignment: {
+      },
+    });
+
+    let industryId: string | null = null;
+    let industry: { id: string; name: string; code: string; abbreviation: string | null } | null =
+      null;
+
+    if (data.role === UserRole.INDUSTRY_OWNER && data.industryId) {
+      try {
+        const assignment = await prisma.industryOwnerAssignment.create({
+          data: { userId: user.id, industryId: data.industryId },
           select: {
             industryId: true,
             industry: {
               select: { id: true, name: true, code: true, abbreviation: true },
             },
           },
-        },
-      },
-    });
+        });
+        industryId = assignment.industryId;
+        industry = assignment.industry;
+      } catch (assignmentError) {
+        console.error('Create IndustryOwnerAssignment error:', assignmentError);
+        // Rollback user to avoid orphan INDUSTRY_OWNER without industry
+        await prisma.user.delete({ where: { id: user.id } }).catch(() => undefined);
+        return res.status(500).json({
+          message:
+            'Falha ao vincular indústria. Verifique se a migration IndustryOwnerAssignment foi aplicada no banco.',
+        });
+      }
+    }
 
     res.status(201).json({
       user: {
         ...user,
-        industryId: user.industryOwnerAssignment?.industryId ?? null,
-        industry: user.industryOwnerAssignment?.industry ?? null,
+        industryId,
+        industry,
       },
     });
   } catch (error) {
