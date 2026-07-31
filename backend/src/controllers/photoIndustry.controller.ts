@@ -184,16 +184,21 @@ export async function getIndustryCoverage(req: AuthRequest, res: Response) {
   try {
     const { startDate, endDate } = req.query;
 
-    const where: any = {};
+    const photoWhere: any = {};
     if (startDate || endDate) {
-      where.createdAt = {};
+      photoWhere.createdAt = {};
       if (startDate) {
-        where.createdAt.gte = new Date(startDate as string);
+        photoWhere.createdAt.gte = new Date(startDate as string);
       }
       if (endDate) {
-        where.createdAt.lte = new Date(endDate as string);
+        // incluir o dia inteiro do endDate
+        const end = new Date(endDate as string);
+        end.setHours(23, 59, 59, 999);
+        photoWhere.createdAt.lte = end;
       }
     }
+
+    const hasDateFilter = Object.keys(photoWhere).length > 0;
 
     const industries = await prisma.industry.findMany({
       where: {
@@ -202,7 +207,7 @@ export async function getIndustryCoverage(req: AuthRequest, res: Response) {
       include: {
         _count: {
           select: {
-            photoIndustries: where,
+            photoIndustries: hasDateFilter ? { where: photoWhere } : true,
           },
         },
       },
@@ -233,16 +238,20 @@ export async function getMissingCoverage(req: AuthRequest, res: Response) {
   try {
     const { startDate, endDate } = req.query;
 
-    const where: any = {};
+    const photoWhere: any = {};
     if (startDate || endDate) {
-      where.createdAt = {};
+      photoWhere.createdAt = {};
       if (startDate) {
-        where.createdAt.gte = new Date(startDate as string);
+        photoWhere.createdAt.gte = new Date(startDate as string);
       }
       if (endDate) {
-        where.createdAt.lte = new Date(endDate as string);
+        const end = new Date(endDate as string);
+        end.setHours(23, 59, 59, 999);
+        photoWhere.createdAt.lte = end;
       }
     }
+
+    const hasDateFilter = Object.keys(photoWhere).length > 0;
 
     const industries = await prisma.industry.findMany({
       where: {
@@ -251,7 +260,7 @@ export async function getMissingCoverage(req: AuthRequest, res: Response) {
       include: {
         _count: {
           select: {
-            photoIndustries: where,
+            photoIndustries: hasDateFilter ? { where: photoWhere } : true,
           },
         },
       },
