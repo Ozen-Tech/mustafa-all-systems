@@ -33,6 +33,12 @@ enum IndustryMissReason {
   OTHER
 }
 
+enum DayAbsenceReason {
+  MEDICAL_CERTIFICATE
+  PERSONAL
+  OTHER
+}
+
 enum StockImportType {
   STOCK
   SALES
@@ -78,8 +84,26 @@ model User {
   redoGrantsGranted     PromoterStoreRedoGrant[] @relation("RedoGrantGrantedBy")
   stockImports          StockImport[]
   industryOwnerAssignment IndustryOwnerAssignment?
+  dayAbsences           PromoterDayAbsence[]
 
   @@index([state])
+}
+
+model PromoterDayAbsence {
+  id          String           @id @default(uuid())
+  promoterId  String
+  date        String           // YYYY-MM-DD (BRT)
+  reason      DayAbsenceReason
+  note        String?
+  documentUrl String
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  promoter User @relation(fields: [promoterId], references: [id], onDelete: Cascade)
+
+  @@unique([promoterId, date])
+  @@index([promoterId])
+  @@index([date])
 }
 
 model PromoterStoreRedoGrant {

@@ -10,6 +10,7 @@ import HistoryScreen from '../screens/HistoryScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import InformationHubScreen from '../screens/InformationHubScreen';
 import GeneralOnboardingScreen from '../screens/GeneralOnboardingScreen';
+import JustifyAbsenceScreen from '../screens/JustifyAbsenceScreen';
 import { storeService } from '../services/storeService';
 import HomeIcon from '../components/icons/HomeIcon';
 import ClockIcon from '../components/icons/ClockIcon';
@@ -442,6 +443,11 @@ export default function MainNavigator() {
           name="StoreStock"
           component={StoreStockScreenWrapper}
           options={{ title: 'Estoque da Loja' }}
+        />
+        <Stack.Screen
+          name="JustifyAbsence"
+          component={JustifyAbsenceScreen}
+          options={{ title: 'Justificar falta' }}
         />
       </Stack.Navigator>
     </GeneralOnboardingContext.Provider>

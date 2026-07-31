@@ -15,6 +15,15 @@ import {
   getMyOnboarding,
   setMyRoute,
 } from '../controllers/promoter.controller';
+import {
+  absenceDocumentUpload,
+  uploadAbsenceDocument,
+  uploadAbsenceDocumentBase64,
+  upsertMyDayAbsence,
+  getMyDayAbsences,
+  getMyTodayAbsence,
+  deleteMyDayAbsence,
+} from '../controllers/dayAbsence.controller';
 import { authenticate } from '../middleware/auth';
 
 const router = Router();
@@ -26,6 +35,14 @@ router.get('/stores', getStores);
 router.get('/visits', getVisits);
 router.post('/checkin', checkIn);
 router.post('/checkout', checkOut);
+
+// Falta do dia / atestado
+router.get('/day-absences/today', getMyTodayAbsence);
+router.get('/day-absences', getMyDayAbsences);
+router.post('/day-absences', upsertMyDayAbsence);
+router.delete('/day-absences/:date', deleteMyDayAbsence);
+router.post('/day-absences/upload', absenceDocumentUpload, uploadAbsenceDocument);
+router.post('/day-absences/upload-base64', uploadAbsenceDocumentBase64);
 router.post('/visits/:visitId/justify-missing-industries', justifyMissingIndustries);
 router.post(
   '/visits/:visitId/clear-missing-industry-justifications',

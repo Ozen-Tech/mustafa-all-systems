@@ -15,6 +15,7 @@ import Section from '../components/ui/Section';
 import MetricCard from '../components/ui/MetricCard';
 import LoadingView from '../components/ui/LoadingView';
 import Badge from '../components/ui/Badge';
+import { dayAbsenceService } from '../services/dayAbsenceService';
 
 type HomeNavigation = NavigationProp<Record<string, object | undefined>>;
 
@@ -50,6 +51,7 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [dailySummary, setDailySummary] = useState<DailySummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(true);
+  const [hasDayAbsence, setHasDayAbsence] = useState(false);
 
   const checkActiveVisit = useCallback(async () => {
     try {
@@ -77,12 +79,14 @@ export default function HomeScreen() {
     if (visitFlowLoading) return;
     checkActiveVisit();
     loadDailySummary();
+    loadDayAbsence();
     offlineSyncService.syncAll().catch(() => {});
 
     const unsubscribe = navigation.addListener('focus', () => {
       if (visitFlowLoading) return;
       checkActiveVisit();
       loadDailySummary();
+      loadDayAbsence();
       offlineSyncService.syncAll().catch(() => {});
     });
 
@@ -103,12 +107,25 @@ export default function HomeScreen() {
     }
   }
 
+  async function loadDayAbsence() {
+    try {
+      const { absence } = await dayAbsenceService.getToday();
+      setHasDayAbsence(!!absence);
+    } catch {
+      setHasDayAbsence(false);
+    }
+  }
+
   function handleStartVisit() {
     navigation.navigate('Stores');
   }
 
   function handleContinueVisit() {
     navigation.navigate('ActiveVisit');
+  }
+
+  function handleJustifyAbsence() {
+    navigation.navigate('JustifyAbsence');
   }
 
   if (visitFlowLoading || loading || hasActiveVisit === null) {
@@ -180,6 +197,34 @@ export default function HomeScreen() {
             Iniciar nova visita
           </Button>
         )}
+      </Section>
+
+      <Section title="Ausência / atestado">
+        {hasDayAbsence ? (
+          <Card style={styles.absenceCard} shadow>
+            <View style={styles.visitCardHeader}>
+              <Text style={styles.absenceTitle}>Falta justificada hoje</Text>
+              <Badge variant="warning" size="sm">
+                Registrada
+              </Badge>
+            </View>
+            <Text style={styles.absenceSubtitle}>
+              Você já enviou atestado ou justificativa para este dia. Toque para atualizar.
+            </Text>
+          </Card>
+        ) : (
+          <Text style={styles.absenceSubtitle}>
+            Não vai trabalhar hoje? Registre a falta e anexe o atestado ou comprovante.
+          </Text>
+        )}
+        <Button
+          variant="outline"
+          size="lg"
+          onPress={handleJustifyAbsence}
+          style={[styles.fullWidth, { marginTop: theme.spacing.md }]}
+        >
+          {hasDayAbsence ? 'Ver / atualizar justificativa' : 'Justificar falta / atestado'}
+        </Button>
       </Section>
 
       <Section title="Resumo do dia">
@@ -264,6 +309,21 @@ const styles = StyleSheet.create({
   },
   visitCard: {
     marginBottom: theme.spacing.md,
+  },
+  absenceCard: {
+    marginBottom: theme.spacing.sm,
+  },
+  absenceTitle: {
+    fontSize: theme.typography.fontSize.md,
+    fontWeight: theme.typography.fontWeight.bold,
+    color: colors.text.primary,
+    flex: 1,
+  },
+  absenceSubtitle: {
+    fontSize: theme.typography.fontSize.sm,
+    color: colors.text.secondary,
+    lineHeight: 20,
+    marginTop: theme.spacing.xs,
   },
   visitCardHeader: {
     flexDirection: 'row',
