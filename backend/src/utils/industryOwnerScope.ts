@@ -1,6 +1,80 @@
 import prisma from '../prisma/client';
 import { UserRole } from '../types';
 
+let ensureTablePromise: Promise<void> | null = null;
+
+/**
+ * Garante a tabela IndustryOwnerAssignment em produção quando o migrate do CI
+ * não chegou a criar (evita 500 contínuos no admin).
+ */
+export async function ensureIndustryOwnerAssignmentTable(): Promise<void> {
+  if (!ensureTablePromise) {
+    ensureTablePromise = (async () => {
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE IF NOT EXISTS "IndustryOwnerAssignment" (
+          "id" TEXT NOT NULL,
+          "userId" TEXT NOT NULL,
+          "industryId" TEXT NOT NULL,
+          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT "IndustryOwnerAssignment_pkey" PRIMARY KEY ("id")
+        )
+      `);
+      await prisma.$executeRawUnsafe(`
+        CREATE UNIQUE INDEX IF NOT EXISTS "IndustryOwnerAssignment_userId_key"
+        ON "IndustryOwnerAssignment"("userId")
+      `);
+      await prisma.$executeRawUnsafe(`
+        CREATE INDEX IF NOT EXISTS "IndustryOwnerAssignment_industryId_idx"
+        ON "IndustryOwnerAssignment"("industryId")
+      `);
+      await prisma.$executeRawUnsafe(`
+        DO $$ BEGIN
+          ALTER TABLE "IndustryOwnerAssignment"
+            ADD CONSTRAINT "IndustryOwnerAssignment_userId_fkey"
+            FOREIGN KEY ("userId") REFERENCES "User"("id")
+            ON DELETE CASCADE ON UPDATE CASCADE;
+        EXCEPTION WHEN duplicate_object THEN NULL;
+        END $$
+      `);
+      await prisma.$executeRawUnsafe(`
+        DO $$ BEGIN
+          ALTER TABLE "IndustryOwnerAssignment"
+            ADD CONSTRAINT "IndustryOwnerAssignment_industryId_fkey"
+            FOREIGN KEY ("industryId") REFERENCES "Industry"("id")
+            ON DELETE CASCADE ON UPDATE CASCADE;
+        EXCEPTION WHEN duplicate_object THEN NULL;
+        END $$
+      `);
+      // Marca a migration como aplicada se a tabela de histórico existir
+      await prisma
+        .$executeRawUnsafe(`
+        INSERT INTO "_prisma_migrations" ("id", "checksum", "finished_at", "migration_name", "logs", "rolled_back_at", "started_at", "applied_steps_count")
+        SELECT
+          gen_random_uuid()::text,
+          'manual-ensure-industry-owner-assignment',
+          NOW(),
+          '20260730180000_industry_owner_assignment',
+          NULL,
+          NULL,
+          NOW(),
+          1
+        WHERE EXISTS (
+          SELECT 1 FROM information_schema.tables WHERE table_name = '_prisma_migrations'
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM "_prisma_migrations"
+          WHERE "migration_name" = '20260730180000_industry_owner_assignment'
+        )
+      `)
+        .catch(() => undefined);
+    })().catch((err) => {
+      ensureTablePromise = null;
+      throw err;
+    });
+  }
+  await ensureTablePromise;
+}
+
 export async function getOwnedIndustryId(userId: string): Promise<string | null> {
   const row = await prisma.industryOwnerAssignment.findUnique({
     where: { userId },
