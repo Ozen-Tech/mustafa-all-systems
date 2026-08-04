@@ -3,6 +3,10 @@ import { z } from 'zod';
 import { AuthRequest } from '../middleware/auth';
 import prisma from '../prisma/client';
 import { PhotoType } from '../types';
+import {
+  deletePhoto as deletePhotoFromStorage,
+  extractStorageKeyFromUrl,
+} from '../services/firebase-storage.service';
 
 const checkInSchema = z.object({
   storeId: z.string().uuid(),
@@ -519,6 +523,64 @@ export async function uploadPhotos(req: AuthRequest, res: Response) {
       return res.status(400).json({ message: 'Validation error', errors: error.errors });
     }
     console.error('Upload photos error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+}
+
+export async function deleteVisitPhoto(req: AuthRequest, res: Response) {
+  try {
+    const { visitId, photoId } = req.params;
+    const promoterId = req.userId!;
+
+    if (!visitId || !photoId) {
+      return res.status(400).json({ message: 'visitId e photoId são obrigatórios' });
+    }
+
+    const visit = await prisma.visit.findFirst({
+      where: {
+        id: visitId,
+        promoterId,
+        checkOutAt: null,
+      },
+    });
+
+    if (!visit) {
+      return res.status(404).json({
+        message: 'Visita não encontrada ou já finalizada. Não é possível excluir fotos.',
+      });
+    }
+
+    const photo = await prisma.photo.findFirst({
+      where: {
+        id: photoId,
+        visitId,
+      },
+    });
+
+    if (!photo) {
+      return res.status(404).json({ message: 'Foto não encontrada' });
+    }
+
+    if (photo.type === PhotoType.FACADE_CHECKIN || photo.type === PhotoType.FACADE_CHECKOUT) {
+      return res.status(400).json({
+        message: 'Fotos de fachada (check-in/check-out) não podem ser excluídas pelo app.',
+      });
+    }
+
+    const storageKey = extractStorageKeyFromUrl(photo.url);
+    if (storageKey) {
+      try {
+        await deletePhotoFromStorage(storageKey);
+      } catch (storageError) {
+        console.warn('[deleteVisitPhoto] Falha ao remover arquivo no storage:', storageError);
+      }
+    }
+
+    await prisma.photo.delete({ where: { id: photoId } });
+
+    res.json({ success: true, photoId });
+  } catch (error) {
+    console.error('Delete visit photo error:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
 }

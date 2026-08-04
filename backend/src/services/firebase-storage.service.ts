@@ -357,6 +357,28 @@ export function generateAbsenceDocKey(promoterId: string, extension: string = 'j
   return `absences/${promoterId}/${timestamp}-${uuid}.${extension}`;
 }
 
+/** Extrai a storage key a partir da URL pública/assinada do Firebase (ou mock). */
+export function extractStorageKeyFromUrl(url: string): string | null {
+  if (!url) return null;
+
+  try {
+    const parsed = new URL(url);
+    const mockMatch = parsed.pathname.match(/\/photos\/(.+)/);
+    if (parsed.hostname.includes('mock-storage.local') && mockMatch?.[1]) {
+      return decodeURIComponent(mockMatch[1].split('?')[0]);
+    }
+
+    const firebaseMatch = parsed.pathname.match(/\/o\/(.+)/);
+    if (firebaseMatch?.[1]) {
+      return decodeURIComponent(firebaseMatch[1]);
+    }
+  } catch {
+    /* ignore */
+  }
+
+  return null;
+}
+
 /**
  * Deleta foto do Firebase Storage
  */

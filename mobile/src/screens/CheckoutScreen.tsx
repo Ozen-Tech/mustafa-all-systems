@@ -196,6 +196,11 @@ export default function CheckoutScreen({ route }: any) {
     }
   }
 
+  function clearSelectedPhoto() {
+    setPhotoUri(null);
+    setShowPreview(false);
+  }
+
   // Função auxiliar para prosseguir com o checkout após validações
   async function completeCheckout(payload: { visitId: string; latitude: number; longitude: number; photoUrl: string }) {
     const result = await visitService.checkOut(payload);
@@ -442,13 +447,7 @@ export default function CheckoutScreen({ route }: any) {
         <Card style={styles.previewCard} shadow>
           <View style={styles.previewHeader}>
             <Text style={styles.previewTitle}>Preview da Foto</Text>
-            <TouchableOpacity
-              onPress={() => {
-                setPhotoUri(null);
-                setShowPreview(false);
-              }}
-              style={styles.closeButton}
-            >
+            <TouchableOpacity onPress={clearSelectedPhoto} style={styles.closeButton}>
               <Text style={styles.closeButtonText}>✕</Text>
             </TouchableOpacity>
           </View>
@@ -457,13 +456,18 @@ export default function CheckoutScreen({ route }: any) {
             <Button
               variant="outline"
               size="md"
-              onPress={() => {
-                setPhotoUri(null);
-                setShowPreview(false);
-              }}
+              onPress={takePhoto}
               style={styles.previewButton}
             >
               Tirar Outra
+            </Button>
+            <Button
+              variant="outline"
+              size="md"
+              onPress={clearSelectedPhoto}
+              style={styles.previewButton}
+            >
+              Excluir foto
             </Button>
           </View>
         </Card>

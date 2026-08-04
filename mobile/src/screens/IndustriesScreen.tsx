@@ -17,7 +17,6 @@ import ScreenHeader from '../components/ui/ScreenHeader';
 import Input from '../components/ui/Input';
 import EmptyState from '../components/ui/EmptyState';
 import LoadingView from '../components/ui/LoadingView';
-import { ensureLocationPermission, getCurrentPosition } from '../utils/locationHelper';
 import { showAlert } from '../utils/alertHelper';
 
 type StoresNavigation = NavigationProp<Record<string, object | undefined>>;
@@ -73,53 +72,15 @@ export default function StoresScreen() {
       );
       return;
     }
+
+    // Abre a tela de check-in na hora — GPS é obtido lá (com retry após câmera).
+    // Esperar 12s aqui deixava o botão "Iniciar check-in" travado sem feedback.
+    setCheckingIn(store.id);
     try {
-      setCheckingIn(store.id);
-
-      // Tenta permissão/GPS, mas NÃO trava o fluxo: muitos celulares bloqueiam o site
-      // e o alerta antigo impedia o promotor de entrar na loja.
-      const hasPermission = await ensureLocationPermission({ showAlertWhenDenied: false });
-
-      let location: { latitude: number; longitude: number } | undefined;
-
-      if (hasPermission) {
-        try {
-          const pos = await getCurrentPosition({ timeout: 12_000, maximumAge: 60_000 });
-          location = {
-            latitude: pos.coords.latitude,
-            longitude: pos.coords.longitude,
-          };
-        } catch (gpsError: any) {
-          console.warn('[Stores] GPS indisponível agora:', gpsError);
-        }
-      } else {
-        showAlert(
-          'Ative a localização do site',
-          [
-            'Vamos abrir o check-in mesmo assim.',
-            '',
-            'Para o GPS funcionar:',
-            '1. Toque no cadeado (ou ⓘ) ao lado do endereço',
-            '2. Localização → Permitir',
-            '3. Ou: menu do Chrome → Configurações do site → Localização → Permitir',
-            '4. Deixe a Localização do celular ligada',
-            '',
-            'Na próxima tela, se pedir permissão, toque em Permitir.',
-          ].join('\n')
-        );
-      }
-
-      navigation.navigate('CheckIn', {
-        store,
-        location,
-      });
+      navigation.navigate('CheckIn', { store });
     } catch (error: any) {
-      console.error('Erro ao fazer check-in:', error);
-      showAlert(
-        'Erro',
-        error?.message ||
-          'Erro ao iniciar check-in. Verifique a permissão de localização e a memória do celular.'
-      );
+      console.error('Erro ao abrir check-in:', error);
+      showAlert('Erro', error?.message || 'Não foi possível abrir o check-in. Tente novamente.');
     } finally {
       setCheckingIn(null);
     }
