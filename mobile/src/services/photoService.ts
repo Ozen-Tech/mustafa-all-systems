@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
 import apiConfig from '../config/api';
-import { apiClient } from './apiClient';
+import { apiClient, refreshAccessToken } from './apiClient';
 import { getAccessToken } from './tokenStorage';
 import {
   isFragilePhotoUri,
@@ -68,6 +68,13 @@ async function postDirectBinary(
         body: form,
       });
 
+      if (response.status === 401 && i < attempts - 1) {
+        const newToken = await refreshAccessToken();
+        if (newToken) {
+          continue;
+        }
+      }
+
       if (!response.ok) {
         let detail = `HTTP ${response.status}`;
         try {
@@ -85,7 +92,7 @@ async function postDirectBinary(
       return { url: data.url, key: data.key };
     } catch (error: any) {
       lastError = error;
-      if (error?.response?.status && error.response.status < 500) {
+      if (error?.response?.status && error.response.status < 500 && error.response.status !== 401) {
         throw error;
       }
       if (!isNetworkError(error) && error?.response) {

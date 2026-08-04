@@ -5,6 +5,7 @@ import {
   justifyMissingIndustries,
   clearMissingIndustryJustifications,
   uploadPhotos,
+  deleteVisitPhoto,
   submitPriceResearch,
   getCurrentVisit,
   getStores,
@@ -49,6 +50,7 @@ router.post(
   clearMissingIndustryJustifications
 );
 router.post('/photos', uploadPhotos);
+router.delete('/visits/:visitId/photos/:photoId', deleteVisitPhoto);
 router.post('/price-research', submitPriceResearch);
 router.get('/current-visit', getCurrentVisit);
 router.get('/daily-summary', getDailySummary);

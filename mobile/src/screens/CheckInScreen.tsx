@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   ScrollView,
   Image,
   Platform,
+  AppState,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation, NavigationProp } from '@react-navigation/native';
@@ -15,14 +16,23 @@ import { visitService } from '../services/visitService';
 import { photoService } from '../services/photoService';
 import { pickSinglePhoto } from '../utils/imagePickerHelper';
 import { preparePhotoForWebUpload } from '../utils/photoUri';
+import {
+  saveCheckInDraft,
+  loadCheckInDraft,
+  clearCheckInDraft,
+} from '../utils/checkInDraftStorage';
 import { useVisitFlow } from '../features/visits';
 import { useAuth } from '../context/AuthContext';
 import { colors, theme } from '../styles/theme';
 import { flexScroll } from '../styles/webLayout';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
-import Badge from '../components/ui/Badge';
-import { requestForegroundPermissions, getCurrentPosition, LocationObject, getLocationPermissionHelpMessage } from '../utils/locationHelper';
+import {
+  requestForegroundPermissions,
+  getCurrentPosition,
+  LocationObject,
+  getLocationPermissionHelpMessage,
+} from '../utils/locationHelper';
 import { showAlert } from '../utils/alertHelper';
 
 interface Store {
@@ -30,7 +40,6 @@ interface Store {
   name: string;
   address: string;
 }
-
 
 type RootStackParamList = {
   ActiveVisit: { visit: any };
@@ -40,7 +49,7 @@ export default function CheckInScreen({ route }: any) {
   const navigation = useNavigation<NavigationProp<RootStackParamList>>();
   const { store, location: initialLocation } = route.params || {};
   const { user } = useAuth();
-  const { startVisit, setCheckedIn } = useVisitFlow();
+  const { startVisit, setCheckedIn, clearVisit } = useVisitFlow();
   const [locationPermission, setLocationPermission] = useState<boolean>(false);
   const [location, setLocation] = useState<LocationObject | null>(() => {
     if (
@@ -59,54 +68,87 @@ export default function CheckInScreen({ route }: any) {
     return null;
   });
   const [loading, setLoading] = useState(false);
+  const [locating, setLocating] = useState(false);
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   const [cameraPermission, setCameraPermission] = useState<boolean | null>(null);
+  const draftRestored = useRef(false);
 
-  useEffect(() => {
-    requestLocationPermission();
-    requestCameraPermission();
-  }, []);
-
-  async function requestLocationPermission() {
+  const refreshLocation = useCallback(async (options?: { silent?: boolean }) => {
+    setLocating(true);
     try {
       const permission = await requestForegroundPermissions();
       setLocationPermission(permission.status === 'granted');
 
-      if (permission.status === 'granted') {
-        try {
-          const loc = await getCurrentPosition({ timeout: 12_000, maximumAge: 60_000 });
-          setLocation(loc);
-        } catch (gpsError: any) {
-          console.warn('[CheckIn] GPS falhou:', gpsError);
-          if (
-            !(
-              initialLocation &&
-              typeof initialLocation.latitude === 'number' &&
-              typeof initialLocation.longitude === 'number'
-            )
-          ) {
-            showAlert(
-              'GPS indisponível',
-              gpsError?.message ||
-                'Não foi possível obter a localização. Ative o GPS, feche outros apps se o celular estiver lento, e toque em Tentar novamente.'
-            );
-          }
+      if (permission.status !== 'granted') {
+        if (!options?.silent) {
+          showAlert('Permissão necessária', getLocationPermissionHelpMessage(), [
+            { text: 'Cancelar', style: 'cancel' },
+            { text: 'Tentar novamente', onPress: () => void refreshLocation() },
+          ]);
         }
-      } else {
-        showAlert('Permissão necessária', getLocationPermissionHelpMessage(), [
-          { text: 'Cancelar', style: 'cancel' },
-          { text: 'Tentar novamente', onPress: requestLocationPermission },
-        ]);
+        return;
       }
-    } catch (error: any) {
-      console.error('Erro ao solicitar permissão de localização:', error);
-      showAlert(
-        'Erro',
-        `${error?.message || 'Não foi possível solicitar permissão de localização'}\n\n${getLocationPermissionHelpMessage()}`
-      );
+
+      const loc = await getCurrentPosition({ timeout: 15_000, maximumAge: 30_000 });
+      setLocation(loc);
+    } catch (gpsError: any) {
+      console.warn('[CheckIn] GPS falhou:', gpsError);
+      if (!options?.silent) {
+        showAlert(
+          'GPS indisponível',
+          `${gpsError?.message || 'Não foi possível obter a localização.'}\n\n${getLocationPermissionHelpMessage()}`
+        );
+      }
+    } finally {
+      setLocating(false);
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    void refreshLocation({ silent: true });
+    void requestCameraPermission();
+  }, [refreshLocation]);
+
+  // Restaura foto se o PWA recarregou após tirar foto (OOM / memória).
+  useEffect(() => {
+    if (!store?.id || !user?.id || draftRestored.current) return;
+    draftRestored.current = true;
+
+    void (async () => {
+      const draft = await loadCheckInDraft(user.id, store.id);
+      if (draft?.photoUri) {
+        setPhotoUri(draft.photoUri);
+        setShowPreview(true);
+      }
+    })();
+  }, [store?.id, user?.id]);
+
+  // Ao voltar da câmera ou reabrir a aba, o GPS costuma precisar de nova leitura.
+  useEffect(() => {
+    const onAppActive = (state: string) => {
+      if (state === 'active') {
+        void refreshLocation({ silent: true });
+      }
+    };
+
+    const sub = AppState.addEventListener('change', onAppActive);
+
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      const onVisibility = () => {
+        if (document.visibilityState === 'visible') {
+          void refreshLocation({ silent: true });
+        }
+      };
+      document.addEventListener('visibilitychange', onVisibility);
+      return () => {
+        sub.remove();
+        document.removeEventListener('visibilitychange', onVisibility);
+      };
+    }
+
+    return () => sub.remove();
+  }, [refreshLocation]);
 
   async function requestCameraPermission() {
     try {
@@ -118,13 +160,47 @@ export default function CheckInScreen({ route }: any) {
     }
   }
 
+  async function resolveLocationForCheckIn(): Promise<LocationObject | null> {
+    if (location) return location;
+
+    try {
+      setLocating(true);
+      const permission = await requestForegroundPermissions();
+      if (permission.status !== 'granted') {
+        showAlert('Permissão necessária', getLocationPermissionHelpMessage());
+        return null;
+      }
+      const loc = await getCurrentPosition({ timeout: 18_000, maximumAge: 0 });
+      setLocation(loc);
+      return loc;
+    } catch (gpsError: any) {
+      showAlert(
+        'GPS indisponível',
+        `${gpsError?.message || 'Não foi possível obter a localização.'}\n\nAtive o GPS do celular e toque em "Atualizar GPS" antes de enviar.`
+      );
+      return null;
+    } finally {
+      setLocating(false);
+    }
+  }
+
+  function clearSelectedPhoto() {
+    setPhotoUri(null);
+    setShowPreview(false);
+    if (user?.id) void clearCheckInDraft(user.id);
+  }
+
   async function takePhoto() {
     try {
-      // Qualidade baixa no PWA: evita reload por falta de memória no envio do check-in.
       const uri = await pickSinglePhoto({ quality: Platform.OS === 'web' ? 0.35 : 0.7 });
       if (uri) {
         setPhotoUri(uri);
         setShowPreview(true);
+        if (user?.id && store?.id) {
+          void saveCheckInDraft(user.id, store.id, uri);
+        }
+        // Câmera tira foco da página — nova leitura de GPS ao voltar.
+        void refreshLocation({ silent: true });
       }
     } catch (error) {
       console.error('Erro ao capturar foto:', error);
@@ -138,32 +214,34 @@ export default function CheckInScreen({ route }: any) {
       return;
     }
 
-    if (!location) {
-      showAlert('Erro', 'Não foi possível obter a localização');
-      return;
-    }
-
     if (!photoUri) {
       showAlert('Erro', 'Tire uma foto da fachada primeiro');
       return;
     }
 
+    const activeLocation = await resolveLocationForCheckIn();
+    if (!activeLocation) {
+      return;
+    }
+
     setLoading(true);
+    let visitStartedLocally = false;
+
     try {
-      // Persistir localmente antes de chamar o backend
       await startVisit({
         storeId: store.id,
         storeName: store.name,
         storeAddress: store.address,
         promoterId: user?.id || 'unknown',
       });
+      visitStartedLocally = true;
 
       const tempPhotoUrl = 'https://placeholder.com/checkin.jpg';
-      
+
       const checkInResult = await visitService.checkIn({
         storeId: store.id,
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
+        latitude: activeLocation.coords.latitude,
+        longitude: activeLocation.coords.longitude,
         photoUrl: tempPhotoUrl,
       });
 
@@ -172,18 +250,18 @@ export default function CheckInScreen({ route }: any) {
         throw new Error('Não foi possível obter o ID da visita');
       }
 
-      // Transição local: visitInProgress -> checkedIn
-      await setCheckedIn(visitId, location.coords.latitude, location.coords.longitude);
+      await setCheckedIn(
+        visitId,
+        activeLocation.coords.latitude,
+        activeLocation.coords.longitude
+      );
 
-      // 2. Agora que temos o visitId real, fazer upload da foto
-      console.log('📸 [CheckIn] Obtendo presigned URL com visitId real...');
       let photoUrl = '';
       let uploadUri = photoUri;
 
       try {
         if (Platform.OS === 'web') {
           uploadUri = await preparePhotoForWebUpload(photoUri);
-          // Troca preview pela versão leve para liberar memória antes do POST
           setPhotoUri(uploadUri);
         }
 
@@ -195,61 +273,52 @@ export default function CheckInScreen({ route }: any) {
           fileUri: uploadUri,
         });
 
-        console.log('✅ [CheckIn] Upload da foto concluído com sucesso');
         photoUrl = photoUrlUploaded;
       } catch (uploadError: any) {
         console.error('❌ [CheckIn] Erro no upload da foto:', uploadError);
-        // Continuar mesmo se o upload falhar - a visita já foi criada
-        console.warn('⚠️ [CheckIn] Visita criada, mas upload da foto falhou');
-        photoUrl = tempPhotoUrl; // Manter URL temporária
+        photoUrl = tempPhotoUrl;
       }
 
-      // 4. Atualizar o registro da foto com a URL correta
       if (photoUrl && photoUrl !== tempPhotoUrl) {
-        console.log('📸 [CheckIn] Atualizando registro da foto com URL correta...');
         try {
-          // Usar uploadPhotos para atualizar/criar o registro correto
-          // O PhotoGallery prioriza photos[] sobre checkInPhotoUrl
           await visitService.uploadPhotos({
-            visitId: visitId,
-            photos: [{
-              url: photoUrl,
-              type: 'FACADE_CHECKIN',
-              latitude: location.coords.latitude,
-              longitude: location.coords.longitude,
-            }],
+            visitId,
+            photos: [
+              {
+                url: photoUrl,
+                type: 'FACADE_CHECKIN',
+                latitude: activeLocation.coords.latitude,
+                longitude: activeLocation.coords.longitude,
+              },
+            ],
           });
-          console.log('✅ [CheckIn] Registro da foto atualizado');
         } catch (updateError: any) {
           console.warn('⚠️ [CheckIn] Erro ao atualizar registro da foto:', updateError);
-          // Continuar mesmo se falhar - a foto já está no Firebase
         }
       }
 
-      const result = checkInResult;
-      console.log('✅ [CheckIn] Check-in realizado com sucesso:', result);
+      if (user?.id) {
+        await clearCheckInDraft(user.id);
+      }
 
-      showAlert('✅ Sucesso', 'Check-in realizado com sucesso!', [
-        {
-          text: 'OK',
-          onPress: () => {
-            navigation.navigate('ActiveVisit', { visit: result.visit });
-          },
-        },
-      ]);
+      const result = checkInResult;
+      navigation.navigate('ActiveVisit', { visit: result.visit });
     } catch (error: any) {
       console.error('❌ [CheckIn] Erro no check-in:', error);
-      console.error('❌ [CheckIn] Tipo do erro:', error?.constructor?.name);
-      console.error('❌ [CheckIn] Mensagem:', error?.message);
-      console.error('❌ [CheckIn] Response:', error?.response?.data);
-      console.error('❌ [CheckIn] Status:', error?.response?.status);
-      console.error('❌ [CheckIn] Stack:', error?.stack);
-      
-      const errorMessage = 
-        error?.response?.data?.message || 
-        error?.message || 
+
+      if (visitStartedLocally) {
+        try {
+          await clearVisit();
+        } catch {
+          /* ignore */
+        }
+      }
+
+      const errorMessage =
+        error?.response?.data?.message ||
+        error?.message ||
         'Erro ao fazer check-in. Verifique sua conexão e tente novamente.';
-      
+
       showAlert('Erro', errorMessage);
     } finally {
       setLoading(false);
@@ -273,7 +342,12 @@ export default function CheckInScreen({ route }: any) {
           <Text style={styles.permissionText}>
             Precisamos do acesso à câmera para tirar fotos da fachada das lojas.
           </Text>
-          <Button variant="primary" size="lg" onPress={requestCameraPermission} style={styles.permissionButton}>
+          <Button
+            variant="primary"
+            size="lg"
+            onPress={requestCameraPermission}
+            style={styles.permissionButton}
+          >
             Permitir Câmera
           </Button>
         </Card>
@@ -281,15 +355,16 @@ export default function CheckInScreen({ route }: any) {
     );
   }
 
+  const gpsReady = !!location;
+  const canSubmitCheckIn = !!photoUri && !loading;
+
   return (
     <ScrollView style={[styles.container, flexScroll]} contentContainerStyle={styles.contentContainer}>
-      {/* Header */}
       <View style={styles.header}>
         <Text style={styles.title}>Check-in</Text>
         <Text style={styles.subtitle}>Tire uma foto da fachada da loja</Text>
       </View>
 
-      {/* Informações da Loja */}
       {store && (
         <Card style={styles.storeCard} shadow>
           <View style={styles.storeHeader}>
@@ -304,18 +379,11 @@ export default function CheckInScreen({ route }: any) {
         </Card>
       )}
 
-      {/* Preview da Foto ou Câmera */}
       {showPreview && photoUri ? (
         <Card style={styles.previewCard} shadow>
           <View style={styles.previewHeader}>
             <Text style={styles.previewTitle}>Preview da Foto</Text>
-            <TouchableOpacity
-              onPress={() => {
-                setPhotoUri(null);
-                setShowPreview(false);
-              }}
-              style={styles.closeButton}
-            >
+            <TouchableOpacity onPress={clearSelectedPhoto} style={styles.closeButton}>
               <Text style={styles.closeButtonText}>✕</Text>
             </TouchableOpacity>
           </View>
@@ -324,13 +392,18 @@ export default function CheckInScreen({ route }: any) {
             <Button
               variant="outline"
               size="md"
-              onPress={() => {
-                setPhotoUri(null);
-                setShowPreview(false);
-              }}
+              onPress={takePhoto}
               style={styles.previewButton}
             >
               Tirar Outra
+            </Button>
+            <Button
+              variant="outline"
+              size="md"
+              onPress={clearSelectedPhoto}
+              style={styles.previewButton}
+            >
+              Excluir foto
             </Button>
           </View>
         </Card>
@@ -343,24 +416,27 @@ export default function CheckInScreen({ route }: any) {
         </Card>
       )}
 
-      {/* Status de Localização */}
       <Card style={styles.statusCard} shadow>
         <View style={styles.statusRow}>
           <View style={styles.statusItem}>
             <View
               style={[
                 styles.statusIndicator,
-                location ? styles.statusIndicatorActive : undefined,
+                gpsReady ? styles.statusIndicatorActive : undefined,
               ]}
             >
-              <Text style={styles.statusIcon}>{location ? '✓' : '○'}</Text>
+              <Text style={styles.statusIcon}>{gpsReady ? '✓' : locating ? '…' : '○'}</Text>
             </View>
             <View style={styles.statusInfo}>
               <Text style={styles.statusLabel}>Localização</Text>
               <Text style={styles.statusValue}>
-                {location
-                  ? `${location.coords.latitude.toFixed(4)}, ${location.coords.longitude.toFixed(4)}`
-                  : 'Obtendo...'}
+                {gpsReady
+                  ? `${location!.coords.latitude.toFixed(4)}, ${location!.coords.longitude.toFixed(4)}`
+                  : locating
+                    ? 'Obtendo GPS...'
+                    : locationPermission
+                      ? 'Aguardando sinal GPS'
+                      : 'Permissão necessária'}
               </Text>
             </View>
           </View>
@@ -379,9 +455,20 @@ export default function CheckInScreen({ route }: any) {
             </View>
           </View>
         </View>
+        {!gpsReady && (
+          <Button
+            variant="outline"
+            size="sm"
+            onPress={() => void refreshLocation()}
+            isLoading={locating}
+            disabled={locating || loading}
+            style={styles.gpsRetryButton}
+          >
+            📍 Atualizar GPS
+          </Button>
+        )}
       </Card>
 
-      {/* Ações */}
       <View style={styles.actions}>
         {!showPreview && (
           <Button
@@ -399,11 +486,17 @@ export default function CheckInScreen({ route }: any) {
           size="lg"
           onPress={handleCheckIn}
           isLoading={loading}
-          disabled={!photoUri || !location || loading}
+          disabled={!canSubmitCheckIn}
           style={styles.actionButton}
         >
           ✅ Fazer Check-in
         </Button>
+        {!gpsReady && photoUri ? (
+          <Text style={styles.gpsHint}>
+            Com a foto pronta, toque em &quot;Atualizar GPS&quot; ou em &quot;Fazer Check-in&quot; — o app
+            tentará capturar a localização na hora do envio.
+          </Text>
+        ) : null}
       </View>
     </ScrollView>
   );
@@ -560,6 +653,15 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.fontSize.sm,
     fontWeight: theme.typography.fontWeight.medium,
     color: colors.text.primary,
+  },
+  gpsRetryButton: {
+    marginTop: theme.spacing.md,
+  },
+  gpsHint: {
+    fontSize: theme.typography.fontSize.sm,
+    color: colors.text.secondary,
+    textAlign: 'center',
+    lineHeight: 20,
   },
   actions: {
     gap: theme.spacing.md,

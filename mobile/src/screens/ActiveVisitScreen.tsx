@@ -101,6 +101,7 @@ export default function ActiveVisitScreen({ route }: any) {
   const [onboardingSubmitting, setOnboardingSubmitting] = useState(false);
   const [waivedIndustryIds, setWaivedIndustryIds] = useState<Set<string>>(new Set());
   const [waivingIndustryId, setWaivingIndustryId] = useState<string | null>(null);
+  const [removingPhotoIndex, setRemovingPhotoIndex] = useState<number | null>(null);
 
   useEffect(() => {
     loadCurrentVisit();
@@ -423,25 +424,75 @@ export default function ActiveVisitScreen({ route }: any) {
     }
   }
 
-  function removePhoto(index: number) {
-    showAlert(
-      'Remover foto',
-      'Deseja remover esta foto?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Remover',
-          style: 'destructive',
-          onPress: () => {
-            setPhotos((prev) => {
-              const updated = prev.filter((_, i) => i !== index);
-              if (visit?.id) savePendingPhotosToStorage(visit.id, updated);
-              return updated;
-            });
-          },
-        },
-      ]
-    );
+  function removePhotoFromState(index: number) {
+    setPhotos((prev) => {
+      const updated = prev.filter((_, i) => i !== index);
+      if (visit?.id) void savePendingPhotosToStorage(visit.id, updated);
+      return updated;
+    });
+    if (selectedPhotoIndex === index) {
+      setSelectedPhotoIndex(null);
+    } else if (selectedPhotoIndex !== null && selectedPhotoIndex > index) {
+      setSelectedPhotoIndex(selectedPhotoIndex - 1);
+    }
+  }
+
+  async function removePhoto(index: number) {
+    const photo = photos[index];
+    if (!photo) return;
+
+    const isUploaded = !!photo.url;
+    const message = isUploaded
+      ? 'Esta foto já foi enviada. Deseja excluí-la permanentemente?'
+      : 'Deseja remover esta foto?';
+
+    showAlert('Excluir foto', message, [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Excluir',
+        style: 'destructive',
+        onPress: () => void confirmRemovePhoto(index),
+      },
+    ]);
+  }
+
+  async function confirmRemovePhoto(index: number) {
+    const photo = photos[index];
+    if (!photo) return;
+
+    if (photo.url && visit?.id) {
+      let photoId = photo.id;
+
+      if (!photoId) {
+        try {
+          const response = await visitService.getCurrentVisit();
+          const serverPhoto = response.visit?.photos?.find(
+            (p: { url?: string; id?: string }) => p.url === photo.url
+          );
+          photoId = serverPhoto?.id;
+        } catch {
+          /* tenta seguir sem id */
+        }
+      }
+
+      if (photoId) {
+        setRemovingPhotoIndex(index);
+        try {
+          await visitService.deleteVisitPhoto(visit.id, photoId);
+          removePhotoFromState(index);
+        } catch (error: any) {
+          showAlert(
+            'Erro',
+            error?.response?.data?.message || 'Não foi possível excluir a foto. Tente novamente.'
+          );
+        } finally {
+          setRemovingPhotoIndex(null);
+        }
+        return;
+      }
+    }
+
+    removePhotoFromState(index);
   }
 
   function toggleIndustry(industryId: string) {
@@ -587,7 +638,7 @@ export default function ActiveVisitScreen({ route }: any) {
             fileUri: photo.uri,
           });
 
-          await visitService.uploadPhotos({
+          const uploadResponse = await visitService.uploadPhotos({
             visitId: visit.id,
             photos: [
               {
@@ -600,9 +651,18 @@ export default function ActiveVisitScreen({ route }: any) {
             ],
           });
 
+          const createdPhoto = uploadResponse.photos?.[0];
           uploadResults.push({ photo, url, success: true });
           workingPhotos = workingPhotos.map((p) =>
-            p.uri === photo.uri ? { ...p, url, uri: undefined, invalid: undefined } : p
+            p.uri === photo.uri
+              ? {
+                  ...p,
+                  url,
+                  uri: undefined,
+                  invalid: undefined,
+                  id: createdPhoto?.id ?? p.id,
+                }
+              : p
           );
           setPhotos(workingPhotos);
           await savePendingPhotosToStorage(visit.id, workingPhotos);
@@ -738,17 +798,18 @@ export default function ActiveVisitScreen({ route }: any) {
                   <Text style={styles.uploadedBadgeText}>✓</Text>
                 </View>
               )}
-              {(isPending || isInvalid) && (
-                <TouchableOpacity
-                  style={styles.deleteButton}
-                  onPress={(e) => {
-                    e.stopPropagation();
-                    removePhoto(globalIdx);
-                  }}
-                >
-                  <Text style={styles.deleteButtonText}>×</Text>
-                </TouchableOpacity>
-              )}
+              <TouchableOpacity
+                style={styles.deleteButton}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  removePhoto(globalIdx);
+                }}
+                disabled={removingPhotoIndex === globalIdx || uploading}
+              >
+                <Text style={styles.deleteButtonText}>
+                  {removingPhotoIndex === globalIdx ? '…' : '×'}
+                </Text>
+              </TouchableOpacity>
             </TouchableOpacity>
           );
         })}
@@ -1161,6 +1222,15 @@ export default function ActiveVisitScreen({ route }: any) {
                   style={styles.fullscreenImage as any}
                   resizeMode="contain"
                 />
+                <TouchableOpacity
+                  style={styles.fullscreenDeleteButton}
+                  onPress={() => removePhoto(selectedPhotoIndex)}
+                  disabled={removingPhotoIndex === selectedPhotoIndex || uploading}
+                >
+                  <Text style={styles.fullscreenDeleteText}>
+                    {removingPhotoIndex === selectedPhotoIndex ? 'Excluindo...' : 'Excluir foto'}
+                  </Text>
+                </TouchableOpacity>
               </View>
             </TouchableOpacity>
           </View>
@@ -1518,5 +1588,17 @@ const styles = StyleSheet.create({
   fullscreenImage: {
     width: '100%',
     height: '100%',
+  },
+  fullscreenDeleteButton: {
+    marginTop: theme.spacing.lg,
+    backgroundColor: 'rgba(239, 68, 68, 0.9)',
+    paddingHorizontal: theme.spacing.xl,
+    paddingVertical: theme.spacing.md,
+    borderRadius: theme.borderRadius.lg,
+  },
+  fullscreenDeleteText: {
+    color: '#fff',
+    fontSize: theme.typography.fontSize.base,
+    fontWeight: theme.typography.fontWeight.semibold,
   },
 });

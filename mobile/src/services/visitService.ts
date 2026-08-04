@@ -73,6 +73,11 @@ export const visitService = {
     return response.data;
   },
 
+  async deleteVisitPhoto(visitId: string, photoId: string) {
+    const response = await apiClient.delete(`/promoters/visits/${visitId}/photos/${photoId}`);
+    return response.data;
+  },
+
   async getCurrentVisit() {
     const response = await apiClient.get('/promoters/current-visit');
     return response.data;
