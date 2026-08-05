@@ -467,6 +467,17 @@ export default function CheckInScreen({ route }: any) {
             📍 Atualizar GPS
           </Button>
         )}
+        {!gpsReady && !locationPermission ? (
+          <View style={styles.gpsHelpBox}>
+            <Text style={styles.gpsHelpTitle}>Localização bloqueada neste celular</Text>
+            <Text style={styles.gpsHelpText}>
+              1. Toque no cadeado (ou ⓘ) ao lado do endereço do site{'\n'}
+              2. Localização → Permitir{'\n'}
+              3. Confira se a Localização do celular está ligada{'\n'}
+              4. Volte aqui e toque em &quot;Atualizar GPS&quot;
+            </Text>
+          </View>
+        ) : null}
       </Card>
 
       <View style={styles.actions}>
@@ -656,6 +667,23 @@ const styles = StyleSheet.create({
   },
   gpsRetryButton: {
     marginTop: theme.spacing.md,
+  },
+  gpsHelpBox: {
+    marginTop: theme.spacing.md,
+    padding: theme.spacing.md,
+    borderRadius: theme.borderRadius.lg,
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+  },
+  gpsHelpTitle: {
+    fontSize: theme.typography.fontSize.sm,
+    fontWeight: theme.typography.fontWeight.bold,
+    color: colors.text.primary,
+    marginBottom: theme.spacing.xs,
+  },
+  gpsHelpText: {
+    fontSize: theme.typography.fontSize.sm,
+    color: colors.text.secondary,
+    lineHeight: 20,
   },
   gpsHint: {
     fontSize: theme.typography.fontSize.sm,

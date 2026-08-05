@@ -1,5 +1,5 @@
-/* Service Worker — v4: nunca servir HTML no lugar de JS (evita Unexpected token '<') */
-const CACHE_NAME = 'mustafa-promotor-v4';
+/* Service Worker — v5: invalida cache antigo (GPS/check-in) e pede reload aos clientes */
+const CACHE_NAME = 'mustafa-promotor-v5';
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest'];
 
 function isHtmlResponse(res) {
@@ -37,6 +37,13 @@ self.addEventListener('activate', (event) => {
       .keys()
       .then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
+      .then(() =>
+        self.clients.matchAll({ type: 'window' }).then((clients) => {
+          clients.forEach((client) => {
+            client.postMessage({ type: 'SW_UPDATED', cache: CACHE_NAME });
+          });
+        })
+      )
   );
 });
 
