@@ -111,6 +111,14 @@ export async function isLocationModuleAvailable(): Promise<boolean> {
 
 export async function requestForegroundPermissions(): Promise<LocationPermissionStatus> {
   try {
+    // Web: se o Chrome já bloqueou o site, requestAsync não reabre o prompt.
+    if (Platform.OS === 'web') {
+      const webState = await queryWebGeolocationState();
+      if (webState === 'denied') {
+        return { status: 'denied', canAskAgain: false };
+      }
+    }
+
     const Location = await importLocationModule();
     const result = await withTimeout(
       Location.requestForegroundPermissionsAsync(),
@@ -123,6 +131,31 @@ export async function requestForegroundPermissions(): Promise<LocationPermission
     };
   } catch (error: any) {
     console.error('❌ [locationHelper] Erro ao solicitar permissão:', error);
+
+    // Fallback web: tenta o prompt nativo do navegador (às vezes o expo-location falha no PWA).
+    if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.geolocation) {
+      try {
+        await withTimeout(
+          new Promise<void>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(
+              () => resolve(),
+              (err) => reject(err),
+              { enableHighAccuracy: false, timeout: 12_000, maximumAge: 60_000 }
+            );
+          }),
+          13_000,
+          'Tempo esgotado ao solicitar permissão de localização.'
+        );
+        return { status: 'granted', canAskAgain: true };
+      } catch (geoErr: any) {
+        const code = geoErr?.code;
+        // 1 = PERMISSION_DENIED
+        if (code === 1) {
+          return { status: 'denied', canAskAgain: false };
+        }
+      }
+    }
+
     throw new Error(
       error?.message ||
         'Não foi possível solicitar permissão de localização. Verifique se o módulo está disponível.'

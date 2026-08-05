@@ -16,6 +16,23 @@ if (Platform.OS === 'web' && typeof window !== 'undefined' && 'serviceWorker' in
       console.warn('SW registration failed:', err);
     });
   });
+
+  // Nova versão do SW: limpa cache antigo e recarrega 1x (evita promotor preso no JS velho).
+  navigator.serviceWorker.addEventListener('message', (event) => {
+    if (event.data?.type !== 'SW_UPDATED') return;
+    try {
+      const key = `sw_reloaded_${event.data.cache || 'v'}`;
+      if (sessionStorage.getItem(key)) return;
+      sessionStorage.setItem(key, '1');
+    } catch {
+      /* ignore */
+    }
+    window.location.reload();
+  });
+
+  navigator.serviceWorker.ready.then((reg) => {
+    reg.update?.().catch(() => null);
+  });
 }
 
 // Suprimir erro DETECT_SCREEN_CAPTURE (não é crítico, apenas um aviso do Android)
