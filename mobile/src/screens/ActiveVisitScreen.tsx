@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 
 import { useNavigation, NavigationProp } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { visitService } from '../services/visitService';
 import { photoService } from '../services/photoService';
 import { industryService } from '../services/industryService';
@@ -73,6 +74,7 @@ type ActiveVisitNavigation = NavigationProp<Record<string, object | undefined>>;
 
 export default function ActiveVisitScreen({ route }: any) {
   const navigation = useNavigation<ActiveVisitNavigation>();
+  const insets = useSafeAreaInsets();
   const { visit: initialVisit } = route.params || {};
   const {
     visit: localVisit,
@@ -1203,36 +1205,59 @@ export default function ActiveVisitScreen({ route }: any) {
 
       {/* Modal de Preview Fullscreen */}
       {selectedPhotoIndex !== null && photos[selectedPhotoIndex] && (
-        <Modal visible transparent animationType="fade" onRequestClose={() => setSelectedPhotoIndex(null)}>
-          <View style={styles.fullscreenModal}>
+        <Modal
+          visible
+          transparent
+          animationType="fade"
+          statusBarTranslucent
+          onRequestClose={() => setSelectedPhotoIndex(null)}
+        >
+          <View
+            style={[
+              styles.fullscreenModal,
+              Platform.OS === 'web' ? styles.fullscreenModalWeb : null,
+              {
+                paddingTop: Math.max(insets.top, 12),
+                paddingBottom: Math.max(insets.bottom, 16),
+              },
+            ]}
+          >
+            <View style={styles.fullscreenHeader}>
+              <TouchableOpacity
+                style={styles.fullscreenClose}
+                onPress={() => setSelectedPhotoIndex(null)}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              >
+                <Text style={styles.fullscreenCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
             <TouchableOpacity
-              style={styles.fullscreenBackdrop}
+              style={styles.fullscreenImageWrap}
               activeOpacity={1}
               onPress={() => setSelectedPhotoIndex(null)}
             >
-              <View style={styles.fullscreenContent}>
-                <TouchableOpacity
-                  style={styles.fullscreenClose}
-                  onPress={() => setSelectedPhotoIndex(null)}
-                >
-                  <Text style={styles.fullscreenCloseText}>✕</Text>
-                </TouchableOpacity>
-                <Image
-                  source={{ uri: photos[selectedPhotoIndex].uri || photos[selectedPhotoIndex].url }}
-                  style={styles.fullscreenImage as any}
-                  resizeMode="contain"
-                />
-                <TouchableOpacity
-                  style={styles.fullscreenDeleteButton}
-                  onPress={() => removePhoto(selectedPhotoIndex)}
-                  disabled={removingPhotoIndex === selectedPhotoIndex || uploading}
-                >
-                  <Text style={styles.fullscreenDeleteText}>
-                    {removingPhotoIndex === selectedPhotoIndex ? 'Excluindo...' : 'Excluir foto'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
+              <Image
+                source={{ uri: photos[selectedPhotoIndex].uri || photos[selectedPhotoIndex].url }}
+                style={styles.fullscreenImage as any}
+                resizeMode="contain"
+              />
             </TouchableOpacity>
+
+            <View style={styles.fullscreenFooter}>
+              <TouchableOpacity
+                style={styles.fullscreenDeleteButton}
+                onPress={() => removePhoto(selectedPhotoIndex)}
+                disabled={removingPhotoIndex === selectedPhotoIndex || uploading}
+              >
+                <Text style={styles.fullscreenDeleteText}>
+                  {removingPhotoIndex === selectedPhotoIndex ? 'Excluindo...' : 'Excluir foto'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setSelectedPhotoIndex(null)}>
+                <Text style={styles.fullscreenDismissHint}>Fechar</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </Modal>
       )}
@@ -1554,26 +1579,27 @@ const styles = StyleSheet.create({
   // ---- Fullscreen preview ----
   fullscreenModal: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.95)',
+    backgroundColor: 'rgba(0, 0, 0, 0.97)',
   },
-  fullscreenBackdrop: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  fullscreenContent: {
+  fullscreenModalWeb: {
+    position: 'fixed' as any,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     width: '100%',
     height: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'relative',
+    zIndex: 10000,
+  },
+  fullscreenHeader: {
+    width: '100%',
+    alignItems: 'flex-end',
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+    minHeight: 48,
   },
   fullscreenClose: {
-    position: 'absolute',
-    top: 50,
-    right: 20,
-    zIndex: 1001,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
     width: 40,
     height: 40,
     borderRadius: 20,
@@ -1582,23 +1608,44 @@ const styles = StyleSheet.create({
   },
   fullscreenCloseText: {
     color: colors.text.primary,
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: 'bold',
+  },
+  fullscreenImageWrap: {
+    flex: 1,
+    width: '100%',
+    minHeight: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 8,
   },
   fullscreenImage: {
     width: '100%',
     height: '100%',
   },
+  fullscreenFooter: {
+    width: '100%',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    gap: 10,
+  },
   fullscreenDeleteButton: {
-    marginTop: theme.spacing.lg,
-    backgroundColor: 'rgba(239, 68, 68, 0.9)',
-    paddingHorizontal: theme.spacing.xl,
-    paddingVertical: theme.spacing.md,
-    borderRadius: theme.borderRadius.lg,
+    backgroundColor: 'rgba(239, 68, 68, 0.95)',
+    paddingHorizontal: 28,
+    paddingVertical: 14,
+    borderRadius: 12,
+    minWidth: 180,
+    alignItems: 'center',
   },
   fullscreenDeleteText: {
     color: '#fff',
     fontSize: theme.typography.fontSize.base,
     fontWeight: theme.typography.fontWeight.semibold,
+  },
+  fullscreenDismissHint: {
+    color: colors.text.secondary,
+    fontSize: theme.typography.fontSize.sm,
+    paddingVertical: 6,
   },
 });
