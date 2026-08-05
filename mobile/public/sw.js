@@ -1,5 +1,5 @@
-/* Service Worker — v5: invalida cache antigo (GPS/check-in) e pede reload aos clientes */
-const CACHE_NAME = 'mustafa-promotor-v5';
+/* Service Worker — v6: fix modal exclusão de fotos + GPS cache */
+const CACHE_NAME = 'mustafa-promotor-v6';
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest'];
 
 function isHtmlResponse(res) {
