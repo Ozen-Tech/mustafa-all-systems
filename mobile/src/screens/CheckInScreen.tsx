@@ -34,6 +34,11 @@ import {
   getLocationPermissionHelpMessage,
 } from '../utils/locationHelper';
 import { showAlert } from '../utils/alertHelper';
+import {
+  detectWebBrowser,
+  isRecommendedBrowser,
+  openAppInChrome,
+} from '../utils/browserHelper';
 
 interface Store {
   id: string;
@@ -471,11 +476,20 @@ export default function CheckInScreen({ route }: any) {
           <View style={styles.gpsHelpBox}>
             <Text style={styles.gpsHelpTitle}>Localização bloqueada neste celular</Text>
             <Text style={styles.gpsHelpText}>
-              1. Toque no cadeado (ou ⓘ) ao lado do endereço do site{'\n'}
-              2. Localização → Permitir{'\n'}
-              3. Confira se a Localização do celular está ligada{'\n'}
-              4. Volte aqui e toque em &quot;Atualizar GPS&quot;
+              {detectWebBrowser() === 'samsung'
+                ? '1. Toque no cadeado/escudo ao lado do endereço\n2. Permissões → Localização → Permitir\n3. Localização do celular ligada\n4. Se falhar: abra no Chrome (ícone colorido)'
+                : '1. Toque no cadeado (ou ⓘ) ao lado do endereço do site\n2. Localização → Permitir\n3. Confira se a Localização do celular está ligada\n4. Volte aqui e toque em "Atualizar GPS"'}
             </Text>
+            {Platform.OS === 'web' && !isRecommendedBrowser() ? (
+              <Button
+                variant="primary"
+                size="sm"
+                onPress={() => void openAppInChrome()}
+                style={styles.gpsRetryButton}
+              >
+                Abrir no Chrome
+              </Button>
+            ) : null}
           </View>
         ) : null}
       </Card>

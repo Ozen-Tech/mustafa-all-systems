@@ -6,6 +6,7 @@
 
 import { Platform } from 'react-native';
 import { showAlert } from './alertHelper';
+import { getLocationPermissionHelpMessageForBrowser } from './browserHelper';
 
 export interface LocationCoords {
   latitude: number;
@@ -255,20 +256,7 @@ export async function requestPermissionAndGetLocation(options?: {
 }
 
 export function getLocationPermissionHelpMessage(): string {
-  if (Platform.OS === 'web') {
-    return [
-      'O app precisa da sua localização para o check-in.',
-      '',
-      'No celular (Chrome):',
-      '1. Toque no cadeado (ou ⓘ) ao lado do endereço do site',
-      '2. Em Localização, escolha Permitir',
-      '3. Se não aparecer: menu ⋮ → Configurações → Configurações do site → Localização → Permitir',
-      '4. Confira se a Localização do celular está ligada (Ajustes do aparelho)',
-      '',
-      'Depois toque em OK e tente de novo. Se ainda falhar, recarregue a página.',
-    ].join('\n');
-  }
-  return 'Permita o acesso à localização nas configurações do aparelho para usar check-in e checkout.';
+  return getLocationPermissionHelpMessageForBrowser();
 }
 
 export function showLocationUnavailableAlert(): void {
