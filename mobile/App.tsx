@@ -160,6 +160,7 @@ export default function App() {
   const { View: RNView, Platform: RNPlatform } = require('react-native');
   const GestureHandlerRootView = require('react-native-gesture-handler').GestureHandlerRootView;
   const InstallPwaBanner = require('./src/components/InstallPwaBanner').default;
+  const BrowserGuideBanner = require('./src/components/BrowserGuideBanner').default;
   const RootWrapper = RNPlatform.OS === 'web' ? RNView : GestureHandlerRootView;
 
   try {
@@ -168,6 +169,7 @@ export default function App() {
         <SafeAreaProvider style={{ flex: 1, minHeight: 0 }} initialMetrics={initialWindowMetrics}>
           <AuthProvider>
             <StatusBar style="light" />
+            <BrowserGuideBanner />
             <InstallPwaBanner />
             <AppNavigator />
           </AuthProvider>

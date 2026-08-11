@@ -1,5 +1,5 @@
-/* Service Worker — v6: fix modal exclusão de fotos + GPS cache */
-const CACHE_NAME = 'mustafa-promotor-v6';
+/* Service Worker — v7: guia Chrome/Samsung + GPS */
+const CACHE_NAME = 'mustafa-promotor-v7';
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest'];
 
 function isHtmlResponse(res) {

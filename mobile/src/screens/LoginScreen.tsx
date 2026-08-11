@@ -8,6 +8,10 @@ import Button from '../components/ui/Button';
 import Input from '../components/ui/Input';
 import ScreenHeader from '../components/ui/ScreenHeader';
 import { showAlert } from '../utils/alertHelper';
+import {
+  isRecommendedBrowser,
+  openAppInChrome,
+} from '../utils/browserHelper';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -15,6 +19,7 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
+  const showBrowserTip = typeof navigator !== 'undefined' && !isRecommendedBrowser();
 
   async function handleLogin() {
     const trimmedEmail = email.trim();
@@ -112,6 +117,15 @@ export default function LoginScreen() {
         >
           Entrar
         </Button>
+        {showBrowserTip ? (
+          <TouchableOpacity style={styles.browserTip} onPress={() => void openAppInChrome()}>
+            <Text style={styles.browserTipTitle}>GPS ou câmera não funciona?</Text>
+            <Text style={styles.browserTipText}>
+              Toque aqui para abrir no Chrome (ícone colorido). No Internet Samsung as permissões
+              costumam falhar.
+            </Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       <Text style={styles.footer}>Versão do app · Promo Gestão</Text>
@@ -168,6 +182,25 @@ const styles = StyleSheet.create({
   button: {
     marginTop: theme.spacing.sm,
     width: '100%',
+  },
+  browserTip: {
+    marginTop: theme.spacing.sm,
+    padding: theme.spacing.md,
+    borderRadius: theme.borderRadius.lg,
+    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.35)',
+  },
+  browserTipTitle: {
+    color: colors.text.primary,
+    fontWeight: theme.typography.fontWeight.semibold,
+    fontSize: theme.typography.fontSize.sm,
+    marginBottom: 4,
+  },
+  browserTipText: {
+    color: colors.text.secondary,
+    fontSize: theme.typography.fontSize.xs,
+    lineHeight: 18,
   },
   footer: {
     marginTop: theme.spacing['2xl'],
