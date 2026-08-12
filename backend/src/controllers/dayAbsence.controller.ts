@@ -10,6 +10,7 @@ import {
   getPublicUrl,
   uploadPhotoBuffer,
 } from '../services/firebase-storage.service';
+import { ensurePromoterDayAbsenceTable } from '../utils/promoterDayAbsenceEnsure';
 
 const MAX_DOC_BYTES = 12 * 1024 * 1024;
 
@@ -149,6 +150,8 @@ export async function upsertMyDayAbsence(req: AuthRequest, res: Response) {
       return res.status(403).json({ message: 'Apenas promotores' });
     }
 
+    await ensurePromoterDayAbsenceTable();
+
     const data = upsertSchema.parse(req.body);
     const date = data.date || toISODateBRT();
 
@@ -186,6 +189,12 @@ export async function getMyDayAbsences(req: AuthRequest, res: Response) {
       return res.status(403).json({ message: 'Apenas promotores' });
     }
 
+    try {
+      await ensurePromoterDayAbsenceTable();
+    } catch (ensureErr) {
+      console.warn('getMyDayAbsences: ensure table falhou:', ensureErr);
+    }
+
     const q = listQuerySchema.parse(req.query);
     const absences = await prisma.promoterDayAbsence.findMany({
       where: {
@@ -204,9 +213,13 @@ export async function getMyDayAbsences(req: AuthRequest, res: Response) {
     });
 
     res.json({ absences });
-  } catch (error) {
+  } catch (error: any) {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ message: 'Validation error', errors: error.errors });
+    }
+    if (error?.code === 'P2021') {
+      console.warn('getMyDayAbsences: tabela ausente, respondendo lista vazia');
+      return res.json({ absences: [] });
     }
     console.error('getMyDayAbsences error:', error);
     res.status(500).json({ message: 'Internal server error' });
@@ -214,18 +227,29 @@ export async function getMyDayAbsences(req: AuthRequest, res: Response) {
 }
 
 export async function getMyTodayAbsence(req: AuthRequest, res: Response) {
+  const date = toISODateBRT();
   try {
     if (!req.userId || req.userRole !== UserRole.PROMOTER) {
       return res.status(403).json({ message: 'Apenas promotores' });
     }
 
-    const date = toISODateBRT();
+    try {
+      await ensurePromoterDayAbsenceTable();
+    } catch (ensureErr) {
+      console.warn('getMyTodayAbsence: ensure table falhou:', ensureErr);
+    }
+
     const absence = await prisma.promoterDayAbsence.findUnique({
       where: { promoterId_date: { promoterId: req.userId, date } },
     });
 
     res.json({ date, absence });
-  } catch (error) {
+  } catch (error: any) {
+    // Não derruba a Home do PWA/app se a migration ainda não rodou (P2021).
+    if (error?.code === 'P2021') {
+      console.warn('getMyTodayAbsence: tabela ausente, respondendo absence=null');
+      return res.json({ date, absence: null });
+    }
     console.error('getMyTodayAbsence error:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
@@ -236,6 +260,8 @@ export async function deleteMyDayAbsence(req: AuthRequest, res: Response) {
     if (!req.userId || req.userRole !== UserRole.PROMOTER) {
       return res.status(403).json({ message: 'Apenas promotores' });
     }
+
+    await ensurePromoterDayAbsenceTable();
 
     const date = z
       .string()
