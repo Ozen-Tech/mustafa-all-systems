@@ -175,7 +175,12 @@ export const photoService = {
         );
       }
 
-      const prepared = await preparePhotoForWebUpload(data.fileUri);
+      const prepared = await preparePhotoForWebUpload(
+        data.fileUri,
+        data.type === 'FACADE_CHECKIN' || data.type === 'FACADE_CHECKOUT'
+          ? 'checkin'
+          : undefined
+      );
 
       try {
         return await postDirectBinary(prepared, meta);

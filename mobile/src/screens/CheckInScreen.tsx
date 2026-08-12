@@ -21,6 +21,11 @@ import {
   loadCheckInDraft,
   clearCheckInDraft,
 } from '../utils/checkInDraftStorage';
+import {
+  detectWebBrowser,
+  isRecommendedBrowser,
+  openAppInChrome,
+} from '../utils/browserHelper';
 import { useVisitFlow } from '../features/visits';
 import { useAuth } from '../context/AuthContext';
 import { colors, theme } from '../styles/theme';
@@ -34,11 +39,6 @@ import {
   getLocationPermissionHelpMessage,
 } from '../utils/locationHelper';
 import { showAlert } from '../utils/alertHelper';
-import {
-  detectWebBrowser,
-  isRecommendedBrowser,
-  openAppInChrome,
-} from '../utils/browserHelper';
 
 interface Store {
   id: string;
@@ -73,6 +73,7 @@ export default function CheckInScreen({ route }: any) {
     return null;
   });
   const [loading, setLoading] = useState(false);
+  const [capturing, setCapturing] = useState(false);
   const [locating, setLocating] = useState(false);
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
@@ -196,20 +197,31 @@ export default function CheckInScreen({ route }: any) {
   }
 
   async function takePhoto() {
+    if (capturing || loading) return;
+    setCapturing(true);
     try {
-      const uri = await pickSinglePhoto({ quality: Platform.OS === 'web' ? 0.35 : 0.7 });
+      // Perfil checkin: compressão máxima (Galaxy A16 / low RAM).
+      const uri = await pickSinglePhoto({
+        quality: Platform.OS === 'web' ? 0.18 : 0.7,
+        profile: 'checkin',
+      });
       if (uri) {
         setPhotoUri(uri);
         setShowPreview(true);
         if (user?.id && store?.id) {
           void saveCheckInDraft(user.id, store.id, uri);
         }
-        // Câmera tira foco da página — nova leitura de GPS ao voltar.
         void refreshLocation({ silent: true });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao capturar foto:', error);
-      showAlert('Erro', 'Não foi possível capturar a foto');
+      showAlert(
+        'Memória do celular',
+        error?.message ||
+          'O celular ficou sem memória ao processar a foto. Feche o Chrome por completo, abra de novo, ou escolha uma foto leve da galeria.'
+      );
+    } finally {
+      setCapturing(false);
     }
   }
 
@@ -266,8 +278,11 @@ export default function CheckInScreen({ route }: any) {
 
       try {
         if (Platform.OS === 'web') {
-          uploadUri = await preparePhotoForWebUpload(photoUri);
-          setPhotoUri(uploadUri);
+          // Já vem comprimida; só reaperta se ainda estiver grande.
+          uploadUri = await preparePhotoForWebUpload(photoUri, 'checkin');
+          if (uploadUri !== photoUri) {
+            setPhotoUri(uploadUri);
+          }
         }
 
         const { url: photoUrlUploaded } = await photoService.uploadPhoto({
@@ -500,12 +515,18 @@ export default function CheckInScreen({ route }: any) {
             variant="accent"
             size="lg"
             onPress={takePhoto}
-            disabled={loading}
+            disabled={loading || capturing}
+            isLoading={capturing}
             style={styles.actionButton}
           >
-            📷 Tirar Foto
+            {capturing ? 'Processando foto...' : '📷 Tirar Foto'}
           </Button>
         )}
+        {capturing ? (
+          <Text style={styles.gpsHint}>
+            Aguarde — em celulares com pouca memória a foto é reduzida antes de aparecer.
+          </Text>
+        ) : null}
         <Button
           variant="primary"
           size="lg"

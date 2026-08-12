@@ -1,5 +1,5 @@
-/* Service Worker — v7: guia Chrome/Samsung + GPS */
-const CACHE_NAME = 'mustafa-promotor-v7';
+/* Service Worker — v8: OOM check-in Galaxy A16 / low RAM */
+const CACHE_NAME = 'mustafa-promotor-v8';
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest'];
 
 function isHtmlResponse(res) {
