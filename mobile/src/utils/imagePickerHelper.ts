@@ -1,43 +1,63 @@
 import { Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { showAlert } from './alertHelper';
-import { ensurePersistablePhotoUri } from './photoUri';
+import {
+  ensurePersistablePhotoUri,
+  isLowMemoryWebDevice,
+  PhotoCompressProfile,
+} from './photoUri';
 import {
   checkGalleryAssetTakenToday,
   photoDateRejectMessage,
 } from './photoDateValidation';
 
 /** Na web, qualidade alta gera base64 enorme e estoura memória/rede no Android. */
-const DEFAULT_QUALITY = Platform.OS === 'web' ? 0.35 : 0.8;
-const MAX_WEB_QUALITY = 0.4;
+const DEFAULT_QUALITY = Platform.OS === 'web' ? 0.28 : 0.8;
+const MAX_WEB_QUALITY = 0.32;
+const CHECKIN_WEB_QUALITY = 0.18;
 
-function resolveQuality(requested?: number): number {
-  const q = requested ?? DEFAULT_QUALITY;
+function resolveQuality(requested?: number, profile?: PhotoCompressProfile): number {
   if (Platform.OS === 'web') {
-    return Math.min(q, MAX_WEB_QUALITY);
+    if (profile === 'checkin' || profile === 'lowMemory' || isLowMemoryWebDevice()) {
+      return Math.min(requested ?? CHECKIN_WEB_QUALITY, CHECKIN_WEB_QUALITY);
+    }
+    return Math.min(requested ?? DEFAULT_QUALITY, MAX_WEB_QUALITY);
   }
-  return q;
+  return requested ?? 0.8;
 }
 
 /**
  * No PWA, blob: URLs expiram/revogam e o upload falha com "Failed to fetch".
- * Converte imediatamente para data URL comprimida — NUNCA devolve blob: no web.
+ * Comprime imediatamente via canvas (sem data URL full-res) — NUNCA devolve blob: no web.
  */
-async function normalizePickedUri(uri: string): Promise<string> {
+async function normalizePickedUri(
+  uri: string,
+  profile?: PhotoCompressProfile
+): Promise<string> {
   if (Platform.OS !== 'web') return uri;
   try {
-    const stable = await ensurePersistablePhotoUri(uri, { compress: true });
+    const resolvedProfile =
+      profile ?? (isLowMemoryWebDevice() ? 'lowMemory' : 'default');
+    const stable = await ensurePersistablePhotoUri(uri, {
+      compress: true,
+      profile: resolvedProfile,
+    });
     if (stable.startsWith('blob:')) {
       throw new Error('URI ainda é blob após normalização');
     }
     return stable;
   } catch (error) {
     console.error('[imagePicker] Falha ao normalizar URI web:', error);
-    throw new Error('Não foi possível ler a foto. Tente novamente.');
+    throw new Error(
+      'Não foi possível processar a foto (memória do celular). Feche outros apps e tente de novo, ou escolha uma foto da galeria.'
+    );
   }
 }
 
-async function launchCamera(quality: number): Promise<string | null> {
+async function launchCamera(
+  quality: number,
+  profile?: PhotoCompressProfile
+): Promise<string | null> {
   const permission = await ImagePicker.requestCameraPermissionsAsync();
   if (permission.status !== 'granted') {
     showAlert(
@@ -51,20 +71,18 @@ async function launchCamera(quality: number): Promise<string | null> {
     mediaTypes: ['images'],
     quality,
     allowsEditing: false,
+    exif: false,
   });
 
   if (!result.canceled && result.assets[0]?.uri) {
-    // Foto tirada agora — sempre do dia.
-    return normalizePickedUri(result.assets[0].uri);
+    return normalizePickedUri(result.assets[0].uri, profile);
   }
   return null;
 }
 
-/**
- * Valida data do dia **antes** de comprimir (compressão remove EXIF no web).
- */
 async function acceptGalleryAsset(
-  asset: ImagePicker.ImagePickerAsset
+  asset: ImagePicker.ImagePickerAsset,
+  profile?: PhotoCompressProfile
 ): Promise<{ uri: string } | { rejected: 'missing_date' | 'not_today' }> {
   const check = await checkGalleryAssetTakenToday({
     uri: asset.uri,
@@ -76,10 +94,13 @@ async function acceptGalleryAsset(
   if (!asset.uri) {
     return { rejected: 'missing_date' };
   }
-  return { uri: await normalizePickedUri(asset.uri) };
+  return { uri: await normalizePickedUri(asset.uri, profile) };
 }
 
-async function launchGallerySingle(quality: number): Promise<string | null> {
+async function launchGallerySingle(
+  quality: number,
+  profile?: PhotoCompressProfile
+): Promise<string | null> {
   const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (permission.status !== 'granted') {
     showAlert('Permissão necessária', 'É necessário permitir acesso à galeria ou câmera.');
@@ -97,7 +118,7 @@ async function launchGallerySingle(quality: number): Promise<string | null> {
     return null;
   }
 
-  const outcome = await acceptGalleryAsset(result.assets[0]);
+  const outcome = await acceptGalleryAsset(result.assets[0], profile);
   if ('rejected' in outcome) {
     const { title, message } = photoDateRejectMessage(outcome.rejected);
     showAlert(title, message);
@@ -108,29 +129,42 @@ async function launchGallerySingle(quality: number): Promise<string | null> {
 
 /**
  * Preferencialmente câmera; se cancelar/indisponível, tenta galeria com validação do dia.
+ * profile: 'checkin' usa compressão ultra-agressiva (Galaxy A16 / low RAM).
  */
-export async function pickSinglePhoto(options?: { quality?: number }): Promise<string | null> {
-  const quality = resolveQuality(options?.quality);
+export async function pickSinglePhoto(options?: {
+  quality?: number;
+  profile?: PhotoCompressProfile;
+}): Promise<string | null> {
+  const profile = options?.profile;
+  const quality = resolveQuality(options?.quality, profile);
 
   try {
-    const fromCamera = await launchCamera(quality);
+    const fromCamera = await launchCamera(quality, profile);
     if (fromCamera) return fromCamera;
   } catch (error) {
-    if (error instanceof Error && error.message.includes('Não foi possível ler')) {
+    if (
+      error instanceof Error &&
+      (error.message.includes('Não foi possível') || error.message.includes('memória'))
+    ) {
       throw error;
     }
   }
 
-  return launchGallerySingle(quality);
+  return launchGallerySingle(quality, profile);
 }
 
 /** Seleção da galeria (fluxo de indústrias). Só aceita fotos tiradas hoje. */
 export async function pickMultiplePhotos(options?: {
   quality?: number;
   selectionLimit?: number;
+  profile?: PhotoCompressProfile;
 }): Promise<string[]> {
-  const quality = resolveQuality(options?.quality);
-  const selectionLimit = options?.selectionLimit ?? 20;
+  const profile = options?.profile ?? (isLowMemoryWebDevice() ? 'lowMemory' : 'default');
+  const quality = resolveQuality(options?.quality, profile);
+  const selectionLimit = Math.min(
+    options?.selectionLimit ?? 20,
+    isLowMemoryWebDevice() ? 5 : 20
+  );
 
   const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (permission.status !== 'granted') {
@@ -154,13 +188,17 @@ export async function pickMultiplePhotos(options?: {
 
   for (const asset of result.assets) {
     if (!asset.uri) continue;
-    const outcome = await acceptGalleryAsset(asset);
-    if ('rejected' in outcome) {
-      if (outcome.rejected === 'not_today') rejectedNotToday += 1;
-      else rejectedMissing += 1;
-      continue;
+    try {
+      const outcome = await acceptGalleryAsset(asset, profile);
+      if ('rejected' in outcome) {
+        if (outcome.rejected === 'not_today') rejectedNotToday += 1;
+        else rejectedMissing += 1;
+        continue;
+      }
+      accepted.push(outcome.uri);
+    } catch {
+      rejectedMissing += 1;
     }
-    accepted.push(outcome.uri);
   }
 
   const rejected = rejectedMissing + rejectedNotToday;
@@ -170,7 +208,7 @@ export async function pickMultiplePhotos(options?: {
       parts.push(`${rejectedNotToday} fora do dia de hoje`);
     }
     if (rejectedMissing > 0) {
-      parts.push(`${rejectedMissing} sem data verificável`);
+      parts.push(`${rejectedMissing} sem data verificável / memória`);
     }
     showAlert(
       'Algumas fotos foram rejeitadas',

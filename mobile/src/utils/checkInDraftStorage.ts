@@ -5,11 +5,10 @@ import {
   isFragilePhotoUri,
   isStableLocalPhotoUri,
   preparePhotoForWebUpload,
-  toPersistablePhotoUri,
 } from './photoUri';
 
 const DRAFT_PREFIX = 'checkin_draft_v1_';
-const WEB_DRAFT_MAX_BYTES = 900_000;
+const WEB_DRAFT_MAX_BYTES = 180_000;
 const DRAFT_MAX_AGE_MS = 4 * 60 * 60 * 1000;
 
 export interface CheckInDraft {
@@ -28,14 +27,14 @@ export async function saveCheckInDraft(
 
     let stableUri = photoUri;
     if (Platform.OS === 'web') {
-      if (!isStableLocalPhotoUri(photoUri)) {
-        stableUri = await toPersistablePhotoUri(photoUri);
-      }
-      if (stableUri.startsWith('data:image/')) {
-        stableUri = await preparePhotoForWebUpload(stableUri);
+      // Já deve vir comprimida do picker; só garante teto baixo para AsyncStorage.
+      if (!isStableLocalPhotoUri(photoUri) || isFragilePhotoUri(photoUri)) {
+        stableUri = await preparePhotoForWebUpload(photoUri, 'checkin');
+      } else if (estimateDataUrlBytes(photoUri) > WEB_DRAFT_MAX_BYTES) {
+        stableUri = await preparePhotoForWebUpload(photoUri, 'checkin');
       }
       if (estimateDataUrlBytes(stableUri) > WEB_DRAFT_MAX_BYTES) {
-        console.warn('[checkInDraft] Foto grande demais para cache; mantida só na memória.');
+        console.warn('[checkInDraft] Foto ainda grande; não cacheia para evitar OOM.');
         return;
       }
     }
