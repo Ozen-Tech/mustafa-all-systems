@@ -241,11 +241,15 @@ export default function ActiveVisitScreen({ route }: any) {
     const newPhotos: VisitPhoto[] = [];
     for (const rawUri of uris) {
       try {
-        // No PWA: comprime forte já na captura (evita várias fotos grandes na memória + localStorage).
+        // Evidências da visita: perfil default (1280 / qualidade dashboard).
+        // Check-in continua com perfil 'checkin' (mais leve).
         const uri =
           Platform.OS === 'web'
-            ? await preparePhotoForWebUpload(rawUri)
-            : await ensurePersistablePhotoUri(rawUri, { compress: true });
+            ? await preparePhotoForWebUpload(rawUri, 'default')
+            : await ensurePersistablePhotoUri(rawUri, {
+                compress: true,
+                profile: 'default',
+              });
         if (isFragilePhotoUri(uri)) {
           throw new Error('URI ainda é blob após persistir');
         }
@@ -381,7 +385,10 @@ export default function ActiveVisitScreen({ route }: any) {
 
   async function pickImagesForIndustry(industryId: string) {
     try {
-      const uris = await pickMultiplePhotos({ selectionLimit: 20 });
+      const uris = await pickMultiplePhotos({
+        selectionLimit: 15,
+        profile: 'default',
+      });
       if (uris.length === 0) return;
       await appendLocalPhotos(uris, industryId);
       setExpandedIndustries((prev) => new Set(prev).add(industryId));
@@ -393,7 +400,7 @@ export default function ActiveVisitScreen({ route }: any) {
 
   async function takePhotoForIndustry(industryId: string) {
     try {
-      const uri = await pickSinglePhoto();
+      const uri = await pickSinglePhoto({ profile: 'default' });
       if (!uri) return;
       await appendLocalPhotos([uri], industryId);
       setExpandedIndustries((prev) => new Set(prev).add(industryId));
@@ -406,7 +413,10 @@ export default function ActiveVisitScreen({ route }: any) {
   // Para lojas sem indústrias configuradas
   async function pickImagesNoIndustry() {
     try {
-      const uris = await pickMultiplePhotos({ selectionLimit: 20 });
+      const uris = await pickMultiplePhotos({
+        selectionLimit: 15,
+        profile: 'default',
+      });
       if (uris.length === 0) return;
       await appendLocalPhotos(uris);
     } catch (error) {
@@ -417,7 +427,7 @@ export default function ActiveVisitScreen({ route }: any) {
 
   async function takePhotoNoIndustry() {
     try {
-      const uri = await pickSinglePhoto();
+      const uri = await pickSinglePhoto({ profile: 'default' });
       if (!uri) return;
       await appendLocalPhotos([uri]);
     } catch (error) {
