@@ -1,5 +1,5 @@
-/* Service Worker — v8: OOM check-in Galaxy A16 / low RAM */
-const CACHE_NAME = 'mustafa-promotor-v8';
+/* Service Worker — v9: qualidade dashboard (1280) sem forçar lowMem em evidências */
+const CACHE_NAME = 'mustafa-promotor-v9';
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest'];
 
 function isHtmlResponse(res) {
