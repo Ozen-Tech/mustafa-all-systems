@@ -11,6 +11,7 @@ import ProfileScreen from '../screens/ProfileScreen';
 import InformationHubScreen from '../screens/InformationHubScreen';
 import GeneralOnboardingScreen from '../screens/GeneralOnboardingScreen';
 import JustifyAbsenceScreen from '../screens/JustifyAbsenceScreen';
+import GoalsScreen from '../screens/GoalsScreen';
 import { storeService } from '../services/storeService';
 import HomeIcon from '../components/icons/HomeIcon';
 import ClockIcon from '../components/icons/ClockIcon';
@@ -448,6 +449,11 @@ export default function MainNavigator() {
           name="JustifyAbsence"
           component={JustifyAbsenceScreen}
           options={{ title: 'Justificar falta' }}
+        />
+        <Stack.Screen
+          name="Goals"
+          component={GoalsScreen}
+          options={{ title: 'Minhas metas' }}
         />
       </Stack.Navigator>
     </GeneralOnboardingContext.Provider>

@@ -161,9 +161,13 @@ export default function Layout() {
   const isSupervisorOrAdmin = isSupervisor || isAdmin;
 
   const navigation = [
+    ...(isSupervisorOrAdmin ? [{ name: 'Painel Central', path: '/painel', icon: DashboardIcon }] : []),
     ...(isSupervisorOrAdmin ? [{ name: 'Equipe Hoje', path: '/', icon: DashboardIcon }] : []),
     ...(isSupervisorOrAdmin ? [{ name: 'Vistoria Indústria', path: '/ops/industry-audit', icon: AdminIndustriesIcon }] : []),
     ...(isSupervisorOrAdmin ? [{ name: 'Métricas Trade', path: '/ops/trade-metrics', icon: ReportsIcon }] : []),
+    ...(isSupervisorOrAdmin ? [{ name: 'Pedidos', path: '/pedidos', icon: StoresIcon }] : []),
+    ...(isSupervisorOrAdmin ? [{ name: 'Metas', path: '/metas', icon: ReportsIcon }] : []),
+    ...(isSupervisorOrAdmin ? [{ name: 'Feed', path: '/feed', icon: InfoIcon }] : []),
     ...(isSupervisorOrAdmin ? [{ name: 'Dashboard (legado)', path: '/dashboard-legacy', icon: DashboardIcon }] : []),
     ...(isIndustryOwner
       ? [{ name: 'Portal Indústria', path: '/industry-dashboard', icon: DashboardIcon }]
@@ -180,6 +184,8 @@ export default function Layout() {
       : []),
     ...(isAdmin
       ? [
+          { name: 'Redes', path: '/redes', icon: StoresIcon },
+          { name: 'Importar Pedidos', path: '/pedidos/import', icon: AdminIndustriesIcon },
           { name: 'Importar Relatório Mateus', path: '/stock/import', icon: AdminIndustriesIcon },
           { name: 'Informações Promotores', path: '/information', icon: InfoIcon },
           { name: 'Indústrias/Loja', path: '/stores/industries', icon: AdminIndustriesIcon },
