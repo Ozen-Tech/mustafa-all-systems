@@ -13,6 +13,7 @@ import Dashboard from './pages/Dashboard';
 import OpsTeamToday from './pages/OpsTeamToday';
 import OpsTradeMetrics from './pages/OpsTradeMetrics';
 import OpsIndustryAudit from './pages/OpsIndustryAudit';
+import OpsIndustryGallery from './pages/OpsIndustryGallery';
 import OpsPromoterDayDetail from './pages/OpsPromoterDayDetail';
 import PromoterDetails from './pages/PromoterDetails';
 import RouteMap from './pages/RouteMap';
@@ -153,6 +154,14 @@ function AppRoutes() {
           element={
             <SupervisorOrAdminRoute>
               <OpsIndustryAudit />
+            </SupervisorOrAdminRoute>
+          }
+        />
+        <RouterRoute
+          path="ops/industry-gallery"
+          element={
+            <SupervisorOrAdminRoute>
+              <OpsIndustryGallery />
             </SupervisorOrAdminRoute>
           }
         />

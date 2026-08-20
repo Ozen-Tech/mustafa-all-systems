@@ -164,6 +164,7 @@ export default function Layout() {
     ...(isSupervisorOrAdmin ? [{ name: 'Painel Central', path: '/painel', icon: DashboardIcon }] : []),
     ...(isSupervisorOrAdmin ? [{ name: 'Equipe Hoje', path: '/', icon: DashboardIcon }] : []),
     ...(isSupervisorOrAdmin ? [{ name: 'Vistoria Indústria', path: '/ops/industry-audit', icon: AdminIndustriesIcon }] : []),
+    ...(isSupervisorOrAdmin ? [{ name: 'Galeria Indústria', path: '/ops/industry-gallery', icon: AdminIndustriesIcon }] : []),
     ...(isSupervisorOrAdmin ? [{ name: 'Métricas Trade', path: '/ops/trade-metrics', icon: ReportsIcon }] : []),
     ...(isSupervisorOrAdmin ? [{ name: 'Pedidos', path: '/pedidos', icon: StoresIcon }] : []),
     ...(isSupervisorOrAdmin ? [{ name: 'Metas', path: '/metas', icon: ReportsIcon }] : []),
