@@ -13,6 +13,7 @@ import Dashboard from './pages/Dashboard';
 import OpsTeamToday from './pages/OpsTeamToday';
 import OpsTradeMetrics from './pages/OpsTradeMetrics';
 import OpsIndustryAudit from './pages/OpsIndustryAudit';
+import OpsIndustryGallery from './pages/OpsIndustryGallery';
 import OpsPromoterDayDetail from './pages/OpsPromoterDayDetail';
 import PromoterDetails from './pages/PromoterDetails';
 import RouteMap from './pages/RouteMap';
@@ -32,6 +33,12 @@ import PromoterOpsSupport from './pages/PromoterOpsSupport';
 import AdminTodayPromoterOverview from './pages/AdminTodayPromoterOverview';
 import AppStoreReleaseOps from './pages/AppStoreReleaseOps';
 import PrivacyPolicy from './pages/PrivacyPolicy';
+import ChainsManagement from './pages/ChainsManagement';
+import OrdersList from './pages/OrdersList';
+import OrdersImport from './pages/OrdersImport';
+import GoalsPage from './pages/GoalsPage';
+import OwnerDashboard from './pages/OwnerDashboard';
+import FeedPage from './pages/FeedPage';
 import Layout from './components/Layout';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -147,6 +154,14 @@ function AppRoutes() {
           element={
             <SupervisorOrAdminRoute>
               <OpsIndustryAudit />
+            </SupervisorOrAdminRoute>
+          }
+        />
+        <RouterRoute
+          path="ops/industry-gallery"
+          element={
+            <SupervisorOrAdminRoute>
+              <OpsIndustryGallery />
             </SupervisorOrAdminRoute>
           }
         />
@@ -267,6 +282,56 @@ function AppRoutes() {
           element={
             <SupervisorOrAdminRoute>
               <Reports />
+            </SupervisorOrAdminRoute>
+          }
+        />
+
+        {/* Comercial: pedidos, metas, redes, painel e feed */}
+        <RouterRoute
+          path="painel"
+          element={
+            <SupervisorOrAdminRoute>
+              <OwnerDashboard />
+            </SupervisorOrAdminRoute>
+          }
+        />
+        <RouterRoute
+          path="pedidos"
+          element={
+            <SupervisorOrAdminRoute>
+              <OrdersList />
+            </SupervisorOrAdminRoute>
+          }
+        />
+        <RouterRoute
+          path="pedidos/import"
+          element={
+            <AdminRoute>
+              <OrdersImport />
+            </AdminRoute>
+          }
+        />
+        <RouterRoute
+          path="metas"
+          element={
+            <SupervisorOrAdminRoute>
+              <GoalsPage />
+            </SupervisorOrAdminRoute>
+          }
+        />
+        <RouterRoute
+          path="redes"
+          element={
+            <AdminRoute>
+              <ChainsManagement />
+            </AdminRoute>
+          }
+        />
+        <RouterRoute
+          path="feed"
+          element={
+            <SupervisorOrAdminRoute>
+              <FeedPage />
             </SupervisorOrAdminRoute>
           }
         />

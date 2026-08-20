@@ -101,6 +101,76 @@ export const supervisorService = {
     };
   },
 
+  async getOpsIndustryGallery(params: {
+    industryId: string;
+    state?: string;
+    date?: string;
+    startDate?: string;
+    endDate?: string;
+    promoterId?: string;
+    view?: 'sent' | 'missing' | 'all';
+    page?: number;
+    limit?: number;
+  }) {
+    const qs = new URLSearchParams();
+    qs.set('industryId', params.industryId);
+    if (params.state) qs.set('state', params.state);
+    if (params.date) qs.set('date', params.date);
+    if (params.startDate) qs.set('startDate', params.startDate);
+    if (params.endDate) qs.set('endDate', params.endDate);
+    if (params.promoterId) qs.set('promoterId', params.promoterId);
+    if (params.view) qs.set('view', params.view);
+    if (params.page) qs.set('page', String(params.page));
+    if (params.limit) qs.set('limit', String(params.limit));
+    const response = await apiClient.get(`/supervisors/ops/industry-gallery?${qs.toString()}`);
+    return response.data as {
+      industry: { id: string; name: string; code: string; abbreviation: string | null };
+      date: string;
+      view: 'sent' | 'missing' | 'all';
+      stats: {
+        sentPhotos: number;
+        promotersSent: number;
+        promotersMissing: number;
+        missingPairs: number;
+      };
+      photos: Array<{
+        id: string;
+        photoId: string;
+        url: string;
+        type: string;
+        createdAt: string;
+        qualityScore: number | null;
+        hasRupture: boolean;
+        store: { id: string; name: string; state: string | null; address: string };
+        promoter: { id: string; name: string; state: string | null };
+        visit: { id: string; checkInAt: string; checkOutAt: string | null };
+      }>;
+      missing: Array<{
+        promoterId: string;
+        promoterName: string;
+        promoterState: string | null;
+        storeId: string;
+        storeName: string;
+        storeState: string | null;
+        status: 'sem_foto' | 'justificado' | 'sem_visita';
+        missReason?: string | null;
+        missNote?: string | null;
+      }>;
+      promoters: Array<{
+        id: string;
+        name: string;
+        state: string | null;
+        photosSent: number;
+        missingPairs: number;
+        hasSent: boolean;
+        hasMissing: boolean;
+      }>;
+      page: number;
+      limit: number;
+      totalPhotos: number;
+    };
+  },
+
   async getOpsPromoterDayDetail(promoterId: string, params?: { date?: string }) {
     const qs = new URLSearchParams();
     if (params?.date) qs.set('date', params.date);

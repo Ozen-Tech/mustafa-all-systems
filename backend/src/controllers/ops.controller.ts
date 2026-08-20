@@ -1298,3 +1298,321 @@ export async function opsIndustryAudit(req: AuthRequest, res: Response) {
   }
 }
 
+const industryGalleryQuerySchema = z.object({
+  industryId: z.string().uuid(),
+  state: z.string().min(1).max(2).optional(),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  promoterId: z.string().uuid().optional(),
+  /** sent = só quem enviou; missing = só quem não enviou; all = ambos */
+  view: z.enum(['sent', 'missing', 'all']).optional().default('all'),
+  page: z.coerce.number().int().min(1).optional().default(1),
+  limit: z.coerce.number().int().min(1).max(100).optional().default(48),
+});
+
+/**
+ * Galeria por indústria + quem enviou / quem não enviou (escopo do supervisor).
+ */
+export async function opsIndustryGallery(req: AuthRequest, res: Response) {
+  try {
+    if (req.userRole !== UserRole.SUPERVISOR && req.userRole !== UserRole.ADMIN) {
+      return res.status(403).json({ message: 'Supervisor or Admin access required' });
+    }
+
+    const parsed = industryGalleryQuerySchema.parse(req.query);
+    const { industryId, state, promoterId, view } = parsed;
+    const isAdmin = req.userRole === UserRole.ADMIN;
+
+    const industry = await prisma.industry.findUnique({
+      where: { id: industryId },
+      select: { id: true, name: true, code: true, abbreviation: true },
+    });
+    if (!industry) {
+      return res.status(404).json({ message: 'Indústria não encontrada' });
+    }
+
+    // Período: date único OU start/end; default = hoje BRT
+    const targetDate = parsed.date ?? toISODateBRT(new Date());
+    let rangeStart: Date;
+    let rangeEnd: Date;
+    if (parsed.startDate || parsed.endDate) {
+      const startLabel = parsed.startDate || parsed.endDate || targetDate;
+      const endLabel = parsed.endDate || parsed.startDate || targetDate;
+      rangeStart = dayRangeBRT(startLabel).start;
+      rangeEnd = dayRangeBRT(endLabel).endExclusive;
+    } else {
+      const r = dayRangeBRT(targetDate);
+      rangeStart = r.start;
+      rangeEnd = r.endExclusive;
+    }
+
+    const promoters = await prisma.user.findMany({
+      where: {
+        ...scopedPromoterWhere({ isAdmin, supervisorId: req.userId, state }),
+        ...(promoterId ? { id: promoterId } : {}),
+      },
+      select: { id: true, name: true, email: true, state: true },
+      orderBy: { name: 'asc' },
+    });
+    const promoterIds = promoters.map((p) => p.id);
+    const promoterMap = new Map(promoters.map((p) => [p.id, p]));
+
+    if (promoterIds.length === 0) {
+      return res.json({
+        industry,
+        date: targetDate,
+        range: { start: rangeStart.toISOString(), end: rangeEnd.toISOString() },
+        view,
+        stats: { sentPhotos: 0, promotersSent: 0, promotersMissing: 0, missingPairs: 0 },
+        photos: [],
+        missing: [],
+        promoters: [],
+        page: parsed.page,
+        limit: parsed.limit,
+        totalPhotos: 0,
+      });
+    }
+
+    // Fotos enviadas da indústria no período (escopo)
+    const photoWhere: any = {
+      industryId,
+      promoterId: { in: promoterIds },
+      createdAt: { gte: rangeStart, lt: rangeEnd },
+      ...(state ? { store: { state: state.toUpperCase() } } : {}),
+    };
+
+    const [totalPhotos, photoRows] = await Promise.all([
+      view === 'missing'
+        ? Promise.resolve(0)
+        : prisma.photoIndustry.count({ where: photoWhere }),
+      view === 'missing'
+        ? Promise.resolve([])
+        : prisma.photoIndustry.findMany({
+            where: photoWhere,
+            include: {
+              photo: { select: { id: true, url: true, type: true, createdAt: true } },
+              store: { select: { id: true, name: true, state: true, address: true } },
+              promoter: { select: { id: true, name: true, state: true } },
+              visit: {
+                select: { id: true, checkInAt: true, checkOutAt: true },
+              },
+            },
+            orderBy: { createdAt: 'desc' },
+            skip: (parsed.page - 1) * parsed.limit,
+            take: parsed.limit,
+          }),
+    ]);
+
+    const photos = photoRows.map((r) => ({
+      id: r.id,
+      photoId: r.photoId,
+      url: r.photo.url,
+      type: r.photo.type,
+      createdAt: r.createdAt.toISOString(),
+      qualityScore: r.qualityScore,
+      hasRupture: r.hasRupture,
+      store: r.store,
+      promoter: r.promoter,
+      visit: {
+        id: r.visit.id,
+        checkInAt: r.visit.checkInAt.toISOString(),
+        checkOutAt: r.visit.checkOutAt?.toISOString() ?? null,
+      },
+    }));
+
+    // Quem deveria ter enviado (mesmo critério da vistoria) no último dia do range
+    // Para missing usamos o dia "date" (ou endDate) como referência operacional do dia.
+    const auditDate = parsed.endDate || parsed.date || targetDate;
+    const auditRange = dayRangeBRT(auditDate);
+
+    const [routeAssignments, industryAssignments, storeIndustries, dayPhotos, dayMisses, dayVisits] =
+      await Promise.all([
+        prisma.routeAssignment.findMany({
+          where: { promoterId: { in: promoterIds }, isActive: true },
+          select: {
+            promoterId: true,
+            storeId: true,
+            store: { select: { id: true, name: true, address: true, state: true } },
+          },
+        }),
+        prisma.industryAssignment.findMany({
+          where: {
+            promoterId: { in: promoterIds },
+            industryId,
+            isActive: true,
+            storeId: { not: null },
+          },
+          select: {
+            promoterId: true,
+            storeId: true,
+            store: { select: { id: true, name: true, address: true, state: true } },
+          },
+        }),
+        prisma.storeIndustry.findMany({
+          where: { industryId, isActive: true },
+          select: { storeId: true },
+        }),
+        prisma.photoIndustry.findMany({
+          where: {
+            industryId,
+            promoterId: { in: promoterIds },
+            createdAt: { gte: auditRange.start, lt: auditRange.endExclusive },
+          },
+          select: { promoterId: true, storeId: true },
+        }),
+        prisma.industryMiss.findMany({
+          where: {
+            industryId,
+            promoterId: { in: promoterIds },
+            createdAt: { gte: auditRange.start, lt: auditRange.endExclusive },
+          },
+          select: { promoterId: true, storeId: true, reason: true, note: true },
+        }),
+        prisma.visit.findMany({
+          where: {
+            promoterId: { in: promoterIds },
+            checkInAt: { gte: auditRange.start, lt: auditRange.endExclusive },
+          },
+          select: { id: true, promoterId: true, storeId: true, checkInAt: true },
+        }),
+      ]);
+
+    const storeIndustryIds = new Set(storeIndustries.map((s) => s.storeId));
+    type Expected = {
+      promoterId: string;
+      store: { id: string; name: string; address: string; state: string | null };
+    };
+    const expectedMap = new Map<string, Expected>();
+
+    for (const a of industryAssignments) {
+      if (!a.storeId || !a.store) continue;
+      if (state && a.store.state && a.store.state.toUpperCase() !== state.toUpperCase()) continue;
+      expectedMap.set(`${a.promoterId}:${a.storeId}`, {
+        promoterId: a.promoterId,
+        store: a.store,
+      });
+    }
+    for (const ra of routeAssignments) {
+      if (!storeIndustryIds.has(ra.storeId)) continue;
+      if (state && ra.store.state && ra.store.state.toUpperCase() !== state.toUpperCase()) continue;
+      const key = `${ra.promoterId}:${ra.storeId}`;
+      if (!expectedMap.has(key)) {
+        expectedMap.set(key, { promoterId: ra.promoterId, store: ra.store });
+      }
+    }
+
+    const sentKeys = new Set(dayPhotos.map((p) => `${p.promoterId}:${p.storeId}`));
+    const missMap = new Map<string, (typeof dayMisses)[number]>();
+    for (const m of dayMisses) {
+      missMap.set(`${m.promoterId}:${m.storeId}`, m);
+    }
+    const visitKeys = new Set(dayVisits.map((v) => `${v.promoterId}:${v.storeId}`));
+
+    const missing: Array<{
+      promoterId: string;
+      promoterName: string;
+      promoterState: string | null;
+      storeId: string;
+      storeName: string;
+      storeState: string | null;
+      status: 'sem_foto' | 'justificado' | 'sem_visita';
+      missReason?: string | null;
+      missNote?: string | null;
+    }> = [];
+
+    const promoterSent = new Set<string>();
+    const promoterMissing = new Set<string>();
+
+    for (const exp of expectedMap.values()) {
+      const key = `${exp.promoterId}:${exp.store.id}`;
+      const promoter = promoterMap.get(exp.promoterId);
+      if (!promoter) continue;
+
+      if (sentKeys.has(key)) {
+        promoterSent.add(exp.promoterId);
+        continue;
+      }
+
+      const miss = missMap.get(key);
+      let status: 'sem_foto' | 'justificado' | 'sem_visita' = 'sem_visita';
+      if (visitKeys.has(key)) status = miss ? 'justificado' : 'sem_foto';
+      else if (miss) status = 'justificado';
+
+      promoterMissing.add(exp.promoterId);
+      missing.push({
+        promoterId: exp.promoterId,
+        promoterName: promoter.name,
+        promoterState: promoter.state,
+        storeId: exp.store.id,
+        storeName: exp.store.name,
+        storeState: exp.store.state,
+        status,
+        missReason: miss?.reason ?? null,
+        missNote: miss?.note ?? null,
+      });
+    }
+
+    // Resumo por promotor (para filtros e lista rápida)
+    const photoCountByPromoter = new Map<string, number>();
+    if (view !== 'missing') {
+      const counts = await prisma.photoIndustry.groupBy({
+        by: ['promoterId'],
+        where: photoWhere,
+        _count: { _all: true },
+      });
+      for (const c of counts) {
+        photoCountByPromoter.set(c.promoterId, c._count._all);
+      }
+    }
+
+    const missingCountByPromoter = new Map<string, number>();
+    for (const m of missing) {
+      missingCountByPromoter.set(
+        m.promoterId,
+        (missingCountByPromoter.get(m.promoterId) || 0) + 1
+      );
+    }
+
+    const promoterSummaries = promoters.map((p) => ({
+      id: p.id,
+      name: p.name,
+      state: p.state,
+      photosSent: photoCountByPromoter.get(p.id) || 0,
+      missingPairs: missingCountByPromoter.get(p.id) || 0,
+      hasSent: (photoCountByPromoter.get(p.id) || 0) > 0 || promoterSent.has(p.id),
+      hasMissing: (missingCountByPromoter.get(p.id) || 0) > 0,
+    }));
+
+    const missingFiltered =
+      view === 'sent'
+        ? []
+        : missing.sort((a, b) => a.promoterName.localeCompare(b.promoterName));
+
+    res.json({
+      industry,
+      date: auditDate,
+      range: { start: rangeStart.toISOString(), end: rangeEnd.toISOString() },
+      view,
+      stats: {
+        sentPhotos: totalPhotos,
+        promotersSent: promoterSummaries.filter((p) => p.hasSent).length,
+        promotersMissing: promoterSummaries.filter((p) => p.hasMissing).length,
+        missingPairs: missingFiltered.length,
+      },
+      photos: view === 'missing' ? [] : photos,
+      missing: missingFiltered,
+      promoters: promoterSummaries,
+      page: parsed.page,
+      limit: parsed.limit,
+      totalPhotos,
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: 'Validation error', errors: error.errors });
+    }
+    console.error('opsIndustryGallery error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+}
+

@@ -183,7 +183,7 @@ export default function CheckoutScreen({ route }: any) {
 
   async function takePhoto() {
     try {
-      const uri = await pickSinglePhoto({ quality: 0.8 });
+      const uri = await pickSinglePhoto({ quality: 0.6, profile: 'default' });
       if (uri) {
         setPhotoUri(uri);
         setShowPreview(true);

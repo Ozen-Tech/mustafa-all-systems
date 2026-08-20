@@ -227,6 +227,20 @@ export default function HomeScreen() {
         </Button>
       </Section>
 
+      <Section title="Metas comerciais">
+        <Text style={styles.absenceSubtitle}>
+          Acompanhe as metas de pedidos das indústrias e redes da sua rota.
+        </Text>
+        <Button
+          variant="outline"
+          size="lg"
+          onPress={() => navigation.navigate('Goals')}
+          style={[styles.fullWidth, { marginTop: theme.spacing.md }]}
+        >
+          Ver minhas metas
+        </Button>
+      </Section>
+
       <Section title="Resumo do dia">
         {summaryLoading ? (
           <Card style={styles.loadingCard} shadow>
