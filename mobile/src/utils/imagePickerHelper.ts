@@ -11,19 +11,29 @@ import {
   photoDateRejectMessage,
 } from './photoDateValidation';
 
-/** Na web, qualidade alta gera base64 enorme e estoura memória/rede no Android. */
-const DEFAULT_QUALITY = Platform.OS === 'web' ? 0.28 : 0.8;
-const MAX_WEB_QUALITY = 0.32;
-const CHECKIN_WEB_QUALITY = 0.18;
+/**
+ * Qualidade do ImagePicker (antes do canvas).
+ * Em evidências usamos qualidade média na câmera + resize 1280 no canvas
+ * (evita blob enorme e mantém dashboard legível).
+ */
+const DEFAULT_QUALITY = Platform.OS === 'web' ? 0.55 : 0.75;
+const MAX_WEB_QUALITY = 0.65;
+const CHECKIN_WEB_QUALITY = 0.28;
 
 function resolveQuality(requested?: number, profile?: PhotoCompressProfile): number {
   if (Platform.OS === 'web') {
-    if (profile === 'checkin' || profile === 'lowMemory' || isLowMemoryWebDevice()) {
+    if (profile === 'checkin' || profile === 'lowMemory') {
+      return Math.min(requested ?? CHECKIN_WEB_QUALITY, CHECKIN_WEB_QUALITY);
+    }
+    if (!profile && isLowMemoryWebDevice()) {
       return Math.min(requested ?? CHECKIN_WEB_QUALITY, CHECKIN_WEB_QUALITY);
     }
     return Math.min(requested ?? DEFAULT_QUALITY, MAX_WEB_QUALITY);
   }
-  return requested ?? 0.8;
+  if (profile === 'checkin' || profile === 'lowMemory') {
+    return Math.min(requested ?? 0.45, 0.5);
+  }
+  return requested ?? DEFAULT_QUALITY;
 }
 
 /**
@@ -36,8 +46,9 @@ async function normalizePickedUri(
 ): Promise<string> {
   if (Platform.OS !== 'web') return uri;
   try {
-    const resolvedProfile =
-      profile ?? (isLowMemoryWebDevice() ? 'lowMemory' : 'default');
+    // Evidências (default) ficam em 1280 mesmo em Galaxy A — o canvas
+    // já evita decode full-res. Só checkin/lowMemory comprimem mais.
+    const resolvedProfile = profile ?? 'default';
     const stable = await ensurePersistablePhotoUri(uri, {
       compress: true,
       profile: resolvedProfile,
@@ -159,11 +170,11 @@ export async function pickMultiplePhotos(options?: {
   selectionLimit?: number;
   profile?: PhotoCompressProfile;
 }): Promise<string[]> {
-  const profile = options?.profile ?? (isLowMemoryWebDevice() ? 'lowMemory' : 'default');
+  const profile = options?.profile ?? 'default';
   const quality = resolveQuality(options?.quality, profile);
   const selectionLimit = Math.min(
     options?.selectionLimit ?? 20,
-    isLowMemoryWebDevice() ? 5 : 20
+    isLowMemoryWebDevice() ? 6 : 20
   );
 
   const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();

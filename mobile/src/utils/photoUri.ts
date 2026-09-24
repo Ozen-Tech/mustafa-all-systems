@@ -6,15 +6,24 @@
  * Por isso comprimimos blob → canvas pequeno → data URL leve.
  */
 
-/** Limites padrão PWA. */
-const WEB_MAX_EDGE = 720;
-const WEB_JPEG_QUALITY = 0.32;
-const WEB_UPLOAD_TARGET_BYTES = 160_000;
+/**
+ * Evidências no dashboard (indústria / visita).
+ * 1280px @ ~0.68 fica legível no admin sem decodificar full-res no celular
+ * (o caminho createImageBitmap → canvas pequeno evita OOM).
+ */
+const WEB_MAX_EDGE = 1280;
+const WEB_JPEG_QUALITY = 0.68;
+const WEB_UPLOAD_TARGET_BYTES = 420_000;
 
-/** Check-in / celulares fracos — ainda mais agressivo. */
-const LOWMEM_MAX_EDGE = 480;
-const LOWMEM_JPEG_QUALITY = 0.24;
-const LOWMEM_UPLOAD_TARGET_BYTES = 110_000;
+/** Check-in fachada — prioriza estabilidade em low RAM. */
+const CHECKIN_MAX_EDGE = 720;
+const CHECKIN_JPEG_QUALITY = 0.42;
+const CHECKIN_UPLOAD_TARGET_BYTES = 180_000;
+
+/** Só quando o caller pede explicitamente lowMemory. */
+const LOWMEM_MAX_EDGE = 640;
+const LOWMEM_JPEG_QUALITY = 0.35;
+const LOWMEM_UPLOAD_TARGET_BYTES = 140_000;
 
 export type PhotoCompressProfile = 'default' | 'checkin' | 'lowMemory';
 
@@ -79,31 +88,53 @@ function resolveProfile(profile?: PhotoCompressProfile): {
   targetBytes: number;
   steps: Array<[number, number]>;
 } {
-  const low = profile === 'checkin' || profile === 'lowMemory' || isLowMemoryWebDevice();
-  if (low) {
+  // Perfil explícito sempre vence — senão Galaxy A / Samsung Internet
+  // forçava lowMemory em TODAS as fotos e o dashboard ficava ilegível.
+  if (profile === 'checkin') {
+    return {
+      maxEdge: CHECKIN_MAX_EDGE,
+      quality: CHECKIN_JPEG_QUALITY,
+      targetBytes: CHECKIN_UPLOAD_TARGET_BYTES,
+      steps: [
+        [720, 0.42],
+        [640, 0.36],
+        [560, 0.32],
+        [480, 0.28],
+      ],
+    };
+  }
+  if (profile === 'lowMemory') {
     return {
       maxEdge: LOWMEM_MAX_EDGE,
       quality: LOWMEM_JPEG_QUALITY,
       targetBytes: LOWMEM_UPLOAD_TARGET_BYTES,
       steps: [
-        [480, 0.24],
-        [400, 0.2],
-        [320, 0.16],
-        [280, 0.14],
+        [640, 0.35],
+        [560, 0.3],
+        [480, 0.26],
+        [400, 0.22],
       ],
     };
   }
-  return {
-    maxEdge: WEB_MAX_EDGE,
-    quality: WEB_JPEG_QUALITY,
-    targetBytes: WEB_UPLOAD_TARGET_BYTES,
-    steps: [
-      [720, 0.32],
-      [560, 0.28],
-      [480, 0.24],
-      [400, 0.2],
-    ],
-  };
+  if (profile === 'default') {
+    return {
+      maxEdge: WEB_MAX_EDGE,
+      quality: WEB_JPEG_QUALITY,
+      targetBytes: WEB_UPLOAD_TARGET_BYTES,
+      steps: [
+        [1280, 0.68],
+        [1100, 0.6],
+        [960, 0.55],
+        [800, 0.5],
+      ],
+    };
+  }
+
+  // Sem perfil: low-RAM → check-in-safe; demais → qualidade de dashboard.
+  if (isLowMemoryWebDevice()) {
+    return resolveProfile('checkin');
+  }
+  return resolveProfile('default');
 }
 
 function yieldToUi(): Promise<void> {
@@ -261,7 +292,7 @@ export async function preparePhotoForWebUpload(
   if (!uri.startsWith('data:image/') && !uri.startsWith('blob:') && !uri.startsWith('http')) {
     return uri;
   }
-  return compressLocalUriForWeb(uri, profile ?? (isLowMemoryWebDevice() ? 'lowMemory' : 'default'));
+  return compressLocalUriForWeb(uri, profile ?? 'default');
 }
 
 /** Converte URI volátil (blob) em data URL — preferir compressLocalUriForWeb na web. */

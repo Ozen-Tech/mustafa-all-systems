@@ -179,7 +179,7 @@ export const photoService = {
         data.fileUri,
         data.type === 'FACADE_CHECKIN' || data.type === 'FACADE_CHECKOUT'
           ? 'checkin'
-          : undefined
+          : 'default'
       );
 
       try {
