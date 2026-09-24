@@ -4,6 +4,18 @@ import { AuthRequest } from '../middleware/auth';
 import prisma from '../prisma/client';
 import { UserRole } from '../types';
 
+/** Campos de loja usados nas telas de promotor — evita SELECT de chainId se a migration ainda não rodou. */
+const storeSelect = {
+  id: true,
+  name: true,
+  address: true,
+  code: true,
+  state: true,
+  latitude: true,
+  longitude: true,
+  filialCode: true,
+} as const;
+
 export async function getDashboard(req: AuthRequest, res: Response) {
   try {
     const today = new Date();
@@ -150,7 +162,7 @@ export async function getPromoterPerformance(req: AuthRequest, res: Response) {
         },
       },
       include: {
-        store: true,
+        store: { select: storeSelect },
         photos: true,
       },
       orderBy: {
@@ -361,7 +373,7 @@ export async function getPromoterVisits(req: AuthRequest, res: Response) {
           checkInAt: { gte: start, lt: endExclusive },
         },
         include: {
-          store: true,
+          store: { select: storeSelect },
           photos: {
             orderBy: { createdAt: 'asc' },
             include: {
@@ -421,7 +433,7 @@ export async function getPromoterVisits(req: AuthRequest, res: Response) {
         where: { promoterId: id },
         include: {
           promoter: { select: { name: true } },
-          store: true,
+          store: { select: storeSelect },
           photos: {
             orderBy: { createdAt: 'asc' },
             include: {
@@ -514,7 +526,7 @@ export async function getPromoterRoute(req: AuthRequest, res: Response) {
         },
       },
       include: {
-        store: true,
+        store: { select: storeSelect },
         locations: {
           orderBy: {
             timestamp: 'asc',
@@ -592,7 +604,7 @@ export async function getMissingPhotos(req: AuthRequest, res: Response) {
         },
       },
       include: {
-        store: true,
+        store: { select: storeSelect },
         photos: true,
         promoter: {
           select: {
