@@ -7,6 +7,7 @@ import {
   deletePhoto as deletePhotoFromStorage,
   extractStorageKeyFromUrl,
 } from '../services/firebase-storage.service';
+import { storeSelect } from '../utils/storeSelect';
 
 const checkInSchema = z.object({
   storeId: z.string().uuid(),
@@ -38,6 +39,7 @@ export async function checkIn(req: AuthRequest, res: Response) {
     // Verificar se a loja existe
     const store = await prisma.store.findUnique({
       where: { id: storeId },
+      select: storeSelect,
     });
 
     if (!store) {
@@ -92,7 +94,7 @@ export async function checkIn(req: AuthRequest, res: Response) {
         checkInPhotoUrl: photoUrl,
       },
       include: {
-        store: true,
+        store: { select: storeSelect },
       },
     });
 
@@ -360,7 +362,7 @@ export async function checkOut(req: AuthRequest, res: Response) {
         checkOutPhotoUrl: photoUrl,
       },
       include: {
-        store: true,
+        store: { select: storeSelect },
       },
     });
 
@@ -671,7 +673,7 @@ export async function getStores(req: AuthRequest, res: Response) {
         isActive: true,
       },
       include: {
-        store: true,
+        store: { select: storeSelect },
       },
       orderBy: {
         order: 'asc',
@@ -689,6 +691,7 @@ export async function getStores(req: AuthRequest, res: Response) {
 
     // Caso contrário, retornar todas as lojas (compatibilidade com versão antiga)
     const stores = await prisma.store.findMany({
+      select: storeSelect,
       orderBy: {
         name: 'asc',
       },
@@ -712,7 +715,7 @@ export async function getCurrentVisit(req: AuthRequest, res: Response) {
         checkOutAt: null,
       },
       include: {
-        store: true,
+        store: { select: storeSelect },
         photos: {
           include: {
             photoIndustries: {
@@ -774,7 +777,7 @@ export async function getVisits(req: AuthRequest, res: Response) {
     const visits = await prisma.visit.findMany({
       where: { promoterId },
       include: {
-        store: true,
+        store: { select: storeSelect },
         photos: {
           orderBy: {
             createdAt: 'asc',
@@ -914,7 +917,15 @@ export async function getVisitIndustries(req: AuthRequest, res: Response) {
       where: { id: visitId },
       include: {
         store: {
-          include: {
+          select: {
+            id: true,
+            name: true,
+            address: true,
+            code: true,
+            state: true,
+            latitude: true,
+            longitude: true,
+            filialCode: true,
             storeIndustries: {
               where: { isActive: true },
               include: { industry: true },
@@ -1007,7 +1018,15 @@ export async function getVisitCoverage(req: AuthRequest, res: Response) {
       where: { id: visitId },
       include: {
         store: {
-          include: {
+          select: {
+            id: true,
+            name: true,
+            address: true,
+            code: true,
+            state: true,
+            latitude: true,
+            longitude: true,
+            filialCode: true,
             storeIndustries: {
               where: { isActive: true },
               include: { industry: true },
@@ -1125,7 +1144,7 @@ export async function getMyOnboarding(req: AuthRequest, res: Response) {
 
     const routeAssignments = await prisma.routeAssignment.findMany({
       where: { promoterId, isActive: true },
-      include: { store: true },
+      include: { store: { select: storeSelect } },
       orderBy: { order: 'asc' },
     });
 
@@ -1213,6 +1232,7 @@ export async function setMyRoute(req: AuthRequest, res: Response) {
 
     const stores = await prisma.store.findMany({
       where: { id: { in: uniqueIds } },
+      select: storeSelect,
     });
     if (stores.length !== uniqueIds.length) {
       return res.status(400).json({ message: 'Uma ou mais lojas não foram encontradas.' });
@@ -1259,7 +1279,7 @@ export async function setMyRoute(req: AuthRequest, res: Response) {
 
     const route = await prisma.routeAssignment.findMany({
       where: { promoterId, isActive: true },
-      include: { store: true },
+      include: { store: { select: storeSelect } },
       orderBy: { order: 'asc' },
     });
 
