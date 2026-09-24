@@ -13,12 +13,11 @@ import {
 
 /**
  * Qualidade do ImagePicker (antes do canvas).
- * Em evidências usamos qualidade média na câmera + resize 1280 no canvas
- * (evita blob enorme e mantém dashboard legível).
+ * Evidências: qualidade média-alta na câmera + resize 1600 no canvas.
  */
-const DEFAULT_QUALITY = Platform.OS === 'web' ? 0.55 : 0.75;
-const MAX_WEB_QUALITY = 0.65;
-const CHECKIN_WEB_QUALITY = 0.28;
+const DEFAULT_QUALITY = Platform.OS === 'web' ? 0.7 : 0.8;
+const MAX_WEB_QUALITY = 0.8;
+const CHECKIN_WEB_QUALITY = 0.4;
 
 function resolveQuality(requested?: number, profile?: PhotoCompressProfile): number {
   if (Platform.OS === 'web') {
@@ -46,7 +45,7 @@ async function normalizePickedUri(
 ): Promise<string> {
   if (Platform.OS !== 'web') return uri;
   try {
-    // Evidências (default) ficam em 1280 mesmo em Galaxy A — o canvas
+    // Evidências (default) ficam em 1600 mesmo em Galaxy A — o canvas
     // já evita decode full-res. Só checkin/lowMemory comprimem mais.
     const resolvedProfile = profile ?? 'default';
     const stable = await ensurePersistablePhotoUri(uri, {

@@ -25,6 +25,7 @@ import {
   getMyTodayAbsence,
   deleteMyDayAbsence,
 } from '../controllers/dayAbsence.controller';
+import { getPromoterGoals } from '../controllers/goal.controller';
 import { authenticate } from '../middleware/auth';
 
 const router = Router();
@@ -32,6 +33,7 @@ const router = Router();
 router.use(authenticate);
 router.get('/me/onboarding', getMyOnboarding);
 router.put('/me/route', setMyRoute);
+router.get('/goals', getPromoterGoals);
 router.get('/stores', getStores);
 router.get('/visits', getVisits);
 router.post('/checkin', checkIn);

@@ -1,5 +1,5 @@
-/* Service Worker — v9: qualidade dashboard (1280) sem forçar lowMem em evidências */
-const CACHE_NAME = 'mustafa-promotor-v9';
+/* Service Worker — v10: qualidade dashboard 1600px / JPEG 0.78 */
+const CACHE_NAME = 'mustafa-promotor-v10';
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest'];
 
 function isHtmlResponse(res) {

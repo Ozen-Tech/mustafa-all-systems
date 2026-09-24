@@ -202,7 +202,7 @@ export default function CheckInScreen({ route }: any) {
     try {
       // Perfil checkin: compressão máxima (Galaxy A16 / low RAM).
       const uri = await pickSinglePhoto({
-        quality: Platform.OS === 'web' ? 0.28 : 0.55,
+        quality: Platform.OS === 'web' ? 0.4 : 0.6,
         profile: 'checkin',
       });
       if (uri) {

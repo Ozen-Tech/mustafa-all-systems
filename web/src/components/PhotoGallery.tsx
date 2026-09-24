@@ -21,6 +21,10 @@ interface PhotoGalleryProps {
   visitDate?: string;
   storeName?: string;
   promoterName?: string;
+  /** Índice inicial ao abrir o modal (0-based). */
+  initialIndex?: number;
+  /** Mantém a ordem recebida (não reordena por data). */
+  preserveOrder?: boolean;
 }
 
 // Função para validar se uma string é uma URL válida
@@ -101,6 +105,8 @@ export default function PhotoGallery({
   visitDate,
   storeName,
   promoterName,
+  initialIndex = 0,
+  preserveOrder = false,
 }: PhotoGalleryProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [failedUrls, setFailedUrls] = useState<Set<string>>(new Set());
@@ -128,7 +134,8 @@ export default function PhotoGallery({
     }> = [];
 
     photos.forEach((photo, index) => {
-      if (photo.type !== 'OTHER' && photo.type !== undefined) return;
+      // Aceita OTHER ou tipo omitido (galeria por indústria).
+      if (photo.type && photo.type !== 'OTHER') return;
       if (photo.url === checkInPhotoUrl || photo.url === checkOutPhotoUrl) return;
 
       const normalizedUrl = normalizeUrl(photo.url);
@@ -146,21 +153,24 @@ export default function PhotoGallery({
       }
     });
 
-    result.sort((a, b) => {
-      const aDate = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const bDate = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-      return aDate - bDate;
-    });
+    if (!preserveOrder) {
+      result.sort((a, b) => {
+        const aDate = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const bDate = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return aDate - bDate;
+      });
+    }
 
     return result;
-  }, [photos, checkInPhotoUrl, checkOutPhotoUrl]);
+  }, [photos, checkInPhotoUrl, checkOutPhotoUrl, preserveOrder]);
 
   // Resetar índice quando modal abrir/fechar ou fotos mudarem
   useEffect(() => {
     if (isOpen && allPhotos.length > 0) {
-      setCurrentIndex(0);
+      const idx = Math.min(Math.max(initialIndex || 0, 0), allPhotos.length - 1);
+      setCurrentIndex(idx);
     }
-  }, [isOpen, allPhotos.length]);
+  }, [isOpen, allPhotos.length, initialIndex]);
 
   if (!isOpen || allPhotos.length === 0) {
     if (isOpen && allPhotos.length === 0) {

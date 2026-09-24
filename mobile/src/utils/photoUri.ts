@@ -8,22 +8,22 @@
 
 /**
  * Evidências no dashboard (indústria / visita).
- * 1280px @ ~0.68 fica legível no admin sem decodificar full-res no celular
- * (o caminho createImageBitmap → canvas pequeno evita OOM).
+ * 1600px @ ~0.78 fica nítido no admin sem decodificar full-res no celular
+ * (createImageBitmap → canvas evita OOM).
  */
-const WEB_MAX_EDGE = 1280;
-const WEB_JPEG_QUALITY = 0.68;
-const WEB_UPLOAD_TARGET_BYTES = 420_000;
+const WEB_MAX_EDGE = 1600;
+const WEB_JPEG_QUALITY = 0.78;
+const WEB_UPLOAD_TARGET_BYTES = 650_000;
 
-/** Check-in fachada — prioriza estabilidade em low RAM. */
-const CHECKIN_MAX_EDGE = 720;
-const CHECKIN_JPEG_QUALITY = 0.42;
-const CHECKIN_UPLOAD_TARGET_BYTES = 180_000;
+/** Check-in fachada — um pouco mais leve que evidências, ainda legível. */
+const CHECKIN_MAX_EDGE = 960;
+const CHECKIN_JPEG_QUALITY = 0.55;
+const CHECKIN_UPLOAD_TARGET_BYTES = 280_000;
 
 /** Só quando o caller pede explicitamente lowMemory. */
-const LOWMEM_MAX_EDGE = 640;
-const LOWMEM_JPEG_QUALITY = 0.35;
-const LOWMEM_UPLOAD_TARGET_BYTES = 140_000;
+const LOWMEM_MAX_EDGE = 800;
+const LOWMEM_JPEG_QUALITY = 0.48;
+const LOWMEM_UPLOAD_TARGET_BYTES = 220_000;
 
 export type PhotoCompressProfile = 'default' | 'checkin' | 'lowMemory';
 
@@ -96,10 +96,10 @@ function resolveProfile(profile?: PhotoCompressProfile): {
       quality: CHECKIN_JPEG_QUALITY,
       targetBytes: CHECKIN_UPLOAD_TARGET_BYTES,
       steps: [
+        [960, 0.55],
+        [800, 0.48],
         [720, 0.42],
-        [640, 0.36],
-        [560, 0.32],
-        [480, 0.28],
+        [640, 0.38],
       ],
     };
   }
@@ -109,10 +109,10 @@ function resolveProfile(profile?: PhotoCompressProfile): {
       quality: LOWMEM_JPEG_QUALITY,
       targetBytes: LOWMEM_UPLOAD_TARGET_BYTES,
       steps: [
-        [640, 0.35],
-        [560, 0.3],
-        [480, 0.26],
-        [400, 0.22],
+        [800, 0.48],
+        [720, 0.42],
+        [640, 0.38],
+        [560, 0.34],
       ],
     };
   }
@@ -122,10 +122,10 @@ function resolveProfile(profile?: PhotoCompressProfile): {
       quality: WEB_JPEG_QUALITY,
       targetBytes: WEB_UPLOAD_TARGET_BYTES,
       steps: [
-        [1280, 0.68],
-        [1100, 0.6],
-        [960, 0.55],
-        [800, 0.5],
+        [1600, 0.78],
+        [1400, 0.72],
+        [1200, 0.66],
+        [1000, 0.6],
       ],
     };
   }

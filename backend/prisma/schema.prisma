@@ -56,6 +56,29 @@ enum StockLocationType {
   CD
 }
 
+enum OrderImportStatus {
+  PROCESSING
+  DONE
+  FAILED
+}
+
+enum GoalMetric {
+  ORDER_VALUE
+  ORDER_QTY
+}
+
+enum FeedEntryType {
+  IMPORT
+  GOAL
+  PENDING
+  NOTE
+}
+
+enum FeedEntryStatus {
+  OPEN
+  DONE
+}
+
 model User {
   id        String   @id @default(uuid())
   email     String   @unique
@@ -83,8 +106,12 @@ model User {
   redoGrantsAsPromoter  PromoterStoreRedoGrant[] @relation("RedoGrantPromoter")
   redoGrantsGranted     PromoterStoreRedoGrant[] @relation("RedoGrantGrantedBy")
   stockImports          StockImport[]
+  orderImports          OrderImport[]
   industryOwnerAssignment IndustryOwnerAssignment?
   dayAbsences           PromoterDayAbsence[]
+  goalsCreated          Goal[]                   @relation("GoalCreatedBy")
+  feedEntriesAuthored   FeedEntry[]              @relation("FeedAuthor")
+  feedEntriesAssigned   FeedEntry[]              @relation("FeedAssignee")
 
   @@index([state])
 }
@@ -129,6 +156,7 @@ model Store {
   filialCode String? @unique // Código da filial nos relatórios do Mateus (ex: "506")
   address   String
   state     String?
+  chainId   String?
   latitude  Float    @default(0)
   longitude Float    @default(0)
   createdAt DateTime @default(now())
@@ -137,8 +165,10 @@ model Store {
   @@index([state])
   @@index([code])
   @@index([filialCode])
+  @@index([chainId])
 
   // Relations
+  chain                 RetailChain? @relation(fields: [chainId], references: [id], onDelete: SetNull)
   visits                Visit[]
   priceResearch         PriceResearch[]
   routeAssignments      RouteAssignment[]
@@ -150,6 +180,9 @@ model Store {
   promoterStoreRedoGrants PromoterStoreRedoGrant[]
   storeStockItems       StoreStockItem[]
   salesRecords          SalesRecord[]
+  purchaseOrders        PurchaseOrder[]
+  goals                 Goal[]
+  feedEntries           FeedEntry[]
 }
 
 model Visit {
@@ -325,6 +358,9 @@ model Industry {
   whatsappReports     WhatsAppReport[]
   storeIndustries     StoreIndustry[]
   industryOwnerAssignments IndustryOwnerAssignment[]
+  purchaseOrders      PurchaseOrder[]
+  goals               Goal[]
+  feedEntries         FeedEntry[]
 
   @@index([code])
   @@index([isActive])
@@ -615,5 +651,152 @@ model SalesRecord {
   @@index([state])
   @@index([productCode])
   @@index([industryName, month])
+}
+
+// Redes varejistas (Mateus, Assaí, Atacadão, etc.)
+model RetailChain {
+  id          String   @id @default(uuid())
+  name        String
+  code        String   @unique
+  isActive    Boolean  @default(true)
+  // Mapa de colunas da planilha: { orderNumber, orderDate, filialCode, filialName, industryName, productCode, productName, qty, unitValue, totalValue, state, deliveryDate, sheetName?, headerRow? }
+  orderLayout Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  stores         Store[]
+  orderImports   OrderImport[]
+  purchaseOrders PurchaseOrder[]
+  goals          Goal[]
+  feedEntries    FeedEntry[]
+
+  @@index([isActive])
+}
+
+model OrderImport {
+  id           String            @id @default(uuid())
+  fileName     String
+  chainId      String
+  periodLabel  String?
+  status       OrderImportStatus @default(PROCESSING)
+  rowCount     Int               @default(0)
+  orderCount   Int               @default(0)
+  meta         Json?
+  errorMessage String?
+  uploadedById String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  chain        RetailChain     @relation(fields: [chainId], references: [id], onDelete: Cascade)
+  uploadedBy   User?           @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  purchaseOrders PurchaseOrder[]
+
+  @@index([status])
+  @@index([chainId])
+  @@index([createdAt])
+}
+
+model PurchaseOrder {
+  id            String   @id @default(uuid())
+  importId      String?
+  chainId       String
+  industryId    String?
+  industryName  String
+  storeId       String?
+  filialCode    String
+  filialName    String
+  orderNumber   String?
+  orderDate     DateTime
+  deliveryDate  DateTime?
+  state         String?
+  totalQty      Float    @default(0)
+  totalValue    Float    @default(0)
+  sourceHash    String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  import   OrderImport?         @relation(fields: [importId], references: [id], onDelete: SetNull)
+  chain    RetailChain          @relation(fields: [chainId], references: [id], onDelete: Cascade)
+  industry Industry?            @relation(fields: [industryId], references: [id], onDelete: SetNull)
+  store    Store?               @relation(fields: [storeId], references: [id], onDelete: SetNull)
+  items    PurchaseOrderItem[]
+
+  @@unique([sourceHash])
+  @@index([chainId])
+  @@index([industryId])
+  @@index([storeId])
+  @@index([orderDate])
+  @@index([filialCode])
+  @@index([importId])
+  @@index([industryName])
+}
+
+model PurchaseOrderItem {
+  id          String @id @default(uuid())
+  orderId     String
+  productCode String
+  productName String
+  qty         Float  @default(0)
+  unitValue   Float?
+  totalValue  Float  @default(0)
+
+  order PurchaseOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([productCode])
+}
+
+model Goal {
+  id          String     @id @default(uuid())
+  period      String     // YYYY-MM
+  metric      GoalMetric
+  industryId  String?
+  chainId     String?
+  storeId     String?
+  targetValue Float
+  note        String?
+  createdById String
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  industry  Industry?    @relation(fields: [industryId], references: [id], onDelete: Cascade)
+  chain     RetailChain? @relation(fields: [chainId], references: [id], onDelete: Cascade)
+  store     Store?       @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  createdBy User         @relation("GoalCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@unique([period, metric, industryId, chainId, storeId])
+  @@index([period])
+  @@index([industryId])
+  @@index([chainId])
+  @@index([storeId])
+}
+
+model FeedEntry {
+  id          String          @id @default(uuid())
+  type        FeedEntryType
+  title       String
+  body        String?
+  industryId  String?
+  chainId     String?
+  storeId     String?
+  authorId    String
+  status      FeedEntryStatus @default(OPEN)
+  assigneeId  String?
+  dueDate     DateTime?
+  resolvedAt  DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  industry Industry?    @relation(fields: [industryId], references: [id], onDelete: SetNull)
+  chain    RetailChain? @relation(fields: [chainId], references: [id], onDelete: SetNull)
+  store    Store?       @relation(fields: [storeId], references: [id], onDelete: SetNull)
+  author   User         @relation("FeedAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  assignee User?        @relation("FeedAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  @@index([type])
+  @@index([status])
+  @@index([createdAt])
+  @@index([authorId])
+  @@index([assigneeId])
 }
 
