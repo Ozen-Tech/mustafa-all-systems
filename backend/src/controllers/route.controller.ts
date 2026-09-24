@@ -4,6 +4,7 @@ import { AuthRequest } from '../middleware/auth';
 import prisma from '../prisma/client';
 import { UserRole } from '../types';
 import { isPromoterInSupervisorScope } from '../utils/supervisorScope';
+import { storeSelect } from '../utils/storeSelect';
 
 async function assertSupervisorRouteAccess(
   req: AuthRequest,
@@ -91,7 +92,7 @@ export async function setPromoterRoute(req: AuthRequest, res: Response) {
             supervisorId: supervisorId || null,
           },
           include: {
-            store: true,
+            store: { select: storeSelect },
           },
         })
       )
@@ -249,7 +250,7 @@ export async function getPromoterRoute(req: AuthRequest, res: Response) {
         isActive: true,
       },
       include: {
-        store: true,
+        store: { select: storeSelect },
       },
       orderBy: {
         order: 'asc',
@@ -305,7 +306,7 @@ export async function getAllRoutes(req: AuthRequest, res: Response) {
         routeAssignments: {
           where: { isActive: true },
           include: {
-            store: true,
+            store: { select: storeSelect },
             supervisor: {
               select: { id: true, name: true },
             },
@@ -440,7 +441,7 @@ export async function updateStoreHours(req: AuthRequest, res: Response) {
         expectedHours: expectedHours !== undefined ? expectedHours : null,
       },
       include: {
-        store: true,
+        store: { select: storeSelect },
       },
     });
 
@@ -471,7 +472,7 @@ export async function getPromoterHoursReport(req: AuthRequest, res: Response) {
         isActive: true,
       },
       include: {
-        store: true,
+        store: { select: storeSelect },
       },
     });
 
@@ -575,7 +576,7 @@ export async function getAllPromotersHoursReport(req: AuthRequest, res: Response
         routeAssignments: {
           where: { isActive: true },
           include: {
-            store: true,
+            store: { select: storeSelect },
           },
         },
       },

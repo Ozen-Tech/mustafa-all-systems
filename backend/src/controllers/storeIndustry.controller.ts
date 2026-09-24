@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { z } from 'zod';
 import prisma from '../prisma/client';
 import { AuthRequest } from '../middleware/auth';
+import { storeSelect } from '../utils/storeSelect';
 
 const addIndustrySchema = z.object({
   industryId: z.string().uuid(),
@@ -23,6 +24,7 @@ export async function getStoreIndustries(req: AuthRequest, res: Response) {
     // Verificar se a loja existe
     const store = await prisma.store.findUnique({
       where: { id: storeId },
+      select: storeSelect,
     });
 
     if (!store) {
@@ -72,6 +74,7 @@ export async function addIndustryToStore(req: AuthRequest, res: Response) {
     // Verificar se a loja existe
     const store = await prisma.store.findUnique({
       where: { id: storeId },
+      select: storeSelect,
     });
 
     if (!store) {
@@ -172,6 +175,7 @@ export async function updateStoreIndustries(req: AuthRequest, res: Response) {
     // Verificar se a loja existe
     const store = await prisma.store.findUnique({
       where: { id: storeId },
+      select: storeSelect,
     });
 
     if (!store) {
@@ -245,7 +249,15 @@ export async function updateStoreIndustries(req: AuthRequest, res: Response) {
 export async function getAllStoreIndustries(req: AuthRequest, res: Response) {
   try {
     const stores = await prisma.store.findMany({
-      include: {
+      select: {
+        id: true,
+        name: true,
+        address: true,
+        code: true,
+        state: true,
+        latitude: true,
+        longitude: true,
+        filialCode: true,
         storeIndustries: {
           where: { isActive: true },
           include: { industry: true },
