@@ -666,6 +666,27 @@ export async function getStores(req: AuthRequest, res: Response) {
     const redoEligibleStoreIds = new Set(pendingRedoGrants.map((r: { storeId: string }) => r.storeId));
     completedStoreIdsToday = completedStoreIdsToday.filter(id => !redoEligibleStoreIds.has(id));
 
+    const todayISO = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Sao_Paulo',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    })
+      .formatToParts(new Date())
+      .reduce((acc, p) => {
+        if (p.type === 'year') acc.y = p.value;
+        if (p.type === 'month') acc.m = p.value;
+        if (p.type === 'day') acc.d = p.value;
+        return acc;
+      }, { y: '', m: '', d: '' } as { y: string; m: string; d: string });
+    const dateStr = `${todayISO.y}-${todayISO.m}-${todayISO.d}`;
+
+    const skipsToday = await prisma.promoterStoreDaySkip.findMany({
+      where: { promoterId, date: dateStr },
+      select: { storeId: true },
+    });
+    const skippedStoreIdsToday = skipsToday.map((s) => s.storeId);
+
     // Buscar lojas atribuídas ao promotor (rota configurada)
     const routeAssignments = await prisma.routeAssignment.findMany({
       where: {
@@ -686,6 +707,7 @@ export async function getStores(req: AuthRequest, res: Response) {
         stores: routeAssignments.map((a: { store: any }) => a.store),
         hasRoute: true,
         completedStoreIdsToday,
+        skippedStoreIdsToday,
       });
     }
 
@@ -697,7 +719,7 @@ export async function getStores(req: AuthRequest, res: Response) {
       },
     });
 
-    res.json({ stores, hasRoute: false, completedStoreIdsToday });
+    res.json({ stores, hasRoute: false, completedStoreIdsToday, skippedStoreIdsToday });
   } catch (error) {
     console.error('Get stores error:', error);
     res.status(500).json({ message: 'Internal server error' });

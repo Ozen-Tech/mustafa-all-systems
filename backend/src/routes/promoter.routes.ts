@@ -26,6 +26,12 @@ import {
   deleteMyDayAbsence,
 } from '../controllers/dayAbsence.controller';
 import { getPromoterGoals } from '../controllers/goal.controller';
+import {
+  getDayBoard,
+  getWeeklyRanking,
+  skipStoreToday,
+  unskipStoreToday,
+} from '../controllers/dayBoard.controller';
 import { authenticate } from '../middleware/auth';
 
 const router = Router();
@@ -33,6 +39,10 @@ const router = Router();
 router.use(authenticate);
 router.get('/me/onboarding', getMyOnboarding);
 router.put('/me/route', setMyRoute);
+router.get('/me/day-board', getDayBoard);
+router.get('/me/ranking', getWeeklyRanking);
+router.post('/me/stores/:storeId/skip-today', skipStoreToday);
+router.delete('/me/stores/:storeId/skip-today', unskipStoreToday);
 router.get('/goals', getPromoterGoals);
 router.get('/stores', getStores);
 router.get('/visits', getVisits);
