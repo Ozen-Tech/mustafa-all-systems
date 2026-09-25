@@ -1,5 +1,5 @@
-/* Service Worker — v12: quadro do dia / missões do promotor */
-const CACHE_NAME = 'mustafa-promotor-v12';
+/* Service Worker — v13: ranking semanal do promotor */
+const CACHE_NAME = 'mustafa-promotor-v13';
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest'];
 
 function isHtmlResponse(res) {

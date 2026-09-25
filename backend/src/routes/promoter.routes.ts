@@ -28,6 +28,7 @@ import {
 import { getPromoterGoals } from '../controllers/goal.controller';
 import {
   getDayBoard,
+  getWeeklyRanking,
   skipStoreToday,
   unskipStoreToday,
 } from '../controllers/dayBoard.controller';
@@ -39,6 +40,7 @@ router.use(authenticate);
 router.get('/me/onboarding', getMyOnboarding);
 router.put('/me/route', setMyRoute);
 router.get('/me/day-board', getDayBoard);
+router.get('/me/ranking', getWeeklyRanking);
 router.post('/me/stores/:storeId/skip-today', skipStoreToday);
 router.delete('/me/stores/:storeId/skip-today', unskipStoreToday);
 router.get('/goals', getPromoterGoals);

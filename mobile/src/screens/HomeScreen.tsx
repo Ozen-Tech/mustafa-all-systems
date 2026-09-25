@@ -19,6 +19,7 @@ import {
   DayBoard,
   DayBoardIndicator,
   TrailStatus,
+  WeeklyRanking,
 } from '../services/dayBoardService';
 
 type HomeNavigation = NavigationProp<Record<string, object | undefined>>;
@@ -69,6 +70,7 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [board, setBoard] = useState<DayBoard | null>(null);
   const [boardLoading, setBoardLoading] = useState(true);
+  const [ranking, setRanking] = useState<WeeklyRanking | null>(null);
 
   const checkActiveVisit = useCallback(async () => {
     try {
@@ -104,21 +106,33 @@ export default function HomeScreen() {
     }
   }, []);
 
+  const loadRanking = useCallback(async () => {
+    try {
+      const data = await dayBoardService.getRanking();
+      setRanking(data);
+    } catch (error: any) {
+      console.warn('[HomeScreen] Erro ao carregar ranking:', error?.message || error);
+      setRanking(null);
+    }
+  }, []);
+
   useEffect(() => {
     if (visitFlowLoading) return;
     checkActiveVisit();
     loadDayBoard();
+    loadRanking();
     offlineSyncService.syncAll().catch(() => {});
 
     const unsubscribe = navigation.addListener('focus', () => {
       if (visitFlowLoading) return;
       checkActiveVisit();
       loadDayBoard();
+      loadRanking();
       offlineSyncService.syncAll().catch(() => {});
     });
 
     return unsubscribe;
-  }, [navigation, visitFlowLoading, checkActiveVisit, loadDayBoard]);
+  }, [navigation, visitFlowLoading, checkActiveVisit, loadDayBoard, loadRanking]);
 
   function handlePrimaryAction() {
     if (!board) {
@@ -217,6 +231,40 @@ export default function HomeScreen() {
           </>
         )}
       </Card>
+
+      <Pressable onPress={() => navigation.navigate('Ranking')}>
+        <Card style={styles.rankingCard} shadow>
+          <View style={styles.rankingHeader}>
+            <Text style={styles.rankingTitle}>Ranking da semana</Text>
+            <Text style={styles.rankingLink}>Ver todos</Text>
+          </View>
+          {ranking ? (
+            <>
+              <Text style={styles.rankingPosition}>
+                {ranking.myRank != null
+                  ? `Sua posição: #${ranking.myRank} · ${ranking.myPoints} pts`
+                  : `${ranking.myPoints} pts esta semana`}
+              </Text>
+              <View style={styles.top3Row}>
+                {(ranking.entries.slice(0, 3) || []).map((e) => (
+                  <View
+                    key={e.promoterId}
+                    style={[styles.top3Chip, e.isMe && styles.top3ChipMe]}
+                  >
+                    <Text style={styles.top3Rank}>#{e.rank}</Text>
+                    <Text style={styles.top3Name} numberOfLines={1}>
+                      {e.isMe ? 'Você' : e.name.split(' ')[0]}
+                    </Text>
+                    <Text style={styles.top3Pts}>{e.points}</Text>
+                  </View>
+                ))}
+              </View>
+            </>
+          ) : (
+            <Text style={styles.rankingHint}>Toque para ver a classificação da equipe</Text>
+          )}
+        </Card>
+      </Pressable>
 
       <Section title="Próxima ação">
         {hasActiveVisit && localVisit ? (
@@ -344,6 +392,68 @@ const styles = StyleSheet.create({
   },
   ringCard: {
     padding: theme.spacing.lg,
+  },
+  rankingCard: {
+    padding: theme.spacing.lg,
+  },
+  rankingHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: theme.spacing.sm,
+  },
+  rankingTitle: {
+    fontSize: theme.typography.fontSize.base,
+    fontWeight: theme.typography.fontWeight.bold,
+    color: colors.text.primary,
+  },
+  rankingLink: {
+    fontSize: theme.typography.fontSize.sm,
+    color: colors.primary[400],
+    fontWeight: theme.typography.fontWeight.semibold,
+  },
+  rankingPosition: {
+    fontSize: theme.typography.fontSize.sm,
+    color: colors.text.secondary,
+    marginBottom: theme.spacing.sm,
+  },
+  rankingHint: {
+    fontSize: theme.typography.fontSize.sm,
+    color: colors.text.tertiary,
+  },
+  top3Row: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+  },
+  top3Chip: {
+    flex: 1,
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.sm,
+    borderRadius: theme.borderRadius.lg,
+    backgroundColor: colors.dark.cardElevated,
+    borderWidth: 1,
+    borderColor: colors.dark.border,
+    alignItems: 'center',
+  },
+  top3ChipMe: {
+    borderColor: colors.primary[500],
+    backgroundColor: 'rgba(124, 58, 237, 0.15)',
+  },
+  top3Rank: {
+    fontSize: theme.typography.fontSize.xs,
+    color: colors.accent[400],
+    fontWeight: theme.typography.fontWeight.bold,
+  },
+  top3Name: {
+    fontSize: theme.typography.fontSize.sm,
+    color: colors.text.primary,
+    fontWeight: theme.typography.fontWeight.semibold,
+    marginTop: 2,
+  },
+  top3Pts: {
+    fontSize: theme.typography.fontSize.xs,
+    color: colors.text.tertiary,
+    marginTop: 2,
   },
   ringRow: {
     flexDirection: 'row',

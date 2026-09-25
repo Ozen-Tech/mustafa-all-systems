@@ -59,9 +59,33 @@ export const SKIP_REASON_LABELS: Record<StoreDaySkipReason, string> = {
   OTHER: 'Outro',
 };
 
+export interface RankingEntry {
+  rank: number;
+  promoterId: string;
+  name: string;
+  points: number;
+  streakDays: number;
+  isMe: boolean;
+}
+
+export interface WeeklyRanking {
+  weekStart: string;
+  weekEnd: string;
+  scope: 'supervisor_team' | 'state' | 'solo';
+  myRank: number | null;
+  myPoints: number;
+  totalPlayers: number;
+  entries: RankingEntry[];
+}
+
 export const dayBoardService = {
   async getDayBoard(): Promise<DayBoard> {
     const response = await apiClient.get<DayBoard>('/promoters/me/day-board');
+    return response.data;
+  },
+
+  async getRanking(): Promise<WeeklyRanking> {
+    const response = await apiClient.get<WeeklyRanking>('/promoters/me/ranking');
     return response.data;
   },
 

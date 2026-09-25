@@ -498,3 +498,320 @@ export async function getDayBoard(req: AuthRequest, res: Response) {
     return res.status(500).json({ message: 'Internal server error' });
   }
 }
+
+function weekRangeBRT(todayISO: string): { weekStart: string; weekEnd: string; days: string[] } {
+  const probe = new Date(`${todayISO}T12:00:00-03:00`);
+  const short = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Sao_Paulo',
+    weekday: 'short',
+  }).format(probe);
+  const map: Record<string, number> = {
+    Sun: 0,
+    Mon: 1,
+    Tue: 2,
+    Wed: 3,
+    Thu: 4,
+    Fri: 5,
+    Sat: 6,
+  };
+  const wd = map[short] ?? 1;
+  const mondayOffset = wd === 0 ? -6 : 1 - wd;
+  const weekStart = shiftDateISO(todayISO, mondayOffset);
+  const days = Array.from({ length: 7 }, (_, i) => shiftDateISO(weekStart, i));
+  return { weekStart, weekEnd: days[6], days };
+}
+
+function dateISOFromVisitCheckIn(d: Date): string {
+  return toISODateBRT(d);
+}
+
+async function resolveRankingPeers(promoterId: string): Promise<Array<{ id: string; name: string }>> {
+  const link = await prisma.promoterSupervisor.findFirst({
+    where: { promoterId },
+    select: { supervisorId: true },
+  });
+
+  if (link?.supervisorId) {
+    const peers = await prisma.promoterSupervisor.findMany({
+      where: { supervisorId: link.supervisorId },
+      select: {
+        promoter: { select: { id: true, name: true, role: true } },
+      },
+    });
+    return peers
+      .map((p) => p.promoter)
+      .filter((u) => u.role === 'PROMOTER')
+      .map((u) => ({ id: u.id, name: u.name }));
+  }
+
+  const me = await prisma.user.findUnique({
+    where: { id: promoterId },
+    select: { state: true },
+  });
+  const where = me?.state
+    ? { role: 'PROMOTER' as const, state: me.state }
+    : { role: 'PROMOTER' as const, id: promoterId };
+
+  const users = await prisma.user.findMany({
+    where,
+    select: { id: true, name: true },
+    orderBy: { name: 'asc' },
+    take: 80,
+  });
+  return users;
+}
+
+/**
+ * Pontos da semana para vários promotores (queries em lote).
+ */
+async function computeWeekPointsBatch(
+  promoterIds: string[],
+  days: string[]
+): Promise<Map<string, number>> {
+  const pointsByPromoter = new Map<string, number>();
+  for (const id of promoterIds) pointsByPromoter.set(id, 0);
+  if (promoterIds.length === 0 || days.length === 0) return pointsByPromoter;
+
+  const weekStart = days[0];
+  const weekEndExclusive = shiftDateISO(days[days.length - 1], 1);
+  const { start } = dayRangeBRT(weekStart);
+  const { start: endExclusive } = dayRangeBRT(weekEndExclusive);
+
+  const [routes, visits, quotas] = await Promise.all([
+    prisma.routeAssignment.findMany({
+      where: { promoterId: { in: promoterIds }, isActive: true },
+      select: { promoterId: true, storeId: true },
+    }),
+    prisma.visit.findMany({
+      where: {
+        promoterId: { in: promoterIds },
+        checkInAt: { gte: start, lt: endExclusive },
+      },
+      select: {
+        id: true,
+        promoterId: true,
+        storeId: true,
+        checkInAt: true,
+        checkOutAt: true,
+        photos: {
+          where: { type: 'OTHER' },
+          select: { id: true, createdAt: true },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+    }),
+    prisma.photoQuota.findMany({
+      where: { promoterId: { in: promoterIds } },
+      select: { promoterId: true, expectedPhotos: true },
+    }),
+  ]);
+
+  const routeStores = new Map<string, Set<string>>();
+  for (const r of routes) {
+    const set = routeStores.get(r.promoterId) || new Set();
+    set.add(r.storeId);
+    routeStores.set(r.promoterId, set);
+  }
+
+  const quotaByPromoter = new Map(quotas.map((q) => [q.promoterId, q.expectedPhotos]));
+
+  const doneVisitIds: string[] = [];
+  const doneVisitMeta: Array<{ id: string; promoterId: string; storeId: string; date: string }> = [];
+  for (const v of visits) {
+    if (!v.checkOutAt) continue;
+    const date = dateISOFromVisitCheckIn(v.checkInAt);
+    if (!days.includes(date)) continue;
+    doneVisitIds.push(v.id);
+    doneVisitMeta.push({
+      id: v.id,
+      promoterId: v.promoterId,
+      storeId: v.storeId,
+      date,
+    });
+  }
+
+  const storeIdsForIndustries = [...new Set(doneVisitMeta.map((v) => v.storeId))];
+  const [assignments, storeIndustries, photoIndustries, misses] =
+    doneVisitIds.length > 0
+      ? await Promise.all([
+          prisma.industryAssignment.findMany({
+            where: {
+              promoterId: { in: promoterIds },
+              storeId: { in: storeIdsForIndustries },
+              isActive: true,
+            },
+            select: { promoterId: true, storeId: true, industryId: true },
+          }),
+          prisma.storeIndustry.findMany({
+            where: { storeId: { in: storeIdsForIndustries }, isActive: true },
+            select: { storeId: true, industryId: true },
+          }),
+          prisma.photoIndustry.findMany({
+            where: { visitId: { in: doneVisitIds } },
+            select: { visitId: true, industryId: true },
+          }),
+          prisma.industryMiss.findMany({
+            where: { visitId: { in: doneVisitIds } },
+            select: { visitId: true, industryId: true },
+          }),
+        ])
+      : [[], [], [], []];
+
+  const requiredByPromoterStore = new Map<string, Set<string>>();
+  for (const a of assignments) {
+    if (!a.storeId) continue;
+    const key = `${a.promoterId}:${a.storeId}`;
+    const set = requiredByPromoterStore.get(key) || new Set();
+    set.add(a.industryId);
+    requiredByPromoterStore.set(key, set);
+  }
+  const storeIndustryByStore = new Map<string, Set<string>>();
+  for (const si of storeIndustries) {
+    const set = storeIndustryByStore.get(si.storeId) || new Set();
+    set.add(si.industryId);
+    storeIndustryByStore.set(si.storeId, set);
+  }
+
+  const coveredByVisit = new Map<string, Set<string>>();
+  for (const pi of photoIndustries) {
+    const set = coveredByVisit.get(pi.visitId) || new Set();
+    set.add(pi.industryId);
+    coveredByVisit.set(pi.visitId, set);
+  }
+  for (const m of misses) {
+    const set = coveredByVisit.get(m.visitId) || new Set();
+    set.add(m.industryId);
+    coveredByVisit.set(m.visitId, set);
+  }
+
+  function requiredIndustries(pid: string, storeId: string): Set<string> {
+    const fromAssign = requiredByPromoterStore.get(`${pid}:${storeId}`);
+    if (fromAssign && fromAssign.size > 0) return fromAssign;
+    return storeIndustryByStore.get(storeId) || new Set();
+  }
+
+  for (const pid of promoterIds) {
+    let weekPts = 0;
+    const myRoute = routeStores.get(pid) || new Set();
+    const expected = quotaByPromoter.get(pid) ?? null;
+
+    for (const date of days) {
+      const { cutoff } = dayRangeBRT(date);
+      const dayVisits = visits.filter(
+        (v) => v.promoterId === pid && dateISOFromVisitCheckIn(v.checkInAt) === date
+      );
+      const doneStores = new Set(
+        dayVisits
+          .filter((v) => v.checkOutAt && myRoute.has(v.storeId))
+          .map((v) => v.storeId)
+      );
+      const storesDone = doneStores.size;
+      weekPts += storesDone * POINTS.STORE_DONE;
+
+      const evidence = dayVisits
+        .flatMap((v) => v.photos)
+        .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+      if (evidence[0] && evidence[0].createdAt.getTime() <= cutoff.getTime()) {
+        weekPts += POINTS.ON_TIME;
+      }
+      if (expected != null && expected > 0 && evidence.length >= expected) {
+        weekPts += POINTS.PHOTO_QUOTA;
+      }
+
+      if (storesDone > 0) {
+        const dayDoneVisits = dayVisits.filter((v) => v.checkOutAt && myRoute.has(v.storeId));
+        let industriesOk = true;
+        let hasRequirement = false;
+        for (const v of dayDoneVisits) {
+          const required = requiredIndustries(pid, v.storeId);
+          if (required.size === 0) continue;
+          hasRequirement = true;
+          const covered = coveredByVisit.get(v.id) || new Set();
+          for (const id of required) {
+            if (!covered.has(id)) {
+              industriesOk = false;
+              break;
+            }
+          }
+          if (!industriesOk) break;
+        }
+        if (hasRequirement && industriesOk) weekPts += POINTS.INDUSTRIES;
+        if (!hasRequirement && dayDoneVisits.length > 0) weekPts += POINTS.INDUSTRIES;
+      }
+    }
+
+    pointsByPromoter.set(pid, weekPts);
+  }
+
+  return pointsByPromoter;
+}
+
+/**
+ * GET /promoters/me/ranking
+ */
+export async function getWeeklyRanking(req: AuthRequest, res: Response) {
+  try {
+    const promoterId = req.userId!;
+    const today = toISODateBRT(new Date());
+    const { weekStart, weekEnd, days } = weekRangeBRT(today);
+
+    const peers = await resolveRankingPeers(promoterId);
+    if (peers.length === 0) {
+      return res.json({
+        weekStart,
+        weekEnd,
+        scope: 'solo',
+        myRank: 1,
+        myPoints: 0,
+        totalPlayers: 0,
+        entries: [],
+      });
+    }
+
+    const ids = peers.map((p) => p.id);
+    const pointsMap = await computeWeekPointsBatch(ids, days);
+
+    const streakEntries = await Promise.all(
+      ids.map(async (id) => ({ id, streakDays: await computeStreak(id, today) }))
+    );
+    const streakMap = new Map(streakEntries.map((s) => [s.id, s.streakDays]));
+
+    const sorted = [...peers].sort((a, b) => {
+      const pa = pointsMap.get(a.id) || 0;
+      const pb = pointsMap.get(b.id) || 0;
+      if (pb !== pa) return pb - pa;
+      const sa = streakMap.get(a.id) || 0;
+      const sb = streakMap.get(b.id) || 0;
+      if (sb !== sa) return sb - sa;
+      return a.name.localeCompare(b.name, 'pt-BR');
+    });
+
+    const entries = sorted.map((p, idx) => ({
+      rank: idx + 1,
+      promoterId: p.id,
+      name: p.name,
+      points: pointsMap.get(p.id) || 0,
+      streakDays: streakMap.get(p.id) || 0,
+      isMe: p.id === promoterId,
+    }));
+
+    const me = entries.find((e) => e.isMe);
+    const link = await prisma.promoterSupervisor.findFirst({
+      where: { promoterId },
+      select: { id: true },
+    });
+
+    return res.json({
+      weekStart,
+      weekEnd,
+      scope: link ? 'supervisor_team' : 'state',
+      myRank: me?.rank ?? null,
+      myPoints: me?.points ?? 0,
+      totalPlayers: entries.length,
+      entries,
+    });
+  } catch (error) {
+    console.error('getWeeklyRanking error:', error);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+}
