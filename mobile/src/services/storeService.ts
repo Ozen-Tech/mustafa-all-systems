@@ -14,6 +14,7 @@ export interface GetStoresResponse {
   stores: Store[];
   hasRoute?: boolean;
   completedStoreIdsToday?: string[];
+  skippedStoreIdsToday?: string[];
 }
 
 export interface OnboardingStatus {
@@ -34,6 +35,7 @@ export const storeService = {
       stores: response.data.stores || [],
       hasRoute: response.data.hasRoute,
       completedStoreIdsToday: response.data.completedStoreIdsToday || [],
+      skippedStoreIdsToday: response.data.skippedStoreIdsToday || [],
     };
   },
 

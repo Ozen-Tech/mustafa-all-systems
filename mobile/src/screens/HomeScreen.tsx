@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, ScrollView, Pressable } from 'react-native';
 import { useNavigation, NavigationProp } from '@react-navigation/native';
 import { visitService } from '../services/visitService';
 import { useVisitFlow } from '../features/visits';
@@ -12,22 +12,40 @@ import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
 import ScreenHeader from '../components/ui/ScreenHeader';
 import Section from '../components/ui/Section';
-import MetricCard from '../components/ui/MetricCard';
 import LoadingView from '../components/ui/LoadingView';
 import Badge from '../components/ui/Badge';
-import { dayAbsenceService } from '../services/dayAbsenceService';
+import {
+  dayBoardService,
+  DayBoard,
+  DayBoardIndicator,
+  TrailStatus,
+} from '../services/dayBoardService';
 
 type HomeNavigation = NavigationProp<Record<string, object | undefined>>;
 
-interface DailySummary {
-  totalVisits: number;
-  totalHours: number;
-  completedVisits: number;
-  inProgressVisits: number;
-  totalPhotos: number;
-  photoGoal: number;
-  photoCompliance: number;
-  status: 'conforme' | 'atencao' | 'fora_meta';
+function statusLabel(status: TrailStatus): string {
+  if (status === 'done') return 'Feita';
+  if (status === 'skipped') return 'Não feita';
+  if (status === 'active') return 'Agora';
+  return 'Pendente';
+}
+
+function statusDotColor(status: TrailStatus): string {
+  if (status === 'done') return colors.success;
+  if (status === 'skipped') return colors.text.tertiary;
+  if (status === 'active') return colors.accent[400];
+  return colors.primary[500];
+}
+
+function IndicatorChip({ item }: { item: DayBoardIndicator }) {
+  return (
+    <View style={[styles.indicatorChip, item.complete && styles.indicatorChipDone]}>
+      <Text style={[styles.indicatorValue, item.complete && styles.indicatorValueDone]}>
+        {item.total <= 1 ? (item.complete ? 'OK' : '—') : `${item.done}/${item.total}`}
+      </Text>
+      <Text style={styles.indicatorLabel}>{item.label}</Text>
+    </View>
+  );
 }
 
 export default function HomeScreen() {
@@ -49,9 +67,8 @@ export default function HomeScreen() {
 
   const [hasActiveVisit, setHasActiveVisit] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
-  const [dailySummary, setDailySummary] = useState<DailySummary | null>(null);
-  const [summaryLoading, setSummaryLoading] = useState(true);
-  const [hasDayAbsence, setHasDayAbsence] = useState(false);
+  const [board, setBoard] = useState<DayBoard | null>(null);
+  const [boardLoading, setBoardLoading] = useState(true);
 
   const checkActiveVisit = useCallback(async () => {
     try {
@@ -68,64 +85,59 @@ export default function HomeScreen() {
       }
     } catch (error: any) {
       console.warn('[HomeScreen] Erro ao verificar visita ativa:', error?.message || error);
-      // Erro de rede ou servidor: não apagar estado local nem forçar "sem visita"
       setHasActiveVisit(isActiveVisitRef.current);
     } finally {
       setLoading(false);
     }
   }, [clearVisit, syncFromServerCurrentVisit]);
 
+  const loadDayBoard = useCallback(async () => {
+    try {
+      setBoardLoading(true);
+      const data = await dayBoardService.getDayBoard();
+      setBoard(data);
+    } catch (error: any) {
+      console.warn('[HomeScreen] Erro ao carregar quadro do dia:', error?.message || error);
+      setBoard(null);
+    } finally {
+      setBoardLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (visitFlowLoading) return;
     checkActiveVisit();
-    loadDailySummary();
-    loadDayAbsence();
+    loadDayBoard();
     offlineSyncService.syncAll().catch(() => {});
 
     const unsubscribe = navigation.addListener('focus', () => {
       if (visitFlowLoading) return;
       checkActiveVisit();
-      loadDailySummary();
-      loadDayAbsence();
+      loadDayBoard();
       offlineSyncService.syncAll().catch(() => {});
     });
 
     return unsubscribe;
-  }, [navigation, visitFlowLoading, checkActiveVisit]);
+  }, [navigation, visitFlowLoading, checkActiveVisit, loadDayBoard]);
 
-  async function loadDailySummary() {
-    try {
-      setSummaryLoading(true);
-      const summary = await visitService.getDailySummary();
-      setDailySummary(summary);
-    } catch (error: any) {
-      console.warn('⚠️ Erro ao carregar resumo do dia:', error?.message || error);
-      // Não definir erro crítico, apenas não mostrar resumo
-      setDailySummary(null);
-    } finally {
-      setSummaryLoading(false);
+  function handlePrimaryAction() {
+    if (!board) {
+      navigation.navigate(hasActiveVisit ? 'ActiveVisit' : 'Stores');
+      return;
     }
-  }
-
-  async function loadDayAbsence() {
-    try {
-      const { absence } = await dayAbsenceService.getToday();
-      setHasDayAbsence(!!absence);
-    } catch {
-      setHasDayAbsence(false);
+    const action = board.nextAction;
+    if (action.type === 'continue_visit') {
+      navigation.navigate('ActiveVisit');
+      return;
     }
-  }
-
-  function handleStartVisit() {
-    navigation.navigate('Stores');
-  }
-
-  function handleContinueVisit() {
-    navigation.navigate('ActiveVisit');
-  }
-
-  function handleJustifyAbsence() {
-    navigation.navigate('JustifyAbsence');
+    if (action.type === 'go_store' || action.type === 'no_route') {
+      navigation.navigate('Stores');
+      return;
+    }
+    if (action.type === 'day_absence') {
+      navigation.navigate('JustifyAbsence');
+      return;
+    }
   }
 
   if (visitFlowLoading || loading || hasActiveVisit === null) {
@@ -138,144 +150,186 @@ export default function HomeScreen() {
     day: 'numeric',
     month: 'long',
   });
+  const ringPercent = board?.ring.percent ?? 0;
+  const dayClosed = board?.nextAction.type === 'day_closed';
 
   return (
     <ScrollView style={[screenStyles.root, flexScroll]} contentContainerStyle={styles.content}>
       <ScreenHeader
         eyebrow={todayLabel}
         title={`Olá, ${firstName}`}
-        subtitle="Acompanhe sua visita e o desempenho do dia"
+        subtitle="Feche sua rota loja a loja — visite ou marque o que não for fazer"
       />
 
-      <Card style={styles.statusCard} variant={hasActiveVisit ? 'primary' : 'default'} shadow>
-        <View style={styles.statusRow}>
-          <View style={[styles.statusDot, hasActiveVisit && styles.statusDotActive]} />
-          <View style={styles.statusCopy}>
-            <Text style={styles.statusTitle}>
-              {hasActiveVisit ? 'Visita em andamento' : 'Pronto para começar'}
-            </Text>
-            <Text style={styles.statusSubtitle}>
-              {hasActiveVisit
-                ? 'Continue de onde parou ou finalize para iniciar outra loja'
-                : 'Selecione uma loja da sua rota para iniciar o check-in'}
-            </Text>
+      <Card style={styles.ringCard} shadow>
+        {boardLoading && !board ? (
+          <View style={styles.loadingBlock}>
+            <ActivityIndicator size="small" color={colors.primary[500]} />
+            <Text style={styles.loadingText}>Montando o quadro do dia...</Text>
           </View>
-        </View>
-      </Card>
-
-      <Section title="Ação principal">
-        {hasActiveVisit ? (
+        ) : (
           <>
-            {localVisit ? (
-              <Card style={styles.visitCard} shadow>
-                <View style={styles.visitCardHeader}>
-                  <Text style={styles.visitStore}>{localVisit.storeName}</Text>
-                  <Badge variant="accent" size="sm">
-                    Ativa
+            <View style={styles.ringRow}>
+              <View style={styles.ringOuter}>
+                <View
+                  style={[
+                    styles.ringFill,
+                    {
+                      borderColor:
+                        ringPercent >= 100
+                          ? colors.success
+                          : ringPercent > 0
+                            ? colors.primary[400]
+                            : colors.dark.border,
+                    },
+                  ]}
+                >
+                  <Text style={styles.ringPercent}>{ringPercent}%</Text>
+                  <Text style={styles.ringSub}>
+                    {board ? `${board.ring.resolved}/${board.ring.total}` : '—'}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.ringMeta}>
+                <Text style={styles.pointsValue}>
+                  {board?.points ?? 0}
+                  <Text style={styles.pointsMax}> / {board?.pointsMax ?? 0}</Text>
+                </Text>
+                <Text style={styles.pointsLabel}>pontos de hoje</Text>
+                <View style={styles.streakRow}>
+                  <Badge variant={board && board.streakDays > 0 ? 'accent' : 'gray'} size="sm">
+                    {board && board.streakDays > 0
+                      ? `${board.streakDays} dia${board.streakDays === 1 ? '' : 's'} seguidos`
+                      : 'Sequência zerada'}
                   </Badge>
                 </View>
-                <Text style={styles.visitStatus}>
-                  {localVisit.status === 'checkedIn' || localVisit.status === 'working'
-                    ? 'Trabalhando na loja'
-                    : localVisit.status === 'storeCompleted'
-                      ? 'Aguardando checkout'
-                      : 'Visita em progresso'}
-                </Text>
-                {(pendingPhotosCount > 0 || pendingSurveysCount > 0) && (
-                  <Text style={styles.pendingSync}>
-                    {pendingPhotosCount} foto(s) · {pendingSurveysCount} pesquisa(s) pendentes
-                  </Text>
-                )}
-              </Card>
-            ) : null}
-            <Button variant="accent" size="lg" onPress={handleContinueVisit} style={styles.fullWidth}>
-              Continuar visita
-            </Button>
-          </>
-        ) : (
-          <Button variant="primary" size="lg" onPress={handleStartVisit} style={styles.fullWidth}>
-            Iniciar nova visita
-          </Button>
-        )}
-      </Section>
+              </View>
+            </View>
 
-      <Section title="Ausência / atestado">
-        {hasDayAbsence ? (
-          <Card style={styles.absenceCard} shadow>
+            {board ? (
+              <View style={styles.indicatorsRow}>
+                <IndicatorChip item={board.indicators.stores} />
+                <IndicatorChip item={board.indicators.industries} />
+                <IndicatorChip item={board.indicators.onTime} />
+                {board.indicators.photos ? <IndicatorChip item={board.indicators.photos} /> : null}
+              </View>
+            ) : null}
+          </>
+        )}
+      </Card>
+
+      <Section title="Próxima ação">
+        {hasActiveVisit && localVisit ? (
+          <Card style={styles.visitCard} shadow>
             <View style={styles.visitCardHeader}>
-              <Text style={styles.absenceTitle}>Falta justificada hoje</Text>
-              <Badge variant="warning" size="sm">
-                Registrada
+              <Text style={styles.visitStore}>{localVisit.storeName}</Text>
+              <Badge variant="accent" size="sm">
+                Ativa
               </Badge>
             </View>
-            <Text style={styles.absenceSubtitle}>
-              Você já enviou atestado ou justificativa para este dia. Toque para atualizar.
+            <Text style={styles.visitStatus}>
+              {localVisit.status === 'checkedIn' || localVisit.status === 'working'
+                ? 'Trabalhando na loja'
+                : localVisit.status === 'storeCompleted'
+                  ? 'Aguardando checkout'
+                  : 'Visita em progresso'}
             </Text>
+            {(pendingPhotosCount > 0 || pendingSurveysCount > 0) && (
+              <Text style={styles.pendingSync}>
+                {pendingPhotosCount} foto(s) · {pendingSurveysCount} pesquisa(s) pendentes
+              </Text>
+            )}
           </Card>
-        ) : (
-          <Text style={styles.absenceSubtitle}>
-            Não vai trabalhar hoje? Registre a falta e anexe o atestado ou comprovante.
-          </Text>
-        )}
+        ) : null}
         <Button
-          variant="outline"
+          variant={dayClosed ? 'outline' : hasActiveVisit ? 'accent' : 'primary'}
           size="lg"
-          onPress={handleJustifyAbsence}
-          style={[styles.fullWidth, { marginTop: theme.spacing.md }]}
+          onPress={handlePrimaryAction}
+          disabled={dayClosed}
+          style={styles.fullWidth}
         >
-          {hasDayAbsence ? 'Ver / atualizar justificativa' : 'Justificar falta / atestado'}
+          {board?.nextAction.label || (hasActiveVisit ? 'Continuar visita' : 'Iniciar visita')}
         </Button>
       </Section>
 
-      <Section title="Metas comerciais">
-        <Text style={styles.absenceSubtitle}>
-          Acompanhe as metas de pedidos das indústrias e redes da sua rota.
-        </Text>
+      <Section title="Trilha da rota">
+        {boardLoading && !board ? (
+          <Card style={styles.loadingBlock} shadow>
+            <ActivityIndicator size="small" color={colors.primary[500]} />
+          </Card>
+        ) : board && board.trail.length > 0 ? (
+          <Card shadow style={styles.trailCard}>
+            {board.trail.map((item, index) => (
+              <Pressable
+                key={item.storeId}
+                style={[styles.trailItem, index > 0 && styles.trailItemBorder]}
+                onPress={() => {
+                  if (item.status === 'active') navigation.navigate('ActiveVisit');
+                  else if (item.status === 'pending' || item.status === 'skipped') {
+                    navigation.navigate('Stores');
+                  }
+                }}
+              >
+                <View style={[styles.trailDot, { backgroundColor: statusDotColor(item.status) }]} />
+                <View style={styles.trailCopy}>
+                  <Text style={styles.trailName} numberOfLines={1}>
+                    {item.storeName}
+                  </Text>
+                  <Text style={styles.trailMeta} numberOfLines={1}>
+                    {item.address}
+                  </Text>
+                </View>
+                <Badge
+                  variant={
+                    item.status === 'done'
+                      ? 'success'
+                      : item.status === 'active'
+                        ? 'accent'
+                        : item.status === 'skipped'
+                          ? 'gray'
+                          : 'primary'
+                  }
+                  size="sm"
+                >
+                  {statusLabel(item.status)}
+                </Badge>
+              </Pressable>
+            ))}
+          </Card>
+        ) : (
+          <Card shadow>
+            <Text style={styles.emptySummary}>
+              Nenhuma loja na rota. Configure suas lojas para jogar o dia.
+            </Text>
+            <Button
+              variant="outline"
+              size="md"
+              onPress={() => navigation.navigate('Stores')}
+              style={[styles.fullWidth, { marginTop: theme.spacing.md }]}
+            >
+              Ver lojas
+            </Button>
+          </Card>
+        )}
+      </Section>
+
+      <Section title="Mais">
         <Button
           variant="outline"
-          size="lg"
+          size="md"
+          onPress={() => navigation.navigate('JustifyAbsence')}
+          style={styles.fullWidth}
+        >
+          {board?.hasDayAbsence ? 'Ver / atualizar falta do dia' : 'Justificar falta / atestado'}
+        </Button>
+        <Button
+          variant="outline"
+          size="md"
           onPress={() => navigation.navigate('Goals')}
-          style={[styles.fullWidth, { marginTop: theme.spacing.md }]}
+          style={[styles.fullWidth, { marginTop: theme.spacing.sm }]}
         >
           Ver minhas metas
         </Button>
-      </Section>
-
-      <Section title="Resumo do dia">
-        {summaryLoading ? (
-          <Card style={styles.loadingCard} shadow>
-            <ActivityIndicator size="small" color={colors.primary[500]} />
-            <Text style={styles.loadingText}>Atualizando métricas...</Text>
-          </Card>
-        ) : dailySummary ? (
-          <Card shadow>
-            <View style={styles.metricsGrid}>
-              <MetricCard label="Visitas" value={String(dailySummary.totalVisits)} accent="primary" />
-              <MetricCard
-                label="Horas"
-                value={`${dailySummary.totalHours.toFixed(1)}h`}
-                accent="default"
-              />
-              <MetricCard label="Fotos" value={String(dailySummary.totalPhotos)} accent="accent" />
-              <MetricCard
-                label="Meta fotos"
-                value={`${dailySummary.photoCompliance.toFixed(0)}%`}
-                accent="success"
-              />
-            </View>
-            {dailySummary.inProgressVisits > 0 ? (
-              <View style={styles.inlineBadge}>
-                <Text style={styles.inlineBadgeText}>
-                  {dailySummary.inProgressVisits} visita(s) em andamento
-                </Text>
-              </View>
-            ) : null}
-          </Card>
-        ) : (
-          <Card shadow>
-            <Text style={styles.emptySummary}>Sem dados do dia ainda. Inicie uma visita para começar.</Text>
-          </Card>
-        )}
       </Section>
     </ScrollView>
   );
@@ -288,56 +342,101 @@ const styles = StyleSheet.create({
     paddingBottom: layout.screenPaddingBottom,
     gap: layout.sectionGap,
   },
-  statusCard: {
+  ringCard: {
     padding: theme.spacing.lg,
   },
-  statusRow: {
+  ringRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: theme.spacing.md,
+    alignItems: 'center',
+    gap: theme.spacing.lg,
   },
-  statusDot: {
-    width: 10,
-    height: 10,
-    borderRadius: theme.borderRadius.full,
-    marginTop: 6,
-    backgroundColor: colors.text.tertiary,
+  ringOuter: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  statusDotActive: {
-    backgroundColor: colors.primary[400],
-    ...theme.shadows.primary,
+  ringFill: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    borderWidth: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.dark.cardElevated,
   },
-  statusCopy: {
-    flex: 1,
-  },
-  statusTitle: {
-    fontSize: theme.typography.fontSize.lg,
+  ringPercent: {
+    fontSize: theme.typography.fontSize.xl,
     fontWeight: theme.typography.fontWeight.bold,
     color: colors.text.primary,
-    marginBottom: theme.spacing.xs,
   },
-  statusSubtitle: {
+  ringSub: {
+    fontSize: theme.typography.fontSize.xs,
+    color: colors.text.tertiary,
+    marginTop: 2,
+  },
+  ringMeta: {
+    flex: 1,
+  },
+  pointsValue: {
+    fontSize: theme.typography.fontSize['3xl'],
+    fontWeight: theme.typography.fontWeight.bold,
+    color: colors.primary[300],
+  },
+  pointsMax: {
+    fontSize: theme.typography.fontSize.lg,
+    color: colors.text.tertiary,
+    fontWeight: theme.typography.fontWeight.medium,
+  },
+  pointsLabel: {
     fontSize: theme.typography.fontSize.sm,
     color: colors.text.secondary,
-    lineHeight: 20,
+    marginTop: 2,
   },
-  visitCard: {
-    marginBottom: theme.spacing.md,
+  streakRow: {
+    marginTop: theme.spacing.sm,
+    flexDirection: 'row',
   },
-  absenceCard: {
-    marginBottom: theme.spacing.sm,
+  indicatorsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.sm,
+    marginTop: theme.spacing.lg,
   },
-  absenceTitle: {
+  indicatorChip: {
+    flexGrow: 1,
+    minWidth: '22%',
+    paddingVertical: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.sm,
+    borderRadius: theme.borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.dark.border,
+    backgroundColor: colors.dark.cardElevated,
+    alignItems: 'center',
+  },
+  indicatorChipDone: {
+    borderColor: 'rgba(34, 197, 94, 0.45)',
+    backgroundColor: 'rgba(34, 197, 94, 0.1)',
+  },
+  indicatorValue: {
     fontSize: theme.typography.fontSize.md,
     fontWeight: theme.typography.fontWeight.bold,
     color: colors.text.primary,
-    flex: 1,
   },
-  absenceSubtitle: {
-    fontSize: theme.typography.fontSize.sm,
-    color: colors.text.secondary,
-    lineHeight: 20,
-    marginTop: theme.spacing.xs,
+  indicatorValueDone: {
+    color: colors.success,
+  },
+  indicatorLabel: {
+    marginTop: 2,
+    fontSize: 10,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    color: colors.text.tertiary,
+    fontWeight: theme.typography.fontWeight.medium,
+  },
+  visitCard: {
+    marginBottom: theme.spacing.md,
   },
   visitCardHeader: {
     flexDirection: 'row',
@@ -366,25 +465,41 @@ const styles = StyleSheet.create({
   fullWidth: {
     width: '100%',
   },
-  metricsGrid: {
+  trailCard: {
+    paddingVertical: theme.spacing.xs,
+    paddingHorizontal: 0,
+  },
+  trailItem: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: theme.spacing.md,
-  },
-  inlineBadge: {
-    marginTop: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-    paddingHorizontal: theme.spacing.md,
-    borderRadius: theme.borderRadius.md,
-    backgroundColor: 'rgba(124, 58, 237, 0.12)',
     alignItems: 'center',
+    gap: theme.spacing.md,
+    paddingVertical: theme.spacing.md,
+    paddingHorizontal: theme.spacing.lg,
   },
-  inlineBadgeText: {
+  trailItemBorder: {
+    borderTopWidth: 1,
+    borderTopColor: colors.dark.border,
+  },
+  trailDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  trailCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  trailName: {
     fontSize: theme.typography.fontSize.sm,
-    color: colors.primary[300],
-    fontWeight: theme.typography.fontWeight.medium,
+    fontWeight: theme.typography.fontWeight.semibold,
+    color: colors.text.primary,
   },
-  loadingCard: {
+  trailMeta: {
+    fontSize: theme.typography.fontSize.xs,
+    color: colors.text.tertiary,
+    marginTop: 2,
+  },
+  loadingBlock: {
     alignItems: 'center',
     paddingVertical: theme.spacing.xl,
   },
@@ -399,4 +514,3 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 });
-

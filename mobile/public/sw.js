@@ -1,5 +1,5 @@
-/* Service Worker — v10: qualidade dashboard 1600px / JPEG 0.78 */
-const CACHE_NAME = 'mustafa-promotor-v10';
+/* Service Worker — v12: quadro do dia / missões do promotor */
+const CACHE_NAME = 'mustafa-promotor-v12';
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest'];
 
 function isHtmlResponse(res) {

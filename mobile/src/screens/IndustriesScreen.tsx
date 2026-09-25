@@ -4,9 +4,17 @@ import {
   Text,
   StyleSheet,
   FlatList,
+  Modal,
+  Pressable,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation, NavigationProp, useFocusEffect } from '@react-navigation/native';
 import { storeService, Store } from '../services/storeService';
+import {
+  dayBoardService,
+  SKIP_REASON_LABELS,
+  StoreDaySkipReason,
+} from '../services/dayBoardService';
 import { colors, theme } from '../styles/theme';
 import { flexScroll, screenContainer } from '../styles/webLayout';
 import { screenStyles } from '../styles/layout';
@@ -21,14 +29,19 @@ import { showAlert } from '../utils/alertHelper';
 
 type StoresNavigation = NavigationProp<Record<string, object | undefined>>;
 
+const SKIP_REASONS = Object.keys(SKIP_REASON_LABELS) as StoreDaySkipReason[];
+
 export default function StoresScreen() {
   const navigation = useNavigation<StoresNavigation>();
   const [stores, setStores] = useState<Store[]>([]);
   const [filteredStores, setFilteredStores] = useState<Store[]>([]);
   const [completedStoreIdsToday, setCompletedStoreIdsToday] = useState<string[]>([]);
+  const [skippedStoreIdsToday, setSkippedStoreIdsToday] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [checkingIn, setCheckingIn] = useState<string | null>(null);
+  const [skipping, setSkipping] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [skipStore, setSkipStore] = useState<Store | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -56,6 +69,7 @@ export default function StoresScreen() {
       setStores(response.stores);
       setFilteredStores(response.stores);
       setCompletedStoreIdsToday(response.completedStoreIdsToday || []);
+      setSkippedStoreIdsToday(response.skippedStoreIdsToday || []);
     } catch (error) {
       console.error('Erro ao carregar lojas:', error);
       showAlert('Erro', 'Não foi possível carregar as lojas');
@@ -72,9 +86,14 @@ export default function StoresScreen() {
       );
       return;
     }
+    if (skippedStoreIdsToday.includes(store.id)) {
+      showAlert(
+        'Loja marcada como não feita',
+        'Desfaça a marca “Não vou fazer hoje” antes de iniciar a visita.'
+      );
+      return;
+    }
 
-    // Abre a tela de check-in na hora — GPS é obtido lá (com retry após câmera).
-    // Esperar 12s aqui deixava o botão "Iniciar check-in" travado sem feedback.
     setCheckingIn(store.id);
     try {
       navigation.navigate('CheckIn', { store });
@@ -83,6 +102,39 @@ export default function StoresScreen() {
       showAlert('Erro', error?.message || 'Não foi possível abrir o check-in. Tente novamente.');
     } finally {
       setCheckingIn(null);
+    }
+  }
+
+  async function confirmSkip(reason: StoreDaySkipReason) {
+    if (!skipStore) return;
+    setSkipping(true);
+    try {
+      await dayBoardService.skipStoreToday(skipStore.id, reason);
+      setSkipStore(null);
+      await loadStores();
+      showAlert('Registrado', 'Loja marcada como não feita hoje.');
+    } catch (error: any) {
+      showAlert(
+        'Erro',
+        error?.response?.data?.message || 'Não foi possível marcar a loja. Tente novamente.'
+      );
+    } finally {
+      setSkipping(false);
+    }
+  }
+
+  async function handleUnskip(store: Store) {
+    try {
+      setSkipping(true);
+      await dayBoardService.unskipStoreToday(store.id);
+      await loadStores();
+    } catch (error: any) {
+      showAlert(
+        'Erro',
+        error?.response?.data?.message || 'Não foi possível desfazer. Tente novamente.'
+      );
+    } finally {
+      setSkipping(false);
     }
   }
 
@@ -104,7 +156,6 @@ export default function StoresScreen() {
         />
       </View>
 
-      {/* Lista de Lojas */}
       <FlatList
         style={flexScroll}
         data={filteredStores}
@@ -112,18 +163,25 @@ export default function StoresScreen() {
         contentContainerStyle={styles.listContent}
         renderItem={({ item, index }) => {
           const alreadyVisitedToday = completedStoreIdsToday.includes(item.id);
+          const skippedToday = skippedStoreIdsToday.includes(item.id);
           return (
             <Card
               key={item.id}
               style={[
                 styles.storeCard,
                 { marginTop: index === 0 ? 0 : theme.spacing.md },
-                alreadyVisitedToday && styles.storeCardDone,
+                (alreadyVisitedToday || skippedToday) && styles.storeCardDone,
               ]}
               shadow
             >
               <View style={styles.storeHeader}>
-                <View style={[styles.storeIcon, alreadyVisitedToday && styles.storeIconDone]}>
+                <View
+                  style={[
+                    styles.storeIcon,
+                    alreadyVisitedToday && styles.storeIconDone,
+                    skippedToday && styles.storeIconSkipped,
+                  ]}
+                >
                   <Text style={styles.storeIconText}>
                     {item.name.slice(0, 1).toUpperCase()}
                   </Text>
@@ -132,24 +190,57 @@ export default function StoresScreen() {
                   <View style={styles.storeTitleRow}>
                     <Text style={styles.storeName}>{item.name}</Text>
                     {alreadyVisitedToday ? (
+                      <Badge variant="success" size="sm">
+                        Feita
+                      </Badge>
+                    ) : skippedToday ? (
                       <Badge variant="gray" size="sm">
-                        Concluída
+                        Não feita
                       </Badge>
                     ) : null}
                   </View>
                   <Text style={styles.storeAddress}>{item.address}</Text>
                 </View>
               </View>
-              <Button
-                variant={alreadyVisitedToday ? 'outline' : 'primary'}
-                size="md"
-                onPress={() => handleCheckIn(item)}
-                isLoading={checkingIn === item.id}
-                disabled={checkingIn !== null || alreadyVisitedToday}
-                style={styles.checkInButton}
-              >
-                {alreadyVisitedToday ? 'Visita feita hoje' : 'Iniciar check-in'}
-              </Button>
+
+              {alreadyVisitedToday ? (
+                <Button variant="outline" size="md" disabled style={styles.checkInButton}>
+                  Visita feita hoje
+                </Button>
+              ) : skippedToday ? (
+                <Button
+                  variant="outline"
+                  size="md"
+                  onPress={() => handleUnskip(item)}
+                  isLoading={skipping}
+                  disabled={skipping || checkingIn !== null}
+                  style={styles.checkInButton}
+                >
+                  Desfazer “não feita”
+                </Button>
+              ) : (
+                <View style={styles.actionsCol}>
+                  <Button
+                    variant="primary"
+                    size="md"
+                    onPress={() => handleCheckIn(item)}
+                    isLoading={checkingIn === item.id}
+                    disabled={checkingIn !== null || skipping}
+                    style={styles.checkInButton}
+                  >
+                    Iniciar visita
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="md"
+                    onPress={() => setSkipStore(item)}
+                    disabled={checkingIn !== null || skipping}
+                    style={styles.skipButton}
+                  >
+                    Não vou fazer hoje
+                  </Button>
+                </View>
+              )}
             </Card>
           );
         }}
@@ -165,65 +256,53 @@ export default function StoresScreen() {
           />
         }
       />
+
+      <Modal
+        visible={!!skipStore}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !skipping && setSkipStore(null)}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={() => !skipping && setSkipStore(null)}>
+          <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.modalTitle}>Não vou fazer hoje</Text>
+            <Text style={styles.modalSubtitle}>
+              {skipStore?.name}
+              {'\n'}
+              Escolha o motivo. Isso fecha a loja na rota do dia, sem pontos de visita.
+            </Text>
+            {skipping ? (
+              <ActivityIndicator color={colors.primary[400]} style={{ marginVertical: 16 }} />
+            ) : (
+              SKIP_REASONS.map((reason) => (
+                <Button
+                  key={reason}
+                  variant="outline"
+                  size="md"
+                  onPress={() => confirmSkip(reason)}
+                  style={styles.reasonButton}
+                >
+                  {SKIP_REASON_LABELS[reason]}
+                </Button>
+              ))
+            )}
+            <Button
+              variant="ghost"
+              size="md"
+              onPress={() => setSkipStore(null)}
+              disabled={skipping}
+              style={{ marginTop: theme.spacing.sm }}
+            >
+              Cancelar
+            </Button>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.dark.background,
-  },
-  header: {
-    padding: theme.spacing.lg,
-    backgroundColor: colors.dark.backgroundSecondary,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.dark.border,
-  },
-  title: {
-    fontSize: theme.typography.fontSize['3xl'],
-    fontWeight: theme.typography.fontWeight.bold,
-    color: colors.text.primary,
-    marginBottom: theme.spacing.xs,
-  },
-  subtitle: {
-    fontSize: theme.typography.fontSize.sm,
-    color: colors.text.secondary,
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: theme.spacing.md,
-    backgroundColor: colors.dark.backgroundSecondary,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.dark.border,
-  },
-  searchInput: {
-    flex: 1,
-    borderWidth: 1.5,
-    borderColor: colors.dark.border,
-    borderRadius: theme.borderRadius.lg,
-    paddingVertical: theme.spacing.md,
-    paddingHorizontal: theme.spacing.lg,
-    fontSize: theme.typography.fontSize.base,
-    color: colors.text.primary,
-    backgroundColor: colors.dark.card,
-  },
-  clearButton: {
-    marginLeft: theme.spacing.sm,
-    width: 32,
-    height: 32,
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: colors.dark.card,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.dark.border,
-  },
-  clearButtonText: {
-    fontSize: 16,
-    color: colors.text.secondary,
-  },
   listContent: {
     padding: theme.spacing.md,
   },
@@ -231,7 +310,7 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.md,
   },
   storeCardDone: {
-    opacity: 0.85,
+    opacity: 0.9,
     borderColor: colors.dark.borderLight,
   },
   storeHeader: {
@@ -247,17 +326,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: theme.spacing.md,
-    borderWidth: 1,
-    borderColor: colors.primary[600],
-  },
-  storeIconText: {
-    fontSize: theme.typography.fontSize.lg,
-    fontWeight: theme.typography.fontWeight.bold,
-    color: colors.primary[300],
   },
   storeIconDone: {
-    backgroundColor: colors.gray[700],
-    borderColor: colors.dark.border,
+    backgroundColor: 'rgba(34, 197, 94, 0.2)',
+  },
+  storeIconSkipped: {
+    backgroundColor: 'rgba(148, 163, 184, 0.25)',
+  },
+  storeIconText: {
+    fontSize: theme.typography.fontSize.xl,
+    fontWeight: theme.typography.fontWeight.bold,
+    color: colors.primary[300],
   },
   storeInfo: {
     flex: 1,
@@ -265,9 +344,8 @@ const styles = StyleSheet.create({
   storeTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     gap: theme.spacing.sm,
-    marginBottom: theme.spacing.xs,
+    marginBottom: 4,
   },
   storeName: {
     flex: 1,
@@ -279,39 +357,42 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.fontSize.sm,
     color: colors.text.secondary,
   },
-  alreadyVisitedLabel: {
-    fontSize: theme.typography.fontSize.xs,
-    color: colors.primary[400],
-    marginTop: theme.spacing.xs,
-    fontWeight: theme.typography.fontWeight.medium,
+  actionsCol: {
+    gap: theme.spacing.sm,
   },
   checkInButton: {
     width: '100%',
   },
-  emptyContainer: {
+  skipButton: {
+    width: '100%',
+  },
+  modalBackdrop: {
     flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.65)',
     justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: theme.spacing['2xl'],
+    padding: theme.spacing.lg,
   },
-  emptyIcon: {
-    fontSize: 64,
-    marginBottom: theme.spacing.md,
+  modalCard: {
+    backgroundColor: colors.dark.card,
+    borderRadius: theme.borderRadius.xl,
+    borderWidth: 1,
+    borderColor: colors.dark.border,
+    padding: theme.spacing.lg,
   },
-  emptyText: {
-    fontSize: theme.typography.fontSize.lg,
+  modalTitle: {
+    fontSize: theme.typography.fontSize.xl,
     fontWeight: theme.typography.fontWeight.bold,
-    color: colors.text.secondary,
-    marginBottom: theme.spacing.xs,
+    color: colors.text.primary,
   },
-  emptySubtext: {
+  modalSubtitle: {
+    marginTop: theme.spacing.sm,
+    marginBottom: theme.spacing.lg,
     fontSize: theme.typography.fontSize.sm,
-    color: colors.text.tertiary,
-    textAlign: 'center',
-  },
-  loadingText: {
-    marginTop: theme.spacing.md,
-    fontSize: theme.typography.fontSize.base,
     color: colors.text.secondary,
+    lineHeight: 20,
+  },
+  reasonButton: {
+    width: '100%',
+    marginBottom: theme.spacing.sm,
   },
 });
