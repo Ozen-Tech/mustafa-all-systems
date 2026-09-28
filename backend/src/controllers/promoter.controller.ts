@@ -681,11 +681,17 @@ export async function getStores(req: AuthRequest, res: Response) {
       }, { y: '', m: '', d: '' } as { y: string; m: string; d: string });
     const dateStr = `${todayISO.y}-${todayISO.m}-${todayISO.d}`;
 
-    const skipsToday = await prisma.promoterStoreDaySkip.findMany({
-      where: { promoterId, date: dateStr },
-      select: { storeId: true },
-    });
-    const skippedStoreIdsToday = skipsToday.map((s) => s.storeId);
+    // Tabela vem da migration promoter_store_day_skip; sem ela, a lista de lojas não pode cair.
+    let skippedStoreIdsToday: string[] = [];
+    try {
+      const skipsToday = await prisma.promoterStoreDaySkip.findMany({
+        where: { promoterId, date: dateStr },
+        select: { storeId: true },
+      });
+      skippedStoreIdsToday = skipsToday.map((s) => s.storeId);
+    } catch (skipError) {
+      console.error('Get stores: falha ao ler PromoterStoreDaySkip (migration pendente?)', skipError);
+    }
 
     // Buscar lojas atribuídas ao promotor (rota configurada)
     const routeAssignments = await prisma.routeAssignment.findMany({

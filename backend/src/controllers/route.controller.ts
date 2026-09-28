@@ -395,6 +395,7 @@ export async function updateRouteAssignmentSupervisor(req: AuthRequest, res: Res
 export async function getAvailableStores(req: AuthRequest, res: Response) {
   try {
     const stores = await prisma.store.findMany({
+      select: { ...storeSelect, createdAt: true, updatedAt: true },
       orderBy: {
         name: 'asc',
       },
