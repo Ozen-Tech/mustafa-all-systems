@@ -12,6 +12,7 @@ import InformationHubScreen from '../screens/InformationHubScreen';
 import GeneralOnboardingScreen from '../screens/GeneralOnboardingScreen';
 import JustifyAbsenceScreen from '../screens/JustifyAbsenceScreen';
 import GoalsScreen from '../screens/GoalsScreen';
+import RankingScreen from '../screens/RankingScreen';
 import { storeService } from '../services/storeService';
 import HomeIcon from '../components/icons/HomeIcon';
 import ClockIcon from '../components/icons/ClockIcon';
@@ -454,6 +455,11 @@ export default function MainNavigator() {
           name="Goals"
           component={GoalsScreen}
           options={{ title: 'Minhas metas' }}
+        />
+        <Stack.Screen
+          name="Ranking"
+          component={RankingScreen}
+          options={{ title: 'Ranking da semana' }}
         />
       </Stack.Navigator>
     </GeneralOnboardingContext.Provider>

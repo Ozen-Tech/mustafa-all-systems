@@ -39,6 +39,13 @@ enum DayAbsenceReason {
   OTHER
 }
 
+enum StoreDaySkipReason {
+  STORE_CLOSED
+  NO_TIME
+  REDIRECTED
+  OTHER
+}
+
 enum StockImportType {
   STOCK
   SALES
@@ -109,6 +116,7 @@ model User {
   orderImports          OrderImport[]
   industryOwnerAssignment IndustryOwnerAssignment?
   dayAbsences           PromoterDayAbsence[]
+  storeDaySkips         PromoterStoreDaySkip[]
   goalsCreated          Goal[]                   @relation("GoalCreatedBy")
   feedEntriesAuthored   FeedEntry[]              @relation("FeedAuthor")
   feedEntriesAssigned   FeedEntry[]              @relation("FeedAssignee")
@@ -130,6 +138,25 @@ model PromoterDayAbsence {
 
   @@unique([promoterId, date])
   @@index([promoterId])
+  @@index([date])
+}
+
+model PromoterStoreDaySkip {
+  id         String              @id @default(uuid())
+  promoterId String
+  storeId    String
+  date       String              // YYYY-MM-DD (BRT)
+  reason     StoreDaySkipReason
+  note       String?
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+
+  promoter User  @relation(fields: [promoterId], references: [id], onDelete: Cascade)
+  store    Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([promoterId, storeId, date])
+  @@index([promoterId, date])
+  @@index([storeId])
   @@index([date])
 }
 
@@ -178,6 +205,7 @@ model Store {
   informationDistributions InformationDistribution[]
   storeIndustries       StoreIndustry[]
   promoterStoreRedoGrants PromoterStoreRedoGrant[]
+  storeDaySkips           PromoterStoreDaySkip[]
   storeStockItems       StoreStockItem[]
   salesRecords          SalesRecord[]
   purchaseOrders        PurchaseOrder[]
