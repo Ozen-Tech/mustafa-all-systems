@@ -530,7 +530,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(34, 197, 94, 0.1)',
   },
   indicatorValue: {
-    fontSize: theme.typography.fontSize.md,
+    fontSize: theme.typography.fontSize.base,
     fontWeight: theme.typography.fontWeight.bold,
     color: colors.text.primary,
   },

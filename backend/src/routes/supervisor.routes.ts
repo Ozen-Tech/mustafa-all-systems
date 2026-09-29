@@ -15,6 +15,7 @@ import {
 } from '../controllers/supervisor.controller';
 import { opsIndustryAudit, opsIndustryGallery, opsPromoterDayDetail, opsTeamToday, opsTradeMetrics } from '../controllers/ops.controller';
 import { getPromoters } from '../controllers/promoters.controller';
+import { getTeamWeeklyRanking } from '../controllers/dayBoard.controller';
 import { downloadExport, getExportStatus } from '../controllers/export.controller';
 import {
   setPromoterRoute,
@@ -53,6 +54,7 @@ router.get('/ops/trade-metrics', requireSupervisor, opsTradeMetrics);
 router.get('/ops/industry-audit', requireSupervisor, opsIndustryAudit);
 router.get('/ops/industry-gallery', requireSupervisor, opsIndustryGallery);
 router.get('/ops/promoters/:promoterId/day', requireSupervisor, opsPromoterDayDetail);
+router.get('/ops/ranking', requireSupervisor, getTeamWeeklyRanking);
 router.get('/promoters', requireSupervisor, getScopedPromoters);
 router.get('/promoters/:id/performance', requireSupervisor, getPromoterPerformance);
 router.get('/promoters/:id/visits', requireSupervisor, getPromoterVisits);

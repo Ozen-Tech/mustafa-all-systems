@@ -7,6 +7,7 @@ import {
   uploadPhotos,
   deleteVisitPhoto,
   submitPriceResearch,
+  getPriceResearchSuggestions,
   getCurrentVisit,
   getStores,
   getVisits,
@@ -64,6 +65,7 @@ router.post(
 router.post('/photos', uploadPhotos);
 router.delete('/visits/:visitId/photos/:photoId', deleteVisitPhoto);
 router.post('/price-research', submitPriceResearch);
+router.get('/price-research/suggestions', getPriceResearchSuggestions);
 router.get('/current-visit', getCurrentVisit);
 router.get('/daily-summary', getDailySummary);
 router.get('/visits/:visitId/coverage', getVisitCoverage);

@@ -640,6 +640,103 @@ export async function submitPriceResearch(req: AuthRequest, res: Response) {
   }
 }
 
+/**
+ * GET /promoters/price-research/suggestions?storeId=
+ * Produtos já pesquisados (com último preço na loja), catálogo das indústrias da loja e concorrentes recentes.
+ */
+export async function getPriceResearchSuggestions(req: AuthRequest, res: Response) {
+  try {
+    const promoterId = req.userId!;
+    const storeId = (req.query.storeId as string | undefined)?.trim();
+    if (!storeId) {
+      return res.status(400).json({ message: 'storeId é obrigatório' });
+    }
+
+    const since = new Date();
+    since.setDate(since.getDate() - 120);
+
+    const [storeRows, myRows, storeIndustries] = await Promise.all([
+      prisma.priceResearch.findMany({
+        where: { storeId, createdAt: { gte: since } },
+        select: { productName: true, price: true, competitorPrices: true, createdAt: true },
+        orderBy: { createdAt: 'desc' },
+        take: 300,
+      }),
+      prisma.priceResearch.findMany({
+        where: { visit: { promoterId }, createdAt: { gte: since } },
+        select: { productName: true, price: true, competitorPrices: true, createdAt: true },
+        orderBy: { createdAt: 'desc' },
+        take: 300,
+      }),
+      prisma.storeIndustry.findMany({
+        where: { storeId, isActive: true },
+        select: { industryId: true },
+      }),
+    ]);
+
+    const catalog = storeIndustries.length
+      ? await prisma.product.findMany({
+          where: { industryId: { in: storeIndustries.map((s) => s.industryId) } },
+          select: { name: true, industry: { select: { name: true } } },
+          orderBy: { name: 'asc' },
+          take: 200,
+        })
+      : [];
+
+    type Suggestion = { name: string; lastPrice: number | null; lastAt: string | null; industry: string | null };
+    const products = new Map<string, Suggestion>();
+    const keyOf = (name: string) => name.trim().toLowerCase();
+
+    for (const r of storeRows) {
+      const key = keyOf(r.productName);
+      if (!key || products.has(key)) continue;
+      products.set(key, {
+        name: r.productName.trim(),
+        lastPrice: r.price,
+        lastAt: r.createdAt.toISOString(),
+        industry: null,
+      });
+    }
+    for (const r of myRows) {
+      const key = keyOf(r.productName);
+      if (!key || products.has(key)) continue;
+      products.set(key, { name: r.productName.trim(), lastPrice: null, lastAt: null, industry: null });
+    }
+    for (const p of catalog) {
+      const key = keyOf(p.name);
+      if (!key) continue;
+      const existing = products.get(key);
+      if (existing) {
+        existing.industry = existing.industry || p.industry?.name || null;
+        continue;
+      }
+      products.set(key, { name: p.name.trim(), lastPrice: null, lastAt: null, industry: p.industry?.name || null });
+    }
+
+    const competitorCount = new Map<string, { name: string; count: number }>();
+    for (const r of [...storeRows, ...myRows]) {
+      const list = Array.isArray(r.competitorPrices) ? (r.competitorPrices as Array<{ competitorName?: string }>) : [];
+      for (const c of list) {
+        const name = c?.competitorName?.trim();
+        if (!name) continue;
+        const key = name.toLowerCase();
+        const entry = competitorCount.get(key) || { name, count: 0 };
+        entry.count += 1;
+        competitorCount.set(key, entry);
+      }
+    }
+    const competitors = [...competitorCount.values()]
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 12)
+      .map((c) => c.name);
+
+    res.json({ products: [...products.values()].slice(0, 300), competitors });
+  } catch (error) {
+    console.error('Price research suggestions error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+}
+
 export async function getStores(req: AuthRequest, res: Response) {
   try {
     const promoterId = req.userId!;

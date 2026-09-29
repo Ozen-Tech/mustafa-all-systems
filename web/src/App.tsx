@@ -12,6 +12,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import OpsTeamToday from './pages/OpsTeamToday';
 import OpsTradeMetrics from './pages/OpsTradeMetrics';
+import OpsRanking from './pages/OpsRanking';
 import OpsIndustryAudit from './pages/OpsIndustryAudit';
 import OpsIndustryGallery from './pages/OpsIndustryGallery';
 import OpsPromoterDayDetail from './pages/OpsPromoterDayDetail';
@@ -138,6 +139,14 @@ function AppRoutes() {
           element={
             <SupervisorOrAdminRoute>
               <OpsTeamToday />
+            </SupervisorOrAdminRoute>
+          }
+        />
+        <RouterRoute
+          path="ops/ranking"
+          element={
+            <SupervisorOrAdminRoute>
+              <OpsRanking />
             </SupervisorOrAdminRoute>
           }
         />

@@ -1,250 +1,428 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TextInput,
-  Alert,
+  Pressable,
 } from 'react-native';
 import { useNavigation, NavigationProp } from '@react-navigation/native';
-import { visitService } from '../services/visitService';
+import { visitService, PriceResearchSuggestion } from '../services/visitService';
+import { offlineSyncService } from '../services/offlineSyncService';
+import { addSurvey, getSurveys } from '../features/visits';
+import type { LocalPriceSurvey, SyncStatus } from '../features/visits';
 import { colors, theme } from '../styles/theme';
 import { flexScroll } from '../styles/webLayout';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
-import Badge from '../components/ui/Badge';
-import { showAlert } from '../utils/alertHelper';
-
-interface Visit {
-  id: string;
-  store?: {
-    id: string;
-    name: string;
-  };
-}
 
 type PriceResearchNavigation = NavigationProp<Record<string, object | undefined>>;
 
-interface CompetitorPrice {
-  competitorName: string;
+interface CompetitorRow {
+  name: string;
+  priceDigits: string;
+}
+
+interface SessionItem {
+  localId: string;
+  productName: string;
   price: number;
+  competitorPrices: Array<{ competitorName: string; price: number }>;
+}
+
+/** "1290" → 12.9 (digitação em centavos, como maquininha). */
+function digitsToValue(digits: string): number {
+  const n = parseInt(digits || '0', 10);
+  return Number.isFinite(n) ? n / 100 : 0;
+}
+
+function formatBRL(value: number): string {
+  return value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function onlyDigits(text: string): string {
+  return text.replace(/\D/g, '').replace(/^0+/, '').slice(0, 8);
+}
+
+function normalize(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+function newLocalId(): string {
+  return `pr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function PriceInput({
+  digits,
+  onChange,
+  placeholder,
+  large,
+  inputRef,
+  onSubmit,
+}: {
+  digits: string;
+  onChange: (digits: string) => void;
+  placeholder?: string;
+  large?: boolean;
+  inputRef?: React.RefObject<TextInput | null>;
+  onSubmit?: () => void;
+}) {
+  return (
+    <View style={[styles.priceBox, large && styles.priceBoxLarge]}>
+      <Text style={[styles.pricePrefix, large && styles.pricePrefixLarge]}>R$</Text>
+      <TextInput
+        ref={inputRef}
+        style={[styles.priceInput, large && styles.priceInputLarge]}
+        value={digits ? formatBRL(digitsToValue(digits)) : ''}
+        onChangeText={(t) => onChange(onlyDigits(t))}
+        placeholder={placeholder ?? '0,00'}
+        placeholderTextColor={colors.gray[500]}
+        keyboardType="number-pad"
+        inputMode="numeric"
+        returnKeyType="done"
+        onSubmitEditing={onSubmit}
+      />
+    </View>
+  );
 }
 
 export default function PriceResearchScreen({ route }: any) {
   const navigation = useNavigation<PriceResearchNavigation>();
   const { visit } = route.params || {};
+  const visitId: string | undefined = visit?.id;
+  const storeId: string | undefined = visit?.store?.id;
+
   const [productName, setProductName] = useState('');
-  const [price, setPrice] = useState('');
-  const [competitors, setCompetitors] = useState<CompetitorPrice[]>([]);
-  const [competitorName, setCompetitorName] = useState('');
-  const [competitorPrice, setCompetitorPrice] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [priceDigits, setPriceDigits] = useState('');
+  const [competitors, setCompetitors] = useState<CompetitorRow[]>([]);
+  const [products, setProducts] = useState<PriceResearchSuggestion[]>([]);
+  const [competitorNames, setCompetitorNames] = useState<string[]>([]);
+  const [productFocused, setProductFocused] = useState(false);
+  const [sessionItems, setSessionItems] = useState<SessionItem[]>([]);
+  const [statusById, setStatusById] = useState<Record<string, SyncStatus>>({});
+  const [saving, setSaving] = useState(false);
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  function addCompetitor() {
-    if (!competitorName || !competitorPrice) {
-      Alert.alert('Erro', 'Preencha o nome e o preço do concorrente');
-      return;
-    }
+  const productRef = useRef<TextInput>(null);
+  const priceRef = useRef<TextInput>(null);
+  const feedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const priceValue = parseFloat(competitorPrice.replace(',', '.'));
-    if (isNaN(priceValue) || priceValue <= 0) {
-      Alert.alert('Erro', 'Preço inválido');
-      return;
-    }
+  useEffect(() => {
+    if (!storeId) return;
+    visitService
+      .getPriceResearchSuggestions(storeId)
+      .then((data) => {
+        setProducts(data.products);
+        setCompetitorNames(data.competitors);
+      })
+      .catch(() => {});
+  }, [storeId]);
 
-    setCompetitors([
-      ...competitors,
-      {
-        competitorName,
-        price: priceValue,
-      },
-    ]);
+  const refreshStatuses = useCallback(async () => {
+    if (!visitId) return;
+    const stored = await getSurveys(visitId);
+    const map: Record<string, SyncStatus> = {};
+    for (const s of stored) map[s.localId] = s.syncStatus;
+    setStatusById(map);
+    return stored;
+  }, [visitId]);
 
-    setCompetitorName('');
-    setCompetitorPrice('');
-  }
+  useEffect(() => {
+    const unsubscribe = offlineSyncService.addListener((event) => {
+      if (event.type === 'surveySynced' || event.type === 'complete' || event.type === 'error') {
+        void refreshStatuses().then((stored) => {
+          if (event.type !== 'complete' || !stored) return;
+          if (stored.some((s) => s.syncStatus === 'pending')) {
+            setTimeout(() => offlineSyncService.syncAll().catch(() => {}), 1500);
+          }
+        });
+      }
+    });
+    return () => {
+      unsubscribe();
+      if (feedbackTimer.current) clearTimeout(feedbackTimer.current);
+    };
+  }, [refreshStatuses]);
 
-  function removeCompetitor(index: number) {
-    setCompetitors(competitors.filter((_, i) => i !== index));
-  }
+  const productMatches = useMemo(() => {
+    const q = normalize(productName);
+    if (!q) return products.filter((p) => p.lastPrice != null).slice(0, 8);
+    const exact = products.find((p) => normalize(p.name) === q);
+    if (exact) return [];
+    const terms = q.split(/\s+/);
+    return products.filter((p) => {
+      const n = normalize(p.name);
+      return terms.every((t) => n.includes(t));
+    }).slice(0, 6);
+  }, [productName, products]);
 
-  async function submitPriceResearch() {
-    if (!productName || !price) {
-      Alert.alert('Erro', 'Preencha o nome do produto e o preço');
-      return;
-    }
+  const selectedSuggestion = useMemo(
+    () => products.find((p) => normalize(p.name) === normalize(productName)) || null,
+    [productName, products]
+  );
 
-    if (!visit) {
-      Alert.alert('Erro', 'Visita não encontrada');
-      return;
-    }
-
-    if (!visit.store) {
-      Alert.alert('Erro', 'Loja da visita não encontrada');
-      return;
-    }
-
-    const priceValue = parseFloat(price.replace(',', '.'));
-    if (isNaN(priceValue) || priceValue <= 0) {
-      Alert.alert('Erro', 'Preço inválido');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      await visitService.submitPriceResearch({
-        visitId: visit.id,
-        storeId: visit.store.id,
-        productName,
-        price: priceValue,
-        competitorPrices: competitors,
-      });
-
-      showAlert('Sucesso', 'Pesquisa de preço registrada com sucesso!', [
-        {
-          text: 'OK',
-          onPress: () => {
-            navigation.goBack();
-          },
-        },
-      ]);
-    } catch (error: any) {
-      Alert.alert('Erro', error.response?.data?.message || 'Erro ao registrar pesquisa de preço');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  const averageCompetitorPrice =
-    competitors.length > 0
-      ? competitors.reduce((sum, c) => sum + c.price, 0) / competitors.length
+  const price = digitsToValue(priceDigits);
+  const validCompetitors = competitors
+    .map((c) => ({ competitorName: c.name.trim(), price: digitsToValue(c.priceDigits) }))
+    .filter((c) => c.competitorName && c.price > 0);
+  const avgCompetitor =
+    validCompetitors.length > 0
+      ? validCompetitors.reduce((sum, c) => sum + c.price, 0) / validCompetitors.length
       : 0;
-  const priceValue = parseFloat(price.replace(',', '.')) || 0;
-  const priceDifference = priceValue > 0 && averageCompetitorPrice > 0 ? priceValue - averageCompetitorPrice : 0;
+  const canSave = !!productName.trim() && price > 0 && !saving;
+
+  function pickProduct(p: PriceResearchSuggestion) {
+    setProductName(p.name);
+    setProductFocused(false);
+    setTimeout(() => priceRef.current?.focus(), 50);
+  }
+
+  function updateCompetitor(index: number, patch: Partial<CompetitorRow>) {
+    setCompetitors((rows) => rows.map((r, i) => (i === index ? { ...r, ...patch } : r)));
+  }
+
+  function showFeedback(message: string) {
+    setFeedback(message);
+    if (feedbackTimer.current) clearTimeout(feedbackTimer.current);
+    feedbackTimer.current = setTimeout(() => setFeedback(null), 2500);
+  }
+
+  async function save() {
+    if (!canSave) return;
+    if (!visitId || !storeId) {
+      setError('Visita não encontrada. Volte e abra a pesquisa pela visita ativa.');
+      return;
+    }
+    setError(null);
+    setSaving(true);
+    try {
+      const survey: LocalPriceSurvey = {
+        localId: newLocalId(),
+        visitId,
+        storeId,
+        industryId: null,
+        productName: productName.trim(),
+        price,
+        competitorPrices: validCompetitors,
+        syncStatus: 'pending',
+        syncedAt: null,
+        deviceCreatedAt: new Date().toISOString(),
+        errorMessage: null,
+      };
+      await addSurvey(visitId, survey);
+
+      setSessionItems((items) => [
+        {
+          localId: survey.localId,
+          productName: survey.productName,
+          price: survey.price,
+          competitorPrices: survey.competitorPrices,
+        },
+        ...items,
+      ]);
+      setStatusById((m) => ({ ...m, [survey.localId]: 'pending' }));
+
+      const key = normalize(survey.productName);
+      setProducts((list) => {
+        const rest = list.filter((p) => normalize(p.name) !== key);
+        return [
+          { name: survey.productName, lastPrice: survey.price, lastAt: survey.deviceCreatedAt, industry: null },
+          ...rest,
+        ];
+      });
+      for (const c of survey.competitorPrices) {
+        setCompetitorNames((names) =>
+          names.some((n) => normalize(n) === normalize(c.competitorName)) ? names : [c.competitorName, ...names]
+        );
+      }
+
+      setProductName('');
+      setPriceDigits('');
+      setCompetitors((rows) => rows.map((r) => ({ name: r.name, priceDigits: '' })));
+      showFeedback(`✓ ${survey.productName} salvo`);
+      setTimeout(() => productRef.current?.focus(), 50);
+
+      offlineSyncService.syncAll().catch(() => {});
+    } catch (e: any) {
+      setError(e?.message || 'Não foi possível salvar a pesquisa.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function statusLabel(localId: string): { text: string; color: string } {
+    const status = statusById[localId];
+    if (status === 'pending' || status === 'uploading') return { text: 'Enviando…', color: colors.warning };
+    if (status === 'error') return { text: 'Sem conexão · tenta de novo', color: colors.error };
+    return { text: 'Enviado', color: colors.success };
+  }
+
+  const showSuggestions = productFocused && productMatches.length > 0;
 
   return (
-    <ScrollView style={[styles.container, flexScroll]} contentContainerStyle={styles.contentContainer}>
-      {/* Header */}
+    <ScrollView
+      style={[styles.container, flexScroll]}
+      contentContainerStyle={styles.contentContainer}
+      keyboardShouldPersistTaps="handled"
+    >
       <View style={styles.header}>
-        <Text style={styles.title}>Pesquisa de Preços</Text>
-        {visit?.store && (
-          <View style={styles.storeBadge}>
-            <Text style={styles.storeName}>{visit.store.name}</Text>
-          </View>
-        )}
+        <Text style={styles.title}>Pesquisa de preço</Text>
+        {visit?.store?.name ? <Text style={styles.storeName}>{visit.store.name}</Text> : null}
+        <Text style={styles.hint}>
+          Escolha o produto, digite o preço e toque em Salvar. Funciona sem internet: envia sozinho quando conectar.
+        </Text>
       </View>
 
-      {/* Formulário */}
       <Card style={styles.formCard} shadow>
-        <View style={styles.section}>
-          <Text style={styles.label}>Nome do Produto *</Text>
-          <TextInput
-            style={styles.input}
-            value={productName}
-            onChangeText={setProductName}
-            placeholder="Ex: Produto XYZ"
-            placeholderTextColor={colors.gray[400]}
-          />
-        </View>
+        <Text style={styles.label}>Produto</Text>
+        <TextInput
+          ref={productRef}
+          style={styles.input}
+          value={productName}
+          onChangeText={setProductName}
+          onFocus={() => setProductFocused(true)}
+          onBlur={() => setTimeout(() => setProductFocused(false), 150)}
+          placeholder="Digite ou escolha abaixo"
+          placeholderTextColor={colors.gray[500]}
+          returnKeyType="next"
+          onSubmitEditing={() => priceRef.current?.focus()}
+          autoCapitalize="characters"
+        />
 
-        <View style={styles.section}>
-          <Text style={styles.label}>Preço Encontrado (R$) *</Text>
-          <TextInput
-            style={styles.input}
-            value={price}
-            onChangeText={setPrice}
-            placeholder="0,00"
-            placeholderTextColor={colors.gray[400]}
-            keyboardType="decimal-pad"
-          />
-        </View>
-      </Card>
-
-      {/* Concorrentes */}
-      <Card style={styles.competitorsCard} shadow>
-        <Text style={styles.sectionTitle}>Preços de Concorrentes</Text>
-
-        {competitors.length > 0 && (
-          <View style={styles.competitorsList}>
-            {competitors.map((competitor, index) => (
-              <Card key={index} style={styles.competitorItem} variant="default">
-                <View style={styles.competitorInfo}>
-                  <Text style={styles.competitorName}>{competitor.competitorName}</Text>
-                  <Badge variant="accent" size="sm">R$ {competitor.price.toFixed(2)}</Badge>
-                </View>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onPress={() => removeCompetitor(index)}
-                  style={styles.removeButton}
-                >
-                  Remover
-                </Button>
-              </Card>
+        {showSuggestions && (
+          <View style={styles.suggestions}>
+            {!productName.trim() && <Text style={styles.suggestionsTitle}>Já pesquisados nesta loja</Text>}
+            {productMatches.map((p) => (
+              <Pressable
+                key={p.name}
+                onPress={() => pickProduct(p)}
+                style={({ pressed }) => [styles.suggestionRow, pressed && styles.suggestionRowPressed]}
+              >
+                <Text style={styles.suggestionName} numberOfLines={1}>
+                  {p.name}
+                </Text>
+                {p.lastPrice != null ? (
+                  <Text style={styles.suggestionMeta}>último R$ {formatBRL(p.lastPrice)}</Text>
+                ) : p.industry ? (
+                  <Text style={styles.suggestionMeta}>{p.industry}</Text>
+                ) : null}
+              </Pressable>
             ))}
           </View>
         )}
 
-        <View style={styles.addCompetitorContainer}>
-          <TextInput
-            style={[styles.input, styles.competitorInput]}
-            value={competitorName}
-            onChangeText={setCompetitorName}
-            placeholder="Nome do concorrente"
-            placeholderTextColor={colors.gray[400]}
-          />
-          <TextInput
-            style={[styles.input, styles.competitorInput]}
-            value={competitorPrice}
-            onChangeText={setCompetitorPrice}
-            placeholder="Preço"
-            placeholderTextColor={colors.gray[400]}
-            keyboardType="decimal-pad"
-          />
-          <Button variant="accent" size="md" onPress={addCompetitor} style={styles.addButton}>
-            Adicionar
-          </Button>
+        <View style={styles.priceHeader}>
+          <Text style={styles.label}>Preço na gôndola</Text>
+          {selectedSuggestion?.lastPrice != null && (
+            <Pressable
+              onPress={() => setPriceDigits(String(Math.round((selectedSuggestion.lastPrice || 0) * 100)))}
+              hitSlop={8}
+            >
+              <Text style={styles.reuse}>Usar último: R$ {formatBRL(selectedSuggestion.lastPrice)}</Text>
+            </Pressable>
+          )}
         </View>
+        <PriceInput digits={priceDigits} onChange={setPriceDigits} large inputRef={priceRef} onSubmit={save} />
       </Card>
 
-      {/* Comparação */}
-      {priceValue > 0 && averageCompetitorPrice > 0 && (
-        <Card style={styles.comparisonCard} shadow>
-          <Text style={styles.comparisonTitle}>Comparação</Text>
-          <View style={styles.comparisonRow}>
-            <Text style={styles.comparisonLabel}>Preço Encontrado:</Text>
-            <Text style={styles.comparisonValue}>R$ {priceValue.toFixed(2)}</Text>
-          </View>
-          <View style={styles.comparisonRow}>
-            <Text style={styles.comparisonLabel}>Média Concorrentes:</Text>
-            <Text style={styles.comparisonValue}>R$ {averageCompetitorPrice.toFixed(2)}</Text>
-          </View>
-          <View style={styles.comparisonRow}>
-            <Text style={styles.comparisonLabel}>Diferença:</Text>
-            <Badge
-              variant={priceDifference > 0 ? 'error' : 'success'}
-              size="md"
-            >
-              {priceDifference > 0 ? '+' : ''}R$ {priceDifference.toFixed(2)}
-            </Badge>
-          </View>
-        </Card>
-      )}
+      <Card style={styles.formCard} shadow>
+        <View style={styles.rowBetween}>
+          <Text style={styles.sectionTitle}>Concorrentes</Text>
+          <Text style={styles.optional}>opcional</Text>
+        </View>
 
-      {/* Botão de Submit */}
-      <View style={styles.submitContainer}>
-        <Button
-          variant="primary"
-          size="lg"
-          onPress={submitPriceResearch}
-          isLoading={loading}
-          disabled={loading || !productName || !price}
-          style={styles.submitButton}
-        >
-          Registrar Pesquisa
-        </Button>
-      </View>
+        {competitors.map((c, i) => (
+          <View key={i} style={styles.competitorRow}>
+            <TextInput
+              style={[styles.input, styles.competitorName]}
+              value={c.name}
+              onChangeText={(t) => updateCompetitor(i, { name: t })}
+              placeholder="Concorrente"
+              placeholderTextColor={colors.gray[500]}
+              autoCapitalize="characters"
+            />
+            <View style={styles.competitorPrice}>
+              <PriceInput digits={c.priceDigits} onChange={(d) => updateCompetitor(i, { priceDigits: d })} />
+            </View>
+            <Pressable
+              onPress={() => setCompetitors((rows) => rows.filter((_, idx) => idx !== i))}
+              hitSlop={8}
+              style={styles.removeBtn}
+            >
+              <Text style={styles.removeText}>✕</Text>
+            </Pressable>
+          </View>
+        ))}
+
+        <View style={styles.chips}>
+          {competitorNames
+            .filter((n) => !competitors.some((c) => normalize(c.name) === normalize(n)))
+            .slice(0, 6)
+            .map((n) => (
+              <Pressable
+                key={n}
+                onPress={() => setCompetitors((rows) => [...rows, { name: n, priceDigits: '' }])}
+                style={styles.chip}
+              >
+                <Text style={styles.chipText}>+ {n}</Text>
+              </Pressable>
+            ))}
+          <Pressable
+            onPress={() => setCompetitors((rows) => [...rows, { name: '', priceDigits: '' }])}
+            style={[styles.chip, styles.chipOutline]}
+          >
+            <Text style={styles.chipText}>+ Outro</Text>
+          </Pressable>
+        </View>
+
+        {price > 0 && avgCompetitor > 0 && (
+          <View style={styles.compare}>
+            <Text style={styles.compareText}>
+              {price > avgCompetitor
+                ? `R$ ${formatBRL(price - avgCompetitor)} mais caro que a média dos concorrentes`
+                : price < avgCompetitor
+                  ? `R$ ${formatBRL(avgCompetitor - price)} mais barato que a média dos concorrentes`
+                  : 'Mesmo preço da média dos concorrentes'}
+            </Text>
+          </View>
+        )}
+      </Card>
+
+      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {feedback ? <Text style={styles.feedback}>{feedback}</Text> : null}
+
+      <Button variant="primary" size="lg" onPress={save} isLoading={saving} disabled={!canSave} style={styles.fullWidth}>
+        Salvar e próximo
+      </Button>
+      <Button variant="outline" size="md" onPress={() => navigation.goBack()} style={styles.doneButton}>
+        {sessionItems.length > 0 ? `Concluir (${sessionItems.length})` : 'Voltar'}
+      </Button>
+
+      {sessionItems.length > 0 && (
+        <View style={styles.sessionList}>
+          <Text style={styles.sectionTitle}>Registrados agora</Text>
+          {sessionItems.map((item) => {
+            const st = statusLabel(item.localId);
+            return (
+              <View key={item.localId} style={styles.sessionRow}>
+                <View style={styles.sessionInfo}>
+                  <Text style={styles.sessionName} numberOfLines={1}>
+                    {item.productName}
+                  </Text>
+                  <Text style={[styles.sessionStatus, { color: st.color }]}>{st.text}</Text>
+                </View>
+                <Text style={styles.sessionPrice}>R$ {formatBRL(item.price)}</Text>
+              </View>
+            );
+          })}
+        </View>
+      )}
     </ScrollView>
   );
 }
@@ -256,123 +434,247 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     padding: theme.spacing.lg,
+    paddingBottom: theme.spacing.xl * 2,
   },
   header: {
-    marginBottom: theme.spacing.xl,
+    marginBottom: theme.spacing.lg,
   },
   title: {
-    fontSize: theme.typography.fontSize['3xl'],
+    fontSize: theme.typography.fontSize['2xl'],
     fontWeight: theme.typography.fontWeight.bold,
     color: colors.text.primary,
-    marginBottom: theme.spacing.sm,
-  },
-  storeBadge: {
-    marginTop: theme.spacing.xs,
   },
   storeName: {
     fontSize: theme.typography.fontSize.base,
-    color: colors.text.secondary,
-    fontWeight: theme.typography.fontWeight.medium,
+    color: colors.accent[400],
+    fontWeight: theme.typography.fontWeight.semibold,
+    marginTop: 2,
+  },
+  hint: {
+    fontSize: theme.typography.fontSize.sm,
+    color: colors.text.tertiary,
+    marginTop: theme.spacing.sm,
   },
   formCard: {
-    marginBottom: theme.spacing.lg,
-    padding: theme.spacing.md,
-  },
-  section: {
-    marginBottom: theme.spacing.lg,
-  },
-  sectionTitle: {
-    fontSize: theme.typography.fontSize.lg,
-    fontWeight: theme.typography.fontWeight.bold,
-    color: colors.text.primary,
     marginBottom: theme.spacing.md,
+    padding: theme.spacing.md,
   },
   label: {
     fontSize: theme.typography.fontSize.sm,
-    fontWeight: theme.typography.fontWeight.medium,
+    fontWeight: theme.typography.fontWeight.semibold,
     color: colors.text.secondary,
-    marginBottom: theme.spacing.sm,
+    marginBottom: theme.spacing.xs,
   },
   input: {
     borderWidth: 1.5,
     borderColor: colors.dark.border,
     borderRadius: theme.borderRadius.lg,
-    paddingVertical: theme.spacing.md,
-    paddingHorizontal: theme.spacing.lg,
+    paddingVertical: 12,
+    paddingHorizontal: theme.spacing.md,
     fontSize: theme.typography.fontSize.base,
     color: colors.text.primary,
-    backgroundColor: colors.dark.card,
+    backgroundColor: colors.dark.backgroundSecondary,
   },
-  competitorsCard: {
-    marginBottom: theme.spacing.lg,
-    padding: theme.spacing.md,
+  suggestions: {
+    marginTop: theme.spacing.xs,
+    borderRadius: theme.borderRadius.lg,
+    borderWidth: 1,
+    borderColor: colors.dark.border,
+    backgroundColor: colors.dark.cardElevated,
+    overflow: 'hidden',
   },
-  competitorsList: {
-    marginBottom: theme.spacing.md,
+  suggestionsTitle: {
+    fontSize: 11,
+    color: colors.text.tertiary,
+    paddingHorizontal: theme.spacing.md,
+    paddingTop: theme.spacing.sm,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
-  competitorItem: {
-    marginBottom: theme.spacing.sm,
-    padding: theme.spacing.md,
+  suggestionRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: theme.spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.dark.border,
   },
-  competitorInfo: {
+  suggestionRowPressed: {
+    backgroundColor: colors.dark.border,
+  },
+  suggestionName: {
     flex: 1,
-    marginRight: theme.spacing.md,
-  },
-  competitorName: {
-    fontSize: theme.typography.fontSize.base,
-    fontWeight: theme.typography.fontWeight.semibold,
     color: colors.text.primary,
-    marginBottom: theme.spacing.xs,
-  },
-  removeButton: {
-    minWidth: 80,
-  },
-  addCompetitorContainer: {
-    flexDirection: 'row',
-    gap: theme.spacing.sm,
-    alignItems: 'center',
-  },
-  competitorInput: {
-    flex: 1,
-  },
-  addButton: {
-    minWidth: 100,
-  },
-  comparisonCard: {
-    marginBottom: theme.spacing.lg,
-    padding: theme.spacing.md,
-  },
-  comparisonTitle: {
-    fontSize: theme.typography.fontSize.lg,
-    fontWeight: theme.typography.fontWeight.bold,
-    color: colors.text.primary,
-    marginBottom: theme.spacing.md,
-  },
-  comparisonRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: theme.spacing.md,
-  },
-  comparisonLabel: {
-    fontSize: theme.typography.fontSize.base,
-    color: colors.text.secondary,
+    fontSize: theme.typography.fontSize.sm,
     fontWeight: theme.typography.fontWeight.medium,
   },
-  comparisonValue: {
+  suggestionMeta: {
+    color: colors.text.tertiary,
+    fontSize: 12,
+  },
+  priceHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: theme.spacing.md,
+  },
+  reuse: {
+    color: colors.primary[400],
+    fontSize: 12,
+    fontWeight: theme.typography.fontWeight.semibold,
+    marginBottom: theme.spacing.xs,
+  },
+  priceBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: colors.dark.border,
+    borderRadius: theme.borderRadius.lg,
+    backgroundColor: colors.dark.backgroundSecondary,
+    paddingHorizontal: theme.spacing.sm,
+  },
+  priceBoxLarge: {
+    borderColor: colors.primary[600],
+    paddingHorizontal: theme.spacing.md,
+  },
+  pricePrefix: {
+    color: colors.text.tertiary,
+    fontSize: theme.typography.fontSize.sm,
+    marginRight: 4,
+  },
+  pricePrefixLarge: {
+    fontSize: theme.typography.fontSize.xl,
+    fontWeight: theme.typography.fontWeight.semibold,
+  },
+  priceInput: {
+    flex: 1,
+    paddingVertical: 12,
+    color: colors.text.primary,
+    fontSize: theme.typography.fontSize.base,
+    minWidth: 0,
+  },
+  priceInputLarge: {
+    fontSize: 32,
+    fontWeight: theme.typography.fontWeight.bold,
+    paddingVertical: 10,
+  },
+  rowBetween: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: theme.spacing.sm,
+  },
+  sectionTitle: {
     fontSize: theme.typography.fontSize.base,
     fontWeight: theme.typography.fontWeight.bold,
     color: colors.text.primary,
   },
-  submitContainer: {
-    marginTop: theme.spacing.md,
-    marginBottom: theme.spacing.xl,
+  optional: {
+    fontSize: 12,
+    color: colors.text.tertiary,
   },
-  submitButton: {
+  competitorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
+    marginBottom: theme.spacing.sm,
+  },
+  competitorName: {
+    flex: 1.3,
+  },
+  competitorPrice: {
+    flex: 1,
+  },
+  removeBtn: {
+    paddingHorizontal: 6,
+    paddingVertical: 8,
+  },
+  removeText: {
+    color: colors.text.tertiary,
+    fontSize: 16,
+  },
+  chips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.sm,
+  },
+  chip: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: colors.primary[600] + '26',
+    borderWidth: 1,
+    borderColor: colors.primary[600] + '80',
+  },
+  chipOutline: {
+    backgroundColor: 'transparent',
+    borderColor: colors.dark.borderLight,
+  },
+  chipText: {
+    color: colors.text.secondary,
+    fontSize: 13,
+    fontWeight: theme.typography.fontWeight.semibold,
+  },
+  compare: {
+    marginTop: theme.spacing.md,
+    padding: theme.spacing.sm,
+    borderRadius: theme.borderRadius.md,
+    backgroundColor: colors.dark.cardElevated,
+  },
+  compareText: {
+    color: colors.text.secondary,
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  error: {
+    color: colors.error,
+    marginBottom: theme.spacing.sm,
+    textAlign: 'center',
+  },
+  feedback: {
+    color: colors.success,
+    marginBottom: theme.spacing.sm,
+    textAlign: 'center',
+    fontWeight: theme.typography.fontWeight.semibold,
+  },
+  fullWidth: {
     width: '100%',
   },
+  doneButton: {
+    width: '100%',
+    marginTop: theme.spacing.sm,
+  },
+  sessionList: {
+    marginTop: theme.spacing.lg,
+    gap: theme.spacing.sm,
+  },
+  sessionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: theme.spacing.sm,
+    padding: theme.spacing.md,
+    borderRadius: theme.borderRadius.lg,
+    backgroundColor: colors.dark.card,
+    borderWidth: 1,
+    borderColor: colors.dark.border,
+  },
+  sessionInfo: {
+    flex: 1,
+  },
+  sessionName: {
+    color: colors.text.primary,
+    fontWeight: theme.typography.fontWeight.semibold,
+  },
+  sessionStatus: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  sessionPrice: {
+    color: colors.text.primary,
+    fontSize: theme.typography.fontSize.lg,
+    fontWeight: theme.typography.fontWeight.bold,
+  },
 });
-
