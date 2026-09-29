@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { z } from 'zod';
 import { AuthRequest } from '../middleware/auth';
 import prisma from '../prisma/client';
+import { storeSelect } from '../utils/storeSelect';
 
 const createStoreSchema = z.object({
   name: z.string().min(1),
@@ -189,7 +190,10 @@ export async function deleteStore(req: AuthRequest, res: Response) {
 export async function getAllStores(req: AuthRequest, res: Response) {
   try {
     const stores = await prisma.store.findMany({
-      include: {
+      select: {
+        ...storeSelect,
+        createdAt: true,
+        updatedAt: true,
         storeIndustries: {
           where: { isActive: true },
           include: { industry: { select: { id: true, name: true, code: true } } },
@@ -211,6 +215,7 @@ export async function getStore(req: AuthRequest, res: Response) {
 
     const store = await prisma.store.findUnique({
       where: { id },
+      select: { ...storeSelect, createdAt: true, updatedAt: true },
     });
 
     if (!store) {
