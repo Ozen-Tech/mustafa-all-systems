@@ -63,6 +63,8 @@ export interface TeamRankingEntry {
   skipped: number;
   daysClosed: number;
   priceResearchCount: number;
+  level: number;
+  levelTitle: string;
   byDay: TeamRankingDay[];
 }
 

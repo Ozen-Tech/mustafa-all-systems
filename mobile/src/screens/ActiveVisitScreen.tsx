@@ -33,6 +33,7 @@ import {
 } from '../utils/photoUri';
 import { savePendingPhotos, getPendingPhotos, PendingPhoto } from '../utils/sessionStorage';
 import IndustryNoPhotoToggle from '../components/IndustryNoPhotoToggle';
+import ComboMeter from '../components/gamification/ComboMeter';
 import { NO_PHOTO_INDUSTRY_NOTE } from '../constants/industryJustification';
 import { showAlert } from '../utils/alertHelper';
 
@@ -1109,6 +1110,13 @@ export default function ActiveVisitScreen({ route }: any) {
           </TouchableOpacity>
         )}
       </View>
+
+      {industries.length > 0 && (
+        <ComboMeter
+          covered={industries.filter((i) => getPhotosForIndustry(i.id).length > 0).length}
+          total={industries.length}
+        />
+      )}
 
       {/* Seção de Fotos */}
       <View style={styles.section}>
