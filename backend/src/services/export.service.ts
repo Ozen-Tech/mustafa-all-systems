@@ -2,6 +2,7 @@ import PptxGenJS from 'pptxgenjs';
 import prisma from '../prisma/client';
 import { PhotoType } from '../types';
 import axios from 'axios';
+import { storeSelect } from '../utils/storeSelect';
 
 export interface ExportOptions {
   startDate: Date;
@@ -36,7 +37,7 @@ export async function generatePowerPointReport(options: ExportOptions): Promise<
             email: true,
           },
         },
-        store: true,
+        store: { select: storeSelect },
         photos: {
         orderBy: {
           createdAt: 'asc',

@@ -791,13 +791,13 @@ export async function linkFilialToStore(req: AuthRequest, res: Response) {
   const parsed = linkSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ message: 'filialCode é obrigatório' });
 
-  const store = await prisma.store.findUnique({ where: { id: storeId } });
+  const store = await prisma.store.findUnique({ where: { id: storeId }, select: { id: true } });
   if (!store) return res.status(404).json({ message: 'Loja não encontrada' });
 
   const filialCode = normalizeFilialCode(parsed.data.filialCode);
 
   try {
-    await prisma.store.update({ where: { id: storeId }, data: { filialCode } });
+    await prisma.store.update({ where: { id: storeId }, data: { filialCode }, select: { id: true } });
   } catch (error: any) {
     if (error?.code === 'P2002') {
       return res.status(409).json({ message: 'Esta filial já está vinculada a outra loja' });

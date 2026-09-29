@@ -70,6 +70,7 @@ export async function setPromoterRoute(req: AuthRequest, res: Response) {
 
     const stores = await prisma.store.findMany({
       where: { id: { in: storeIds } },
+      select: { id: true },
     });
 
     if (stores.length !== storeIds.length) {
@@ -155,7 +156,7 @@ export async function addStoresToRoute(req: AuthRequest, res: Response) {
       return res.status(404).json({ message: 'Promotor não encontrado' });
     }
 
-    const stores = await prisma.store.findMany({ where: { id: { in: storeIds } } });
+    const stores = await prisma.store.findMany({ where: { id: { in: storeIds } }, select: { id: true } });
     if (stores.length !== storeIds.length) {
       return res.status(400).json({ message: 'Uma ou mais lojas não foram encontradas' });
     }

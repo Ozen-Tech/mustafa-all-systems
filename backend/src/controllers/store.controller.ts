@@ -41,7 +41,7 @@ export async function createStore(req: AuthRequest, res: Response) {
     const { industryIds, ...storeData } = data;
 
     if (storeData.code) {
-      const existing = await prisma.store.findUnique({ where: { code: storeData.code } });
+      const existing = await prisma.store.findUnique({ where: { code: storeData.code }, select: { id: true } });
       if (existing) {
         return res.status(400).json({ message: `Código "${storeData.code}" já está em uso` });
       }
@@ -53,6 +53,7 @@ export async function createStore(req: AuthRequest, res: Response) {
         code: storeData.code || null,
         state: storeData.state?.toUpperCase() || null,
       },
+      select: { id: true },
     });
 
     if (industryIds && industryIds.length > 0) {
@@ -69,7 +70,12 @@ export async function createStore(req: AuthRequest, res: Response) {
 
     const storeWithIndustries = await prisma.store.findUnique({
       where: { id: store.id },
-      include: { storeIndustries: { where: { isActive: true }, include: { industry: true } } },
+      select: {
+        ...storeSelect,
+        createdAt: true,
+        updatedAt: true,
+        storeIndustries: { where: { isActive: true }, include: { industry: true } },
+      },
     });
 
     res.status(201).json({ store: storeWithIndustries });
@@ -93,7 +99,7 @@ export async function bulkCreateStores(req: AuthRequest, res: Response) {
       const { industryIds, ...storeData } = stores[i];
       try {
         if (storeData.code) {
-          const existing = await prisma.store.findUnique({ where: { code: storeData.code } });
+          const existing = await prisma.store.findUnique({ where: { code: storeData.code }, select: { id: true } });
           if (existing) {
             errors.push({ index: i, name: storeData.name, message: `Código "${storeData.code}" já existe` });
             continue;
@@ -106,6 +112,7 @@ export async function bulkCreateStores(req: AuthRequest, res: Response) {
             code: storeData.code || null,
             state: storeData.state?.toUpperCase() || null,
           },
+          select: { ...storeSelect, createdAt: true, updatedAt: true },
         });
 
         if (industryIds && industryIds.length > 0) {
@@ -143,6 +150,7 @@ export async function updateStore(req: AuthRequest, res: Response) {
 
     const store = await prisma.store.findUnique({
       where: { id },
+      select: { id: true },
     });
 
     if (!store) {
@@ -152,6 +160,7 @@ export async function updateStore(req: AuthRequest, res: Response) {
     const updatedStore = await prisma.store.update({
       where: { id },
       data,
+      select: { ...storeSelect, createdAt: true, updatedAt: true },
     });
 
     res.json({ store: updatedStore });
@@ -170,6 +179,7 @@ export async function deleteStore(req: AuthRequest, res: Response) {
 
     const store = await prisma.store.findUnique({
       where: { id },
+      select: { id: true },
     });
 
     if (!store) {
@@ -178,6 +188,7 @@ export async function deleteStore(req: AuthRequest, res: Response) {
 
     await prisma.store.delete({
       where: { id },
+      select: { id: true },
     });
 
     res.json({ message: 'Loja deletada com sucesso' });

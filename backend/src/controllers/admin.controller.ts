@@ -757,7 +757,7 @@ export async function createPromoterStoreRedoGrant(req: AuthRequest, res: Respon
       return res.status(404).json({ message: 'Promotor não encontrado' });
     }
 
-    const store = await prisma.store.findUnique({ where: { id: storeId } });
+    const store = await prisma.store.findUnique({ where: { id: storeId }, select: { id: true } });
     if (!store) {
       return res.status(404).json({ message: 'Loja não encontrada' });
     }
