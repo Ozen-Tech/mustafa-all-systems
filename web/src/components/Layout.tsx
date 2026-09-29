@@ -163,6 +163,7 @@ export default function Layout() {
   const navigation = [
     ...(isSupervisorOrAdmin ? [{ name: 'Painel Central', path: '/painel', icon: DashboardIcon }] : []),
     ...(isSupervisorOrAdmin ? [{ name: 'Equipe Hoje', path: '/', icon: DashboardIcon }] : []),
+    ...(isSupervisorOrAdmin ? [{ name: 'Ranking da Equipe', path: '/ops/ranking', icon: ReportsIcon }] : []),
     ...(isSupervisorOrAdmin ? [{ name: 'Vistoria Indústria', path: '/ops/industry-audit', icon: AdminIndustriesIcon }] : []),
     ...(isSupervisorOrAdmin ? [{ name: 'Galeria Indústria', path: '/ops/industry-gallery', icon: AdminIndustriesIcon }] : []),
     ...(isSupervisorOrAdmin ? [{ name: 'Métricas Trade', path: '/ops/trade-metrics', icon: ReportsIcon }] : []),

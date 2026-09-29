@@ -44,6 +44,18 @@ export interface PriceResearchRequest {
   }>;
 }
 
+export interface PriceResearchSuggestion {
+  name: string;
+  lastPrice: number | null;
+  lastAt: string | null;
+  industry: string | null;
+}
+
+export interface PriceResearchSuggestions {
+  products: PriceResearchSuggestion[];
+  competitors: string[];
+}
+
 export const visitService = {
   async checkIn(data: CheckInRequest) {
     const response = await apiClient.post('/promoters/checkin', data);
@@ -86,6 +98,16 @@ export const visitService = {
   async submitPriceResearch(data: PriceResearchRequest) {
     const response = await apiClient.post('/promoters/price-research', data);
     return response.data;
+  },
+
+  async getPriceResearchSuggestions(storeId: string): Promise<PriceResearchSuggestions> {
+    const response = await apiClient.get('/promoters/price-research/suggestions', {
+      params: { storeId },
+    });
+    return {
+      products: response.data?.products || [],
+      competitors: response.data?.competitors || [],
+    };
   },
 
   async getVisits(page = 1, limit = 50) {

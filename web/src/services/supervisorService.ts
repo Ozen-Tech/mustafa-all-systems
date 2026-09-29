@@ -36,6 +36,61 @@ apiClient.interceptors.response.use(
   }
 );
 
+export type StoreDaySkipReason = 'STORE_CLOSED' | 'NO_TIME' | 'REDIRECTED' | 'OTHER';
+
+export const SKIP_REASON_LABELS: Record<StoreDaySkipReason, string> = {
+  STORE_CLOSED: 'Loja fechada',
+  NO_TIME: 'Sem tempo',
+  REDIRECTED: 'Remanejado',
+  OTHER: 'Outro',
+};
+
+export interface TeamRankingDay {
+  date: string;
+  points: number;
+  storesDone: number;
+  skipped: number;
+  closed: boolean;
+}
+
+export interface TeamRankingEntry {
+  rank: number;
+  promoterId: string;
+  name: string;
+  state: string | null;
+  points: number;
+  storesDone: number;
+  skipped: number;
+  daysClosed: number;
+  priceResearchCount: number;
+  byDay: TeamRankingDay[];
+}
+
+export interface TeamRankingResponse {
+  weekStart: string;
+  weekEnd: string;
+  days: string[];
+  today: string;
+  summary: {
+    promoters: number;
+    totalPoints: number;
+    averagePoints: number;
+    leader: { name: string; points: number } | null;
+    daysClosed: number;
+    skipped: number;
+    priceResearch: number;
+  };
+  entries: TeamRankingEntry[];
+  skips: Array<{
+    date: string;
+    reason: StoreDaySkipReason;
+    note: string | null;
+    promoterId: string;
+    promoterName: string;
+    store: { id: string; name: string };
+  }>;
+}
+
 export const supervisorService = {
   async getDashboard() {
     const response = await apiClient.get('/supervisors/dashboard');
@@ -48,6 +103,11 @@ export const supervisorService = {
     if (params?.date) qs.set('date', params.date);
     const query = qs.toString();
     const response = await apiClient.get(`/supervisors/ops/team-today${query ? `?${query}` : ''}`);
+    return response.data;
+  },
+
+  async getTeamRanking(params?: { state?: string; date?: string }): Promise<TeamRankingResponse> {
+    const response = await apiClient.get('/supervisors/ops/ranking', { params });
     return response.data;
   },
 

@@ -3,6 +3,8 @@ import { z } from 'zod';
 import prisma from '../prisma/client';
 import { AuthRequest } from '../middleware/auth';
 import { storeSelect } from '../utils/storeSelect';
+import { scopedPromoterWhere } from '../utils/supervisorScope';
+import { UserRole } from '../types';
 
 const POINTS = {
   STORE_DONE: 20,
@@ -561,23 +563,28 @@ async function resolveRankingPeers(promoterId: string): Promise<Array<{ id: stri
   return users;
 }
 
+type DayStats = { date: string; points: number; storesDone: number; skipped: number; closed: boolean };
+type WeekStats = { points: number; storesDone: number; skipped: number; daysClosed: number; byDay: DayStats[] };
+
 /**
  * Pontos da semana para vários promotores (queries em lote).
  */
-async function computeWeekPointsBatch(
+async function computeWeekStatsBatch(
   promoterIds: string[],
   days: string[]
-): Promise<Map<string, number>> {
-  const pointsByPromoter = new Map<string, number>();
-  for (const id of promoterIds) pointsByPromoter.set(id, 0);
-  if (promoterIds.length === 0 || days.length === 0) return pointsByPromoter;
+): Promise<Map<string, WeekStats>> {
+  const statsByPromoter = new Map<string, WeekStats>();
+  for (const id of promoterIds) {
+    statsByPromoter.set(id, { points: 0, storesDone: 0, skipped: 0, daysClosed: 0, byDay: [] });
+  }
+  if (promoterIds.length === 0 || days.length === 0) return statsByPromoter;
 
   const weekStart = days[0];
   const weekEndExclusive = shiftDateISO(days[days.length - 1], 1);
   const { start } = dayRangeBRT(weekStart);
   const { start: endExclusive } = dayRangeBRT(weekEndExclusive);
 
-  const [routes, visits, quotas] = await Promise.all([
+  const [routes, visits, quotas, skips] = await Promise.all([
     prisma.routeAssignment.findMany({
       where: { promoterId: { in: promoterIds }, isActive: true },
       select: { promoterId: true, storeId: true },
@@ -604,7 +611,19 @@ async function computeWeekPointsBatch(
       where: { promoterId: { in: promoterIds } },
       select: { promoterId: true, expectedPhotos: true },
     }),
+    prisma.promoterStoreDaySkip.findMany({
+      where: { promoterId: { in: promoterIds }, date: { in: days } },
+      select: { promoterId: true, storeId: true, date: true },
+    }),
   ]);
+
+  const skipsByPromoterDay = new Map<string, Set<string>>();
+  for (const s of skips) {
+    const key = `${s.promoterId}:${s.date}`;
+    const set = skipsByPromoterDay.get(key) || new Set();
+    set.add(s.storeId);
+    skipsByPromoterDay.set(key, set);
+  }
 
   const routeStores = new Map<string, Set<string>>();
   for (const r of routes) {
@@ -691,11 +710,12 @@ async function computeWeekPointsBatch(
   }
 
   for (const pid of promoterIds) {
-    let weekPts = 0;
+    const stats = statsByPromoter.get(pid)!;
     const myRoute = routeStores.get(pid) || new Set();
     const expected = quotaByPromoter.get(pid) ?? null;
 
     for (const date of days) {
+      let weekPts = 0;
       const { cutoff } = dayRangeBRT(date);
       const dayVisits = visits.filter(
         (v) => v.promoterId === pid && dateISOFromVisitCheckIn(v.checkInAt) === date
@@ -707,6 +727,13 @@ async function computeWeekPointsBatch(
       );
       const storesDone = doneStores.size;
       weekPts += storesDone * POINTS.STORE_DONE;
+
+      const daySkips = skipsByPromoterDay.get(`${pid}:${date}`) || new Set<string>();
+      const openStores = new Set(dayVisits.filter((v) => !v.checkOutAt).map((v) => v.storeId));
+      const closed =
+        myRoute.size > 0 &&
+        storesDone >= 1 &&
+        [...myRoute].every((sid) => !openStores.has(sid) && (doneStores.has(sid) || daySkips.has(sid)));
 
       const evidence = dayVisits
         .flatMap((v) => v.photos)
@@ -738,12 +765,16 @@ async function computeWeekPointsBatch(
         if (hasRequirement && industriesOk) weekPts += POINTS.INDUSTRIES;
         if (!hasRequirement && dayDoneVisits.length > 0) weekPts += POINTS.INDUSTRIES;
       }
-    }
 
-    pointsByPromoter.set(pid, weekPts);
+      stats.points += weekPts;
+      stats.storesDone += storesDone;
+      stats.skipped += daySkips.size;
+      if (closed) stats.daysClosed += 1;
+      stats.byDay.push({ date, points: weekPts, storesDone, skipped: daySkips.size, closed });
+    }
   }
 
-  return pointsByPromoter;
+  return statsByPromoter;
 }
 
 /**
@@ -769,7 +800,8 @@ export async function getWeeklyRanking(req: AuthRequest, res: Response) {
     }
 
     const ids = peers.map((p) => p.id);
-    const pointsMap = await computeWeekPointsBatch(ids, days);
+    const statsMap = await computeWeekStatsBatch(ids, days);
+    const pointsMap = new Map([...statsMap].map(([id, s]) => [id, s.points]));
 
     const streakEntries = await Promise.all(
       ids.map(async (id) => ({ id, streakDays: await computeStreak(id, today) }))
@@ -812,6 +844,123 @@ export async function getWeeklyRanking(req: AuthRequest, res: Response) {
     });
   } catch (error) {
     console.error('getWeeklyRanking error:', error);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+}
+
+/**
+ * GET /supervisors/ops/ranking?state=UF&date=YYYY-MM-DD
+ * Ranking semanal da equipe visível ao supervisor (admin vê todos).
+ */
+export async function getTeamWeeklyRanking(req: AuthRequest, res: Response) {
+  try {
+    const isAdmin = req.userRole === UserRole.ADMIN;
+    const state = (req.query.state as string | undefined)?.trim() || undefined;
+    const rawDate = (req.query.date as string | undefined)?.trim();
+    const today = toISODateBRT(new Date());
+    const refDate = rawDate && /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : today;
+    const { weekStart, weekEnd, days } = weekRangeBRT(refDate);
+    const elapsedDays = days.filter((d) => d <= today);
+
+    const promoters = await prisma.user.findMany({
+      where: scopedPromoterWhere({ isAdmin, supervisorId: req.userId, state }),
+      select: { id: true, name: true, state: true },
+      orderBy: { name: 'asc' },
+    });
+    const ids = promoters.map((p) => p.id);
+
+    const { start } = dayRangeBRT(weekStart);
+    const { start: endExclusive } = dayRangeBRT(shiftDateISO(weekEnd, 1));
+
+    const [statsMap, skips, research] = await Promise.all([
+      computeWeekStatsBatch(ids, elapsedDays),
+      ids.length
+        ? prisma.promoterStoreDaySkip.findMany({
+            where: { promoterId: { in: ids }, date: { in: days } },
+            select: {
+              date: true,
+              reason: true,
+              note: true,
+              promoterId: true,
+              store: { select: { id: true, name: true } },
+            },
+            orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+          })
+        : Promise.resolve([]),
+      ids.length
+        ? prisma.priceResearch.findMany({
+            where: {
+              createdAt: { gte: start, lt: endExclusive },
+              visit: { promoterId: { in: ids } },
+            },
+            select: { visit: { select: { promoterId: true } } },
+          })
+        : Promise.resolve([]),
+    ]);
+
+    const researchByPromoter = new Map<string, number>();
+    for (const r of research) {
+      const pid = r.visit.promoterId;
+      researchByPromoter.set(pid, (researchByPromoter.get(pid) || 0) + 1);
+    }
+
+    const nameById = new Map(promoters.map((p) => [p.id, p.name]));
+    const sorted = [...promoters].sort((a, b) => {
+      const sa = statsMap.get(a.id)!;
+      const sb = statsMap.get(b.id)!;
+      if (sb.points !== sa.points) return sb.points - sa.points;
+      if (sb.daysClosed !== sa.daysClosed) return sb.daysClosed - sa.daysClosed;
+      return a.name.localeCompare(b.name, 'pt-BR');
+    });
+
+    const entries = sorted.map((p, idx) => {
+      const s = statsMap.get(p.id)!;
+      const byDayMap = new Map(s.byDay.map((d) => [d.date, d]));
+      return {
+        rank: idx + 1,
+        promoterId: p.id,
+        name: p.name,
+        state: p.state,
+        points: s.points,
+        storesDone: s.storesDone,
+        skipped: s.skipped,
+        daysClosed: s.daysClosed,
+        priceResearchCount: researchByPromoter.get(p.id) || 0,
+        byDay: days.map(
+          (date) =>
+            byDayMap.get(date) || { date, points: 0, storesDone: 0, skipped: 0, closed: false }
+        ),
+      };
+    });
+
+    const totalPoints = entries.reduce((sum, e) => sum + e.points, 0);
+
+    return res.json({
+      weekStart,
+      weekEnd,
+      days,
+      today,
+      summary: {
+        promoters: entries.length,
+        totalPoints,
+        averagePoints: entries.length ? Math.round(totalPoints / entries.length) : 0,
+        leader: entries[0] && entries[0].points > 0 ? { name: entries[0].name, points: entries[0].points } : null,
+        daysClosed: entries.reduce((sum, e) => sum + e.daysClosed, 0),
+        skipped: skips.length,
+        priceResearch: research.length,
+      },
+      entries,
+      skips: skips.map((s) => ({
+        date: s.date,
+        reason: s.reason,
+        note: s.note,
+        promoterId: s.promoterId,
+        promoterName: nameById.get(s.promoterId) || '—',
+        store: s.store,
+      })),
+    });
+  } catch (error) {
+    console.error('getTeamWeeklyRanking error:', error);
     return res.status(500).json({ message: 'Internal server error' });
   }
 }
