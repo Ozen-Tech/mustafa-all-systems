@@ -41,6 +41,7 @@ export async function assignPromoterToIndustry(req: AuthRequest, res: Response) 
     if (data.storeId) {
       const store = await prisma.store.findUnique({
         where: { id: data.storeId },
+        select: { id: true },
       });
 
       if (!store) {
@@ -341,7 +342,8 @@ export async function setMyStoreIndustries(req: AuthRequest, res: Response) {
 
     const store = await prisma.store.findUnique({
       where: { id: storeId },
-      include: {
+      select: {
+        id: true,
         storeIndustries: {
           where: { isActive: true },
           select: { industryId: true },
@@ -437,7 +439,8 @@ export async function setPromoterStoreIndustries(req: AuthRequest, res: Response
 
     const store = await prisma.store.findUnique({
       where: { id: storeId },
-      include: {
+      select: {
+        id: true,
         storeIndustries: {
           where: { isActive: true },
           select: { industryId: true },

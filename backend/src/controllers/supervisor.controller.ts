@@ -843,7 +843,8 @@ export async function getPendingIndustries(req: AuthRequest, res: Response) {
     if (view === 'store') {
       // Visão por Loja: quais lojas têm indústrias não cobertas
       const stores = await prisma.store.findMany({
-        include: {
+        select: {
+          ...storeSelect,
           storeIndustries: {
             where: { isActive: true },
             include: { industry: true },
@@ -935,7 +936,8 @@ export async function getPendingIndustries(req: AuthRequest, res: Response) {
         include: {
           promoter: { select: { id: true, name: true, email: true } },
           store: {
-            include: {
+            select: {
+              ...storeSelect,
               storeIndustries: {
                 where: { isActive: true },
                 include: { industry: true },
