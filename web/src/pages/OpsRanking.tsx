@@ -260,7 +260,15 @@ export default function OpsRanking() {
                                 {e.points > 0 && e.rank <= 3 ? MEDALS[e.rank - 1] : e.rank}
                               </td>
                               <td className="px-4 py-3">
-                                <div className="text-text-primary font-semibold">{e.name}</div>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-text-primary font-semibold">{e.name}</span>
+                                  <span
+                                    className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-primary-600/20 text-primary-400 border border-primary-600/50"
+                                    title={`${e.levelTitle} · nível pelo XP do app (não afeta a classificação)`}
+                                  >
+                                    Nv {e.level}
+                                  </span>
+                                </div>
                                 <div className="text-text-tertiary text-xs">
                                   {e.state ?? '—'} · {e.daysClosed} dia(s) fechado(s)
                                 </div>

@@ -26,6 +26,7 @@ import Input from '../components/ui/Input';
 import EmptyState from '../components/ui/EmptyState';
 import LoadingView from '../components/ui/LoadingView';
 import { showAlert } from '../utils/alertHelper';
+import { useGamification } from '../features/gamification/GamificationProvider';
 
 type StoresNavigation = NavigationProp<Record<string, object | undefined>>;
 
@@ -33,6 +34,7 @@ const SKIP_REASONS = Object.keys(SKIP_REASON_LABELS) as StoreDaySkipReason[];
 
 export default function StoresScreen() {
   const navigation = useNavigation<StoresNavigation>();
+  const { sync: syncRewards } = useGamification();
   const [stores, setStores] = useState<Store[]>([]);
   const [filteredStores, setFilteredStores] = useState<Store[]>([]);
   const [completedStoreIdsToday, setCompletedStoreIdsToday] = useState<string[]>([]);
@@ -113,6 +115,7 @@ export default function StoresScreen() {
       setSkipStore(null);
       await loadStores();
       showAlert('Registrado', 'Loja marcada como não feita hoje.');
+      void syncRewards();
     } catch (error: any) {
       showAlert(
         'Erro',

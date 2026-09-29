@@ -117,6 +117,9 @@ model User {
   industryOwnerAssignment IndustryOwnerAssignment?
   dayAbsences           PromoterDayAbsence[]
   storeDaySkips         PromoterStoreDaySkip[]
+  xpEvents              PromoterXpEvent[]
+  chests                PromoterChest[]
+  achievements          PromoterAchievement[]
   goalsCreated          Goal[]                   @relation("GoalCreatedBy")
   feedEntriesAuthored   FeedEntry[]              @relation("FeedAuthor")
   feedEntriesAssigned   FeedEntry[]              @relation("FeedAssignee")
@@ -828,3 +831,48 @@ model FeedEntry {
   @@index([assigneeId])
 }
 
+
+/// XP do promotor (gamificação). Não entra no ranking semanal.
+model PromoterXpEvent {
+  id         String   @id @default(uuid())
+  promoterId String
+  source     String   // STORE_DONE | INDUSTRY_COMBO | PRICE_RESEARCH | PRICE_NEW_PRODUCT | ON_TIME | PHOTO_QUOTA | DAY_CLOSED | CHEST
+  refKey     String   // chave de idempotência (visitId, data, id da pesquisa, id do baú)
+  amount     Int
+  meta       Json?
+  createdAt  DateTime @default(now())
+
+  promoter User @relation(fields: [promoterId], references: [id], onDelete: Cascade)
+
+  @@unique([promoterId, source, refKey])
+  @@index([promoterId, createdAt])
+}
+
+model PromoterChest {
+  id         String    @id @default(uuid())
+  promoterId String
+  kind       String    // STORE | DAY
+  refKey     String    // visitId (STORE) ou data YYYY-MM-DD (DAY)
+  rarity     String    // COMMON | RARE | EPIC
+  xp         Int
+  openedAt   DateTime?
+  createdAt  DateTime  @default(now())
+
+  promoter User @relation(fields: [promoterId], references: [id], onDelete: Cascade)
+
+  @@unique([promoterId, kind, refKey])
+  @@index([promoterId, openedAt])
+}
+
+model PromoterAchievement {
+  id         String   @id @default(uuid())
+  promoterId String
+  code       String
+  unlockedAt DateTime @default(now())
+  seenAt     DateTime?
+
+  promoter User @relation(fields: [promoterId], references: [id], onDelete: Cascade)
+
+  @@unique([promoterId, code])
+  @@index([promoterId])
+}

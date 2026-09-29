@@ -33,6 +33,7 @@ import {
   skipStoreToday,
   unskipStoreToday,
 } from '../controllers/dayBoard.controller';
+import { getMyGamification, openMyChest, syncMyRewards } from '../controllers/gamification.controller';
 import { authenticate } from '../middleware/auth';
 
 const router = Router();
@@ -42,6 +43,9 @@ router.get('/me/onboarding', getMyOnboarding);
 router.put('/me/route', setMyRoute);
 router.get('/me/day-board', getDayBoard);
 router.get('/me/ranking', getWeeklyRanking);
+router.get('/me/gamification', getMyGamification);
+router.post('/me/gamification/sync', syncMyRewards);
+router.post('/me/chests/:chestId/open', openMyChest);
 router.post('/me/stores/:storeId/skip-today', skipStoreToday);
 router.delete('/me/stores/:storeId/skip-today', unskipStoreToday);
 router.get('/goals', getPromoterGoals);

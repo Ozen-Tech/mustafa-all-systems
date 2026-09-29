@@ -5,6 +5,7 @@ import { AuthRequest } from '../middleware/auth';
 import { storeSelect } from '../utils/storeSelect';
 import { scopedPromoterWhere } from '../utils/supervisorScope';
 import { UserRole } from '../types';
+import { levelsForPromoters } from '../services/gamification.service';
 
 const POINTS = {
   STORE_DONE: 20,
@@ -15,7 +16,7 @@ const POINTS = {
 
 const CUTOFF_HOUR_BRT = 20;
 
-function toISODateBRT(d: Date): string {
+export function toISODateBRT(d: Date): string {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/Sao_Paulo',
     year: 'numeric',
@@ -28,7 +29,7 @@ function toISODateBRT(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-function dayRangeBRT(dateISO: string): { start: Date; endExclusive: Date; cutoff: Date } {
+export function dayRangeBRT(dateISO: string): { start: Date; endExclusive: Date; cutoff: Date } {
   const start = new Date(`${dateISO}T00:00:00-03:00`);
   const endExclusive = new Date(`${dateISO}T00:00:00-03:00`);
   endExclusive.setDate(endExclusive.getDate() + 1);
@@ -36,7 +37,7 @@ function dayRangeBRT(dateISO: string): { start: Date; endExclusive: Date; cutoff
   return { start, endExclusive, cutoff };
 }
 
-function shiftDateISO(dateISO: string, days: number): string {
+export function shiftDateISO(dateISO: string, days: number): string {
   const d = new Date(`${dateISO}T12:00:00-03:00`);
   d.setDate(d.getDate() + days);
   return toISODateBRT(d);
@@ -219,7 +220,7 @@ async function industriesCompleteForVisits(
   return true;
 }
 
-async function buildDaySnapshot(promoterId: string, dateISO: string) {
+export async function buildDaySnapshot(promoterId: string, dateISO: string) {
   const { start, endExclusive, cutoff } = dayRangeBRT(dateISO);
 
   const [route, visits, skips, quota, dayAbsence] = await Promise.all([
@@ -427,7 +428,7 @@ async function buildDaySnapshot(promoterId: string, dateISO: string) {
 
 async function isStreakDay(promoterId: string, dateISO: string): Promise<boolean | 'no_route'> {
   const { start, endExclusive } = dayRangeBRT(dateISO);
-  const [routeCount, skips, visits] = await Promise.all([
+  const [routeCount, skips, visits, dayAbsence] = await Promise.all([
     prisma.routeAssignment.count({ where: { promoterId, isActive: true } }),
     prisma.promoterStoreDaySkip.findMany({
       where: { promoterId, date: dateISO },
@@ -440,8 +441,13 @@ async function isStreakDay(promoterId: string, dateISO: string): Promise<boolean
       },
       select: { storeId: true, checkOutAt: true },
     }),
+    prisma.promoterDayAbsence.findUnique({
+      where: { promoterId_date: { promoterId, date: dateISO } },
+      select: { id: true },
+    }),
   ]);
-  if (routeCount === 0) return 'no_route';
+  // Falta justificada não conta nem quebra a sequência (mesmo tratamento de dia sem rota).
+  if (routeCount === 0 || dayAbsence) return 'no_route';
 
   const route = await prisma.routeAssignment.findMany({
     where: { promoterId, isActive: true },
@@ -458,7 +464,7 @@ async function isStreakDay(promoterId: string, dateISO: string): Promise<boolean
   return doneSet.size >= 1;
 }
 
-async function computeStreak(promoterId: string, todayISO: string): Promise<number> {
+export async function computeStreak(promoterId: string, todayISO: string): Promise<number> {
   let streak = 0;
   let cursor = todayISO;
   const today = await isStreakDay(promoterId, todayISO);
@@ -898,6 +904,13 @@ export async function getTeamWeeklyRanking(req: AuthRequest, res: Response) {
         : Promise.resolve([]),
     ]);
 
+    let levels = new Map<string, { level: number; title: string }>();
+    try {
+      levels = await levelsForPromoters(ids);
+    } catch (levelError) {
+      console.error('getTeamWeeklyRanking: níveis indisponíveis (migration de gamificação pendente?)', levelError);
+    }
+
     const researchByPromoter = new Map<string, number>();
     for (const r of research) {
       const pid = r.visit.promoterId;
@@ -926,6 +939,8 @@ export async function getTeamWeeklyRanking(req: AuthRequest, res: Response) {
         skipped: s.skipped,
         daysClosed: s.daysClosed,
         priceResearchCount: researchByPromoter.get(p.id) || 0,
+        level: levels.get(p.id)?.level ?? 1,
+        levelTitle: levels.get(p.id)?.title ?? 'Novato',
         byDay: days.map(
           (date) =>
             byDayMap.get(date) || { date, points: 0, storesDone: 0, skipped: 0, closed: false }

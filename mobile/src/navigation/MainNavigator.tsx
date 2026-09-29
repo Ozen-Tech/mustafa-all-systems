@@ -12,6 +12,8 @@ import InformationHubScreen from '../screens/InformationHubScreen';
 import GeneralOnboardingScreen from '../screens/GeneralOnboardingScreen';
 import JustifyAbsenceScreen from '../screens/JustifyAbsenceScreen';
 import GoalsScreen from '../screens/GoalsScreen';
+import AchievementsScreen from '../screens/AchievementsScreen';
+import { GamificationProvider } from '../features/gamification/GamificationProvider';
 import RankingScreen from '../screens/RankingScreen';
 import { storeService } from '../services/storeService';
 import HomeIcon from '../components/icons/HomeIcon';
@@ -396,6 +398,7 @@ export default function MainNavigator() {
 
   return (
     <GeneralOnboardingContext.Provider value={{ openGeneralOnboarding: () => setEditingGeneral(true) }}>
+      <GamificationProvider>
       <Stack.Navigator
         screenOptions={{
           headerStyle: {
@@ -461,7 +464,13 @@ export default function MainNavigator() {
           component={RankingScreen}
           options={{ title: 'Ranking da semana' }}
         />
+        <Stack.Screen
+          name="Achievements"
+          component={AchievementsScreen}
+          options={{ title: 'Nível e conquistas' }}
+        />
       </Stack.Navigator>
+      </GamificationProvider>
     </GeneralOnboardingContext.Provider>
   );
 }

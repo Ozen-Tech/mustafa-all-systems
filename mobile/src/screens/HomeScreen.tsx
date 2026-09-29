@@ -21,6 +21,8 @@ import {
   TrailStatus,
   WeeklyRanking,
 } from '../services/dayBoardService';
+import LevelCard from '../components/gamification/LevelCard';
+import { useGamification } from '../features/gamification/GamificationProvider';
 
 type HomeNavigation = NavigationProp<Record<string, object | undefined>>;
 
@@ -71,6 +73,7 @@ export default function HomeScreen() {
   const [board, setBoard] = useState<DayBoard | null>(null);
   const [boardLoading, setBoardLoading] = useState(true);
   const [ranking, setRanking] = useState<WeeklyRanking | null>(null);
+  const { sync: syncRewards } = useGamification();
 
   const checkActiveVisit = useCallback(async () => {
     try {
@@ -121,6 +124,7 @@ export default function HomeScreen() {
     checkActiveVisit();
     loadDayBoard();
     loadRanking();
+    syncRewards();
     offlineSyncService.syncAll().catch(() => {});
 
     const unsubscribe = navigation.addListener('focus', () => {
@@ -128,11 +132,12 @@ export default function HomeScreen() {
       checkActiveVisit();
       loadDayBoard();
       loadRanking();
+      syncRewards();
       offlineSyncService.syncAll().catch(() => {});
     });
 
     return unsubscribe;
-  }, [navigation, visitFlowLoading, checkActiveVisit, loadDayBoard, loadRanking]);
+  }, [navigation, visitFlowLoading, checkActiveVisit, loadDayBoard, loadRanking, syncRewards]);
 
   function handlePrimaryAction() {
     if (!board) {
@@ -174,6 +179,8 @@ export default function HomeScreen() {
         title={`Olá, ${firstName}`}
         subtitle="Feche sua rota loja a loja — visite ou marque o que não for fazer"
       />
+
+      <LevelCard onOpenAchievements={() => navigation.navigate('Achievements')} />
 
       <Card style={styles.ringCard} shadow>
         {boardLoading && !board ? (
