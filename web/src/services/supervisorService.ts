@@ -93,7 +93,84 @@ export interface TeamRankingResponse {
   }>;
 }
 
+export type IndustryMissReason =
+  | 'STORE_CLOSED'
+  | 'NO_STOCK'
+  | 'NO_AUTHORIZATION'
+  | 'NO_MATERIAL'
+  | 'PROMOTER_ERROR'
+  | 'OTHER';
+
+export const MISS_REASON_LABELS: Record<IndustryMissReason, string> = {
+  STORE_CLOSED: 'Loja fechada',
+  NO_STOCK: 'Sem estoque',
+  NO_AUTHORIZATION: 'Sem autorização',
+  NO_MATERIAL: 'Sem material',
+  PROMOTER_ERROR: 'Erro do promotor',
+  OTHER: 'Outro',
+};
+
+export interface IndustryPhotoReportStore {
+  id: string;
+  name: string;
+  address: string;
+  state: string | null;
+  code: string | null;
+}
+
+export interface IndustryPhotoReportPhoto {
+  id: string;
+  url: string;
+  takenAt: string;
+  visitDate: string;
+  promoterName: string;
+  hasRupture: boolean;
+  qualityScore: number | null;
+}
+
+export interface IndustryPhotoReport {
+  industry: { id: string; name: string; code: string; abbreviation: string | null };
+  startDate: string;
+  endDate: string;
+  state: string | null;
+  summary: {
+    photos: number;
+    stores: number;
+    visits: number;
+    promoters: number;
+    ruptures: number;
+    averageQuality: number | null;
+    expectedStores: number;
+    coveredExpectedStores: number;
+    storesWithoutPhotos: number;
+  };
+  truncated: boolean;
+  stores: Array<{
+    store: IndustryPhotoReportStore;
+    photoCount: number;
+    visitCount: number;
+    ruptures: number;
+    promoters: string[];
+    lastPhotoAt: string | null;
+    photos: IndustryPhotoReportPhoto[];
+  }>;
+  storesWithoutPhotos: Array<{
+    store: IndustryPhotoReportStore;
+    misses: Array<{ reason: IndustryMissReason; note: string | null; date: string; promoterName: string }>;
+  }>;
+}
+
 export const supervisorService = {
+  async getIndustryPhotoReport(params: {
+    industryId: string;
+    startDate: string;
+    endDate: string;
+    state?: string;
+  }): Promise<IndustryPhotoReport> {
+    const response = await apiClient.get('/supervisors/reports/industry-photos', { params });
+    return response.data;
+  },
+
   async getDashboard() {
     const response = await apiClient.get('/supervisors/dashboard');
     return response.data;

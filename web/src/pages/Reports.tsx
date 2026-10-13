@@ -8,6 +8,7 @@ import Badge from '../components/ui/Badge';
 import Input from '../components/ui/Input';
 import { generatePhotoBooking } from '../utils/photoBooking';
 import { toast } from '../components/ui/Toaster';
+import IndustryPhotoReportCard from '../components/reports/IndustryPhotoReportCard';
 
 export default function Reports() {
   const [dateRange, setDateRange] = useState({
@@ -146,6 +147,8 @@ export default function Reports() {
           Gere relatórios detalhados e exporte em diferentes formatos
         </p>
       </div>
+
+      <IndustryPhotoReportCard />
 
       {/* Card de Exportação */}
       <Card>
