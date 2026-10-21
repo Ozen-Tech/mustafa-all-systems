@@ -21,6 +21,8 @@ import chainRoutes from './routes/chain.routes';
 import orderRoutes from './routes/order.routes';
 import goalRoutes from './routes/goal.routes';
 import feedRoutes from './routes/feed.routes';
+import taskRoutes from './routes/task.routes';
+import missionRoutes from './routes/mission.routes';
 
 dotenv.config();
 
@@ -93,6 +95,8 @@ app.use('/api/chains', chainRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/goals', goalRoutes);
 app.use('/api/feed', feedRoutes);
+app.use('/api/tasks', taskRoutes);
+app.use('/api/missions', missionRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

@@ -123,6 +123,9 @@ model User {
   goalsCreated          Goal[]                   @relation("GoalCreatedBy")
   feedEntriesAuthored   FeedEntry[]              @relation("FeedAuthor")
   feedEntriesAssigned   FeedEntry[]              @relation("FeedAssignee")
+  taskCompletions       TaskCompletion[]
+  missionCompletions    MissionCompletion[]
+  checkInReviews        CheckInReview[]          @relation("CheckInReviewer")
 
   @@index([state])
 }
@@ -214,6 +217,9 @@ model Store {
   purchaseOrders        PurchaseOrder[]
   goals                 Goal[]
   feedEntries           FeedEntry[]
+  tasks                 Task[]
+  missions              Mission[]
+  missionCompletions    MissionCompletion[]
 }
 
 model Visit {
@@ -232,13 +238,15 @@ model Visit {
   updatedAt        DateTime  @updatedAt
 
   // Relations
-  promoter       User          @relation(fields: [promoterId], references: [id], onDelete: Cascade)
-  store          Store         @relation(fields: [storeId], references: [id], onDelete: Restrict)
-  photos         Photo[]
-  priceResearch  PriceResearch[]
-  locations      Location[]
+  promoter        User             @relation(fields: [promoterId], references: [id], onDelete: Cascade)
+  store           Store            @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  photos          Photo[]
+  priceResearch   PriceResearch[]
+  locations       Location[]
   photoIndustries PhotoIndustry[]
-  industryMisses IndustryMiss[]
+  industryMisses  IndustryMiss[]
+  taskCompletions TaskCompletion[]
+  checkInReview   CheckInReview?
 
   @@index([promoterId])
   @@index([storeId])
@@ -392,6 +400,8 @@ model Industry {
   purchaseOrders      PurchaseOrder[]
   goals               Goal[]
   feedEntries         FeedEntry[]
+  tasks               Task[]
+  missions            Mission[]
 
   @@index([code])
   @@index([isActive])
@@ -875,4 +885,165 @@ model PromoterAchievement {
 
   @@unique([promoterId, code])
   @@index([promoterId])
+}
+
+// ============================================================
+// PROMOTOR V2 - Tarefas geradas automaticamente da base Mateus
+// ============================================================
+
+enum TaskAlertType {
+  RUPTURA_COM_CD
+  CD_ZERADO
+  PARADO_30D
+  NEGATIVO
+  EXCESSO_DDE90
+  COBERTURA_BAIXA
+}
+
+enum TaskStatus {
+  PENDING
+  COMPLETED
+  SKIPPED
+}
+
+enum TaskAction {
+  NA_GONDOLA
+  RUPTURA
+  DEPOSITO
+  PRECO_OK
+  PRECO_DIVERGENTE
+}
+
+enum RuptureReason {
+  TEM_CD
+  CD_ZERADO
+  SEM_PEDIDO
+  BLOQUEADO
+}
+
+enum ActionTaken {
+  PEDIDO
+  PONTO_EXTRA
+  CARTAZ
+  TROCA_PRECO
+}
+
+enum GpsStatus {
+  OK
+  TIMEOUT
+  DENIED
+  UNAVAILABLE
+}
+
+// Tarefa por SKU/Loja gerada diariamente a partir do estoque importado
+model Task {
+  id           String        @id @default(uuid())
+  date         String        // YYYY-MM-DD
+  storeId      String
+  industryId   String?
+  industryName String
+  sku          String
+  productName  String
+  alertType    TaskAlertType
+  stockLoja    Float         @default(0)
+  stockCD      Float         @default(0)
+  lastSale     DateTime?
+  dde          Float?
+  priority     Int           @default(0)
+  status       TaskStatus    @default(PENDING)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  store    Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  industry Industry? @relation(fields: [industryId], references: [id], onDelete: SetNull)
+  completions TaskCompletion[]
+
+  @@unique([date, storeId, sku])
+  @@index([date])
+  @@index([storeId])
+  @@index([industryId])
+  @@index([alertType])
+  @@index([status])
+}
+
+// Conclusão de tarefa pelo promotor durante a visita
+model TaskCompletion {
+  id            String         @id @default(uuid())
+  taskId        String
+  visitId       String
+  promoterId    String
+  action        TaskAction
+  priceFound    Float?
+  ruptureReason RuptureReason?
+  actionTaken   ActionTaken?
+  note          String?
+  createdAt     DateTime       @default(now())
+
+  task     Task  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  visit    Visit @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  promoter User  @relation(fields: [promoterId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, visitId])
+  @@index([visitId])
+  @@index([promoterId])
+  @@index([createdAt])
+}
+
+// Missões da semana (ex: Casafort 50L, ponto extra Semorin)
+model Mission {
+  id           String   @id @default(uuid())
+  title        String
+  description  String?
+  industryId   String?
+  storeId      String?  // null = todas as lojas
+  weekStart    String   // YYYY-MM-DD (segunda)
+  weekEnd      String   // YYYY-MM-DD (domingo)
+  requiresPhoto Boolean @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  industry    Industry?           @relation(fields: [industryId], references: [id], onDelete: SetNull)
+  store       Store?              @relation(fields: [storeId], references: [id], onDelete: SetNull)
+  completions MissionCompletion[]
+
+  @@index([weekStart])
+  @@index([industryId])
+  @@index([storeId])
+}
+
+model MissionCompletion {
+  id         String   @id @default(uuid())
+  missionId  String
+  promoterId String
+  storeId    String?
+  done       Boolean  @default(true)
+  photoUrl   String?
+  note       String?
+  createdAt  DateTime @default(now())
+
+  mission  Mission @relation(fields: [missionId], references: [id], onDelete: Cascade)
+  promoter User    @relation(fields: [promoterId], references: [id], onDelete: Cascade)
+  store    Store?  @relation(fields: [storeId], references: [id], onDelete: SetNull)
+
+  @@unique([missionId, promoterId, storeId])
+  @@index([promoterId])
+  @@index([missionId])
+}
+
+// Check-in com suporte a GPS status
+model CheckInReview {
+  id         String    @id @default(uuid())
+  visitId    String    @unique
+  gpsStatus  GpsStatus
+  reviewedAt DateTime?
+  reviewedBy String?
+  approved   Boolean?
+  note       String?
+  createdAt  DateTime  @default(now())
+
+  visit    Visit @relation(fields: [visitId], references: [id], onDelete: Cascade)
+  reviewer User? @relation(fields: [reviewedBy], references: [id], onDelete: SetNull)
+
+  @@index([gpsStatus])
+  @@index([reviewedAt])
 }

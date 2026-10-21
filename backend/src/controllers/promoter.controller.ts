@@ -14,12 +14,14 @@ const checkInSchema = z.object({
   latitude: z.number(),
   longitude: z.number(),
   photoUrl: z.string().url(),
+  gpsStatus: z.enum(['ok', 'timeout', 'denied', 'unavailable', 'OK', 'TIMEOUT', 'DENIED', 'UNAVAILABLE']).optional(),
 });
 
 export async function checkIn(req: AuthRequest, res: Response) {
   try {
-    const { storeId, latitude, longitude, photoUrl } = checkInSchema.parse(req.body);
+    const { storeId, latitude, longitude, photoUrl, gpsStatus: rawGpsStatus } = checkInSchema.parse(req.body);
     const promoterId = req.userId!;
+    const gpsStatus = (rawGpsStatus?.toUpperCase() || 'OK') as 'OK' | 'TIMEOUT' | 'DENIED' | 'UNAVAILABLE';
 
     // Verificar se o promotor já tem uma visita em aberto
     const activeVisit = await prisma.visit.findFirst({
@@ -109,6 +111,25 @@ export async function checkIn(req: AuthRequest, res: Response) {
       },
     });
 
+    // Se GPS não está OK, cria registro para revisão do supervisor
+    if (gpsStatus !== 'OK') {
+      await prisma.checkInReview.create({
+        data: {
+          visitId: visit.id,
+          gpsStatus,
+        },
+      });
+    }
+
+    // Se a loja não tem coordenadas e o GPS está OK, atualiza as coordenadas
+    if (store.latitude === 0 && store.longitude === 0 && gpsStatus === 'OK' && latitude !== 0 && longitude !== 0) {
+      await prisma.store.update({
+        where: { id: storeId },
+        data: { latitude, longitude },
+      });
+      console.log(`[CheckIn] Coordenadas da loja ${store.name} atualizadas: ${latitude}, ${longitude}`);
+    }
+
     res.json({
       visit: {
         id: visit.id,
@@ -116,6 +137,8 @@ export async function checkIn(req: AuthRequest, res: Response) {
         checkInAt: visit.checkInAt,
         checkInLatitude: visit.checkInLatitude,
         checkInLongitude: visit.checkInLongitude,
+        gpsStatus,
+        needsReview: gpsStatus !== 'OK',
       },
     });
   } catch (error) {
