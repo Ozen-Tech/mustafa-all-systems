@@ -13,6 +13,13 @@ import {
   getScopedPromoters,
   getPromoterMissHistory,
 } from '../controllers/supervisor.controller';
+import {
+  getDayStatus,
+  getCheckInReviews,
+  reviewCheckIn,
+  reassignStore,
+  getStoresWithoutPromoter,
+} from '../controllers/supervisor.controller';
 import { opsIndustryAudit, opsIndustryGallery, opsPromoterDayDetail, opsTeamToday, opsTradeMetrics } from '../controllers/ops.controller';
 import { getPromoters } from '../controllers/promoters.controller';
 import { getTeamWeeklyRanking } from '../controllers/dayBoard.controller';
@@ -112,6 +119,13 @@ router.post('/stores', requireSupervisor, createStore);
 router.post('/stores/bulk', requireSupervisor, bulkCreateStores);
 router.put('/stores/:id', requireSupervisor, updateStore);
 router.delete('/stores/:id', requireSupervisor, deleteStore);
+
+// V2: Novas rotas do painel do supervisor
+router.get('/day-status', requireSupervisor, getDayStatus);
+router.get('/check-in-reviews', requireSupervisor, getCheckInReviews);
+router.post('/review-check-in', requireSupervisor, reviewCheckIn);
+router.post('/reassign-store', requireSupervisor, reassignStore);
+router.get('/stores-without-promoter', requireSupervisor, getStoresWithoutPromoter);
 
 export default router;
 
