@@ -40,6 +40,8 @@ import OrdersImport from './pages/OrdersImport';
 import GoalsPage from './pages/GoalsPage';
 import OwnerDashboard from './pages/OwnerDashboard';
 import FeedPage from './pages/FeedPage';
+import SupervisorDayStatus from './pages/SupervisorDayStatus';
+import SkuStoreMatrix from './pages/SkuStoreMatrix';
 import Layout from './components/Layout';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -179,6 +181,22 @@ function AppRoutes() {
           element={
             <SupervisorOrAdminRoute>
               <OpsPromoterDayDetail />
+            </SupervisorOrAdminRoute>
+          }
+        />
+        <RouterRoute
+          path="ops/day-status"
+          element={
+            <SupervisorOrAdminRoute>
+              <SupervisorDayStatus />
+            </SupervisorOrAdminRoute>
+          }
+        />
+        <RouterRoute
+          path="ops/sku-matrix"
+          element={
+            <SupervisorOrAdminRoute>
+              <SkuStoreMatrix />
             </SupervisorOrAdminRoute>
           }
         />

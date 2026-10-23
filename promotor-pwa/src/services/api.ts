@@ -118,12 +118,13 @@ export const api = {
 
   async checkIn(data: {
     storeId: string;
-    latitude: number;
-    longitude: number;
+    latitude: number | null;
+    longitude: number | null;
     gpsStatus: 'ok' | 'timeout' | 'denied' | 'unavailable';
     photoUrl: string;
+    clientId?: string;
   }): Promise<{ visit: Visit }> {
-    return request('/promoters/check-in', {
+    return request('/promoters/checkin', {
       method: 'POST',
       body: JSON.stringify(data),
     });
@@ -131,11 +132,11 @@ export const api = {
 
   async checkout(data: {
     visitId: string;
-    latitude: number;
-    longitude: number;
+    latitude: number | null;
+    longitude: number | null;
     photoUrl: string;
   }): Promise<{ visit: Visit }> {
-    return request('/promoters/check-out', {
+    return request('/promoters/checkout', {
       method: 'POST',
       body: JSON.stringify(data),
     });
@@ -146,11 +147,8 @@ export const api = {
   },
 
   async uploadPhoto(blob: Blob, type: string): Promise<{ url: string }> {
-    const token = localStorage.getItem('auth_token');
-    
-    // Primeiro, obtém URL de upload assinada
     const { uploadUrl, publicUrl } = await request<{ uploadUrl: string; publicUrl: string }>(
-      '/photos/upload-url',
+      '/upload/photo',
       {
         method: 'POST',
         body: JSON.stringify({
@@ -161,7 +159,6 @@ export const api = {
       }
     );
 
-    // Upload direto para o storage
     await fetch(uploadUrl, {
       method: 'PUT',
       body: blob,
@@ -250,7 +247,7 @@ export const api = {
     }>;
   }> {
     const params = date ? `?date=${date}` : '';
-    return request(`/supervisor/day-status${params}`);
+    return request(`/supervisors/day-status${params}`);
   },
 
   async getSkuStoreMatrix(params: {
@@ -282,7 +279,7 @@ export const api = {
     if (params.industryId) searchParams.set('industryId', params.industryId);
     if (params.state) searchParams.set('state', params.state);
     if (params.date) searchParams.set('date', params.date);
-    return request(`/supervisor/sku-matrix?${searchParams}`);
+    return request(`/tasks/sku-matrix?${searchParams}`);
   },
 
   async reassignPromoterStore(data: {
@@ -290,7 +287,7 @@ export const api = {
     fromPromoterId: string;
     toPromoterId: string;
   }): Promise<{ success: boolean }> {
-    return request('/supervisor/reassign-store', {
+    return request('/supervisors/reassign-store', {
       method: 'POST',
       body: JSON.stringify(data),
     });

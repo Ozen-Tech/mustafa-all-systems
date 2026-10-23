@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import 'fake-indexeddb/auto';
 
-// Mock do fetch e navigator antes de importar o syncService
+// Mock do fetch usando vi.stubGlobal (compatível com Vitest/browser)
 const mockFetch = vi.fn();
-global.fetch = mockFetch;
+vi.stubGlobal('fetch', mockFetch);
 
 // Mock do navigator.onLine
 Object.defineProperty(navigator, 'onLine', {
@@ -180,6 +180,11 @@ describe('Sync Service - Offline First', () => {
 });
 
 describe('Check-in tolerante a GPS', () => {
+  beforeEach(async () => {
+    const db = await getDB();
+    await db.clear('pendingCheckIns');
+  });
+
   it('aceita todos os status de GPS', async () => {
     const db = await getDB();
     const gpsStatuses: Array<'ok' | 'timeout' | 'denied' | 'unavailable'> = [

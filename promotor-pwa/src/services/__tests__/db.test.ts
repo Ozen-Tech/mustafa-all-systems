@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import 'fake-indexeddb/auto';
 import { 
   getDB, 
@@ -141,13 +141,13 @@ describe('IndexedDB Store', () => {
 
   describe('offline persistence', () => {
     it('dados persistem após reabrir o banco', async () => {
-      const db1 = await getDB();
+      await getDB();
       
       await setValue('persist-test', { saved: true });
       
       // Simula "fechar" e reabrir o banco
       // (fake-indexeddb mantém os dados entre chamadas)
-      const db2 = await getDB();
+      await getDB();
       
       const result = await getValue<{ saved: boolean }>('persist-test');
       expect(result?.saved).toBe(true);
