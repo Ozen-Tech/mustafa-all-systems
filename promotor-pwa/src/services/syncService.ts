@@ -15,9 +15,7 @@ import {
   PendingPhoto,
   TaskCompletion,
   SyncQueueItem,
-  ActiveVisit,
-  getValue,
-  setValue
+  ActiveVisit
 } from './db';
 import { api } from './api';
 
@@ -241,24 +239,43 @@ class SyncService {
     try {
       await db.put('pendingCheckIns', { ...checkIn, syncStatus: 'syncing' });
 
-      // Upload da foto primeiro (se houver)
-      let photoUrl = 'https://placeholder.com/checkin.jpg';
+      // Upload da foto primeiro (se houver) - NÃO usa placeholder, mantém na fila para retry
+      let photoUrl: string | null = null;
       if (checkIn.photoBlob) {
         try {
           const uploadResult = await api.uploadPhoto(checkIn.photoBlob, 'FACADE_CHECKIN');
           photoUrl = uploadResult.url;
         } catch (uploadError) {
-          console.warn('[Sync] Falha no upload da foto, usando placeholder:', uploadError);
+          console.warn('[Sync] Falha no upload da foto, mantendo na fila:', uploadError);
+          await db.put('pendingCheckIns', {
+            ...checkIn,
+            syncStatus: 'pending',
+            retryCount: checkIn.retryCount + 1,
+            errorMessage: 'Falha no upload da foto'
+          });
+          return;
         }
       }
 
-      // Envia check-in
+      if (!photoUrl) {
+        console.warn('[Sync] Sem foto para upload, mantendo na fila');
+        await db.put('pendingCheckIns', {
+          ...checkIn,
+          syncStatus: 'pending',
+          retryCount: checkIn.retryCount + 1,
+          errorMessage: 'Foto obrigatória'
+        });
+        return;
+      }
+
+      // Envia check-in com clientId para idempotência
       const result = await api.checkIn({
         storeId: checkIn.storeId,
-        latitude: checkIn.latitude ?? 0,
-        longitude: checkIn.longitude ?? 0,
+        latitude: checkIn.latitude,
+        longitude: checkIn.longitude,
         gpsStatus: checkIn.gpsStatus,
-        photoUrl
+        photoUrl,
+        clientId: localId
       });
 
       // Atualiza com ID do servidor
@@ -280,6 +297,32 @@ class SyncService {
       this.emit({ type: 'progress', message: 'Check-in sincronizado' });
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido';
+      
+      // Se for erro de visita já existente (idempotência), tenta recuperar o visitId
+      if (errorMessage.includes('visita em andamento') || errorMessage.includes('already')) {
+        try {
+          const currentVisit = await api.getCurrentVisit();
+          if (currentVisit.visit) {
+            await db.put('pendingCheckIns', {
+              ...checkIn,
+              syncStatus: 'synced',
+              serverVisitId: currentVisit.visit.id
+            });
+            const activeVisit = await db.get('activeVisit', 'current');
+            if (activeVisit && activeVisit.localId === localId) {
+              await db.put('activeVisit', {
+                ...activeVisit,
+                serverVisitId: currentVisit.visit.id
+              });
+            }
+            this.emit({ type: 'progress', message: 'Check-in recuperado' });
+            return;
+          }
+        } catch {
+          // Continua com o erro original
+        }
+      }
+      
       await db.put('pendingCheckIns', {
         ...checkIn,
         syncStatus: 'error',
@@ -437,7 +480,8 @@ class SyncService {
 
   async getActiveVisit(): Promise<ActiveVisit | null> {
     const db = await getDB();
-    return db.get('activeVisit', 'current') ?? null;
+    const result = await db.get('activeVisit', 'current');
+    return result ?? null;
   }
 
   async clearActiveVisit(): Promise<void> {
@@ -470,17 +514,18 @@ class SyncService {
       });
     }
 
-    // Tenta checkout no servidor se online e tiver visitId
-    if (this.isOnline && activeVisit.serverVisitId) {
+    // Tenta checkout no servidor se online e tiver visitId E foto
+    if (this.isOnline && activeVisit.serverVisitId && data.photoBlob) {
       try {
+        const uploadResult = await api.uploadPhoto(data.photoBlob, 'FACADE_CHECKOUT');
         await api.checkout({
           visitId: activeVisit.serverVisitId,
-          latitude: data.latitude ?? 0,
-          longitude: data.longitude ?? 0,
-          photoUrl: 'https://placeholder.com/checkout.jpg'
+          latitude: data.latitude,
+          longitude: data.longitude,
+          photoUrl: uploadResult.url
         });
       } catch (error) {
-        console.warn('[Sync] Checkout offline, será sincronizado depois');
+        console.warn('[Sync] Checkout offline, será sincronizado depois via fila de fotos');
       }
     }
 

@@ -125,7 +125,7 @@ model User {
   feedEntriesAssigned   FeedEntry[]              @relation("FeedAssignee")
   taskCompletions       TaskCompletion[]
   missionCompletions    MissionCompletion[]
-  checkInReviews        CheckInReview[]          @relation("CheckInReviewer")
+  checkInReviewsAsReviewer CheckInReview[]        @relation("CheckInReviewer")
 
   @@index([state])
 }
@@ -1042,7 +1042,7 @@ model CheckInReview {
   createdAt  DateTime  @default(now())
 
   visit    Visit @relation(fields: [visitId], references: [id], onDelete: Cascade)
-  reviewer User? @relation(fields: [reviewedBy], references: [id], onDelete: SetNull)
+  reviewer User? @relation("CheckInReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
 
   @@index([gpsStatus])
   @@index([reviewedAt])

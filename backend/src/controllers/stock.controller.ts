@@ -16,6 +16,7 @@ import {
   StockRow,
   SalesRow,
 } from '../services/pivotCacheParser';
+import { generateDailyTasks } from '../services/taskGenerator';
 
 const uploadDir = path.join(os.tmpdir(), 'stock-imports');
 try {
@@ -252,6 +253,14 @@ export async function createStockImport(req: AuthRequest, res: Response) {
   try {
     await processImport(created.id, filePath);
     const fresh = await prisma.stockImport.findUnique({ where: { id: created.id } });
+    
+    // Gera tarefas automaticamente após importação bem-sucedida
+    if (fresh?.status === 'DONE') {
+      generateDailyTasks().catch(err => {
+        console.error('[StockImport] Erro ao gerar tarefas:', err);
+      });
+    }
+    
     return res.status(201).json({ import: fresh });
   } catch (error: any) {
     console.error('Process stock import error:', error);

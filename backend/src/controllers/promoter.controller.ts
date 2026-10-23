@@ -11,17 +11,23 @@ import { storeSelect } from '../utils/storeSelect';
 
 const checkInSchema = z.object({
   storeId: z.string().uuid(),
-  latitude: z.number(),
-  longitude: z.number(),
+  latitude: z.number().nullable(),
+  longitude: z.number().nullable(),
   photoUrl: z.string().url(),
   gpsStatus: z.enum(['ok', 'timeout', 'denied', 'unavailable', 'OK', 'TIMEOUT', 'DENIED', 'UNAVAILABLE']).optional(),
+  clientId: z.string().optional(),
 });
 
 export async function checkIn(req: AuthRequest, res: Response) {
   try {
-    const { storeId, latitude, longitude, photoUrl, gpsStatus: rawGpsStatus } = checkInSchema.parse(req.body);
+    const { storeId, latitude, longitude, photoUrl, gpsStatus: rawGpsStatus, clientId } = checkInSchema.parse(req.body);
     const promoterId = req.userId!;
     const gpsStatus = (rawGpsStatus?.toUpperCase() || 'OK') as 'OK' | 'TIMEOUT' | 'DENIED' | 'UNAVAILABLE';
+
+    const effectiveLatitude = latitude ?? 0;
+    const effectiveLongitude = longitude ?? 0;
+    const hasValidGps = gpsStatus === 'OK' && latitude !== null && longitude !== null && latitude !== 0 && longitude !== 0;
+    const needsReview = !hasValidGps;
 
     // Verificar se o promotor já tem uma visita em aberto
     const activeVisit = await prisma.visit.findFirst({
@@ -29,11 +35,29 @@ export async function checkIn(req: AuthRequest, res: Response) {
         promoterId,
         checkOutAt: null,
       },
+      include: {
+        store: { select: storeSelect },
+      },
     });
 
+    // Idempotência: se já existe visita ativa na mesma loja, retorna ela (não trava a fila)
     if (activeVisit) {
+      if (activeVisit.storeId === storeId) {
+        return res.json({
+          visit: {
+            id: activeVisit.id,
+            store: activeVisit.store,
+            checkInAt: activeVisit.checkInAt,
+            checkInLatitude: activeVisit.checkInLatitude,
+            checkInLongitude: activeVisit.checkInLongitude,
+            gpsStatus,
+            needsReview,
+            alreadyExisted: true,
+          },
+        });
+      }
       return res.status(400).json({
-        message: 'Você já tem uma visita em andamento. Faça checkout primeiro.',
+        message: 'Você já tem uma visita em andamento em outra loja. Faça checkout primeiro.',
         visitId: activeVisit.id,
       });
     }
@@ -85,49 +109,52 @@ export async function checkIn(req: AuthRequest, res: Response) {
       });
     }
 
-    // Criar visita
-    const visit = await prisma.visit.create({
-      data: {
-        promoterId,
-        storeId,
-        checkInAt: new Date(),
-        checkInLatitude: latitude,
-        checkInLongitude: longitude,
-        checkInPhotoUrl: photoUrl,
-      },
-      include: {
-        store: { select: storeSelect },
-      },
-    });
-
-    // Criar registro da foto
-    await prisma.photo.create({
-      data: {
-        visitId: visit.id,
-        url: photoUrl,
-        type: PhotoType.FACADE_CHECKIN,
-        latitude,
-        longitude,
-      },
-    });
-
-    // Se GPS não está OK, cria registro para revisão do supervisor
-    if (gpsStatus !== 'OK') {
-      await prisma.checkInReview.create({
+    // Criar visita, foto e review em transação
+    const visit = await prisma.$transaction(async (tx) => {
+      const newVisit = await tx.visit.create({
         data: {
-          visitId: visit.id,
-          gpsStatus,
+          promoterId,
+          storeId,
+          checkInAt: new Date(),
+          checkInLatitude: effectiveLatitude,
+          checkInLongitude: effectiveLongitude,
+          checkInPhotoUrl: photoUrl,
+        },
+        include: {
+          store: { select: storeSelect },
         },
       });
-    }
+
+      await tx.photo.create({
+        data: {
+          visitId: newVisit.id,
+          url: photoUrl,
+          type: PhotoType.FACADE_CHECKIN,
+          latitude: effectiveLatitude,
+          longitude: effectiveLongitude,
+        },
+      });
+
+      // Se GPS não está OK ou coords são 0,0, cria registro para revisão do supervisor
+      if (needsReview) {
+        await tx.checkInReview.create({
+          data: {
+            visitId: newVisit.id,
+            gpsStatus: hasValidGps ? 'OK' : gpsStatus,
+          },
+        });
+      }
+
+      return newVisit;
+    });
 
     // Se a loja não tem coordenadas e o GPS está OK, atualiza as coordenadas
-    if (store.latitude === 0 && store.longitude === 0 && gpsStatus === 'OK' && latitude !== 0 && longitude !== 0) {
+    if (store.latitude === 0 && store.longitude === 0 && hasValidGps) {
       await prisma.store.update({
         where: { id: storeId },
-        data: { latitude, longitude },
+        data: { latitude: effectiveLatitude, longitude: effectiveLongitude },
       });
-      console.log(`[CheckIn] Coordenadas da loja ${store.name} atualizadas: ${latitude}, ${longitude}`);
+      console.log(`[CheckIn] Coordenadas da loja ${store.name} atualizadas: ${effectiveLatitude}, ${effectiveLongitude}`);
     }
 
     res.json({
@@ -138,7 +165,7 @@ export async function checkIn(req: AuthRequest, res: Response) {
         checkInLatitude: visit.checkInLatitude,
         checkInLongitude: visit.checkInLongitude,
         gpsStatus,
-        needsReview: gpsStatus !== 'OK',
+        needsReview,
       },
     });
   } catch (error) {
@@ -152,8 +179,8 @@ export async function checkIn(req: AuthRequest, res: Response) {
 
 const checkOutSchema = z.object({
   visitId: z.string().uuid(),
-  latitude: z.number(),
-  longitude: z.number(),
+  latitude: z.number().nullable(),
+  longitude: z.number().nullable(),
   photoUrl: z.string().url(),
 });
 
@@ -375,13 +402,16 @@ export async function checkOut(req: AuthRequest, res: Response) {
       }
     }
 
+    const effectiveLatitude = latitude ?? 0;
+    const effectiveLongitude = longitude ?? 0;
+
     // Atualizar visita com checkout
     const updatedVisit = await prisma.visit.update({
       where: { id: visitId },
       data: {
         checkOutAt: new Date(),
-        checkOutLatitude: latitude,
-        checkOutLongitude: longitude,
+        checkOutLatitude: effectiveLatitude,
+        checkOutLongitude: effectiveLongitude,
         checkOutPhotoUrl: photoUrl,
       },
       include: {
@@ -395,8 +425,8 @@ export async function checkOut(req: AuthRequest, res: Response) {
         visitId: visit.id,
         url: photoUrl,
         type: PhotoType.FACADE_CHECKOUT,
-        latitude,
-        longitude,
+        latitude: effectiveLatitude,
+        longitude: effectiveLongitude,
       },
     });
 

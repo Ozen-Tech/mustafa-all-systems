@@ -64,6 +64,7 @@ export interface TaskCompletion {
   note?: string;
   timestamp: string;
   syncStatus: 'pending' | 'synced' | 'error';
+  errorMessage?: string;
   retryCount: number;
 }
 
