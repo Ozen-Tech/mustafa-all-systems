@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import 'fake-indexeddb/auto';
 
-// Mock do fetch e navigator antes de importar o syncService
+// Mock do fetch usando vi.stubGlobal (compatível com Vitest/browser)
 const mockFetch = vi.fn();
-global.fetch = mockFetch;
+vi.stubGlobal('fetch', mockFetch);
 
 // Mock do navigator.onLine
 Object.defineProperty(navigator, 'onLine', {
